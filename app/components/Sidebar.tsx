@@ -69,66 +69,10 @@ export function Sidebar({
 
   const items: MenuItem[] = [
     getItem(<Link to="/">{t.nav.home}</Link>, "/", <HomeOutlined />),
-    getItem(t.nav.learnCategory, "learn-group", <EditOutlined />, [
-      getItem(
-        <Link to="/posts">{t.nav.articles}</Link>,
-        "/posts",
-        <ReadOutlined />
-      ),
-      getItem(
-        <Link to="/exercices">{t.nav.exercises}</Link>,
-        "/exercices",
-        <EditOutlined />
-      ),
-      getItem(
-        <Link to="/review">{t.nav.review}</Link>,
-        "/review",
-        <EyeOutlined />
-      ),
-      getItem(t.nav.resourcesCategory, "resources-group", <BookOutlined />, [
-        getItem(
-          <Link to="/links">{t.nav.links}</Link>,
-          "/links",
-          <BookOutlined />
-        ),
-        getItem(
-          <Link to="/resources/glossary">{t.nav.glossary}</Link>,
-          "/resources/glossary",
-          <FileSearchOutlined />
-        ),
-        getItem(
-          <Link to="/resources/wait-types">{t.nav.waitTypes}</Link>,
-          "/resources/wait-types",
-          <QuestionCircleOutlined />
-        ),
-      ]),
-    ]),
-    getItem(t.nav.inPersonCategory, "in-person-group", <CalendarOutlined />, [
-      getItem(
-        <Link to="/club-sessions">{t.nav.clubSessions}</Link>,
-        "/club-sessions",
-        <CalendarOutlined />
-      ),
-      getItem(
-        <Link to="/tournaments">{t.nav.tournaments}</Link>,
-        "/tournaments",
-        <FlagOutlined />
-      ),
-    ]),
-    getItem(
-      <Link to="/online-events">{t.nav.clubEvents}</Link>,
-      "/online-events",
-      <GlobalOutlined />
-    ),
     getItem(
       <Link to="/online-tournaments">{t.nav.onlineTournaments}</Link>,
       "/online-tournaments",
       <BarChartOutlined />
-    ),
-    getItem(
-      <Link to="/palmares">{t.nav.palmares}</Link>,
-      "/palmares",
-      <TrophyOutlined />
     ),
   ];
 
