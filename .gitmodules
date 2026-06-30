@@ -1,0 +1,6 @@
+[submodule "app/db"]
+	path = app/db
+	url = https://github.com/Mystouille/kandora-core.git
+[submodule "app/game"]
+	path = app/game
+	url = https://github.com/Mystouille/kandora-game.git

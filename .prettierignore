@@ -1,0 +1,7 @@
+build
+.react-router
+node_modules
+package-lock.json
+app/db
+app/game
+**/liqi.d.ts

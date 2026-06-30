@@ -1,0 +1,16 @@
+.DS_Store
+.env
+servers.json
+google-credentials.json
+token.json
+/node_modules/
+/backups/
+/.data/
+
+# React Router
+/.react-router/
+/build/
+
+# Generated tiles
+/app/bot/resources/tiles/generated/*
+!/app/bot/resources/tiles/generated/.gitkeep

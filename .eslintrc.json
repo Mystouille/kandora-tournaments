@@ -1,0 +1,32 @@
+{
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": false
+    }
+  },
+  "plugins": ["@typescript-eslint", "react-hooks"],
+  "extends": ["eslint:recommended", "eslint-config-prettier"],
+  "rules": {
+    "no-undef": 0,
+    "no-unused-vars": 0,
+    "no-empty": [2, { "allowEmptyCatch": true }],
+    "@typescript-eslint/no-unused-vars": [
+      1,
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_"
+      }
+    ],
+    "curly": [2, "all"]
+  },
+  "ignorePatterns": ["**/liqi.d.ts", "app/db/**", "app/game/**"],
+  "env": {
+    "browser": false,
+    "node": true,
+    "es2020": true
+  }
+}

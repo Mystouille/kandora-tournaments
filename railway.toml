@@ -1,0 +1,11 @@
+# Railway deploy config for the kandora-tournaments service.
+# Per-service settings (healthcheckPath, replicas, restart policy, etc.) are
+# configured via the Railway dashboard.
+#
+# NOTE: this repo uses git submodules (app/db = kandora-core, app/game =
+# kandora-game). Ensure the build checks them out
+# (`git submodule update --init --recursive`) before `docker build`.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
