@@ -8,6 +8,16 @@ import type { RenderToPipeableStreamOptions } from "react-dom/server";
 import { renderToPipeableStream } from "react-dom/server";
 import { createCache, extractStyle, StyleProvider } from "@ant-design/cssinjs";
 
+import { initLeagueAgent } from "./services/serverInit.server";
+
+// In production, boot server agents (connectors, workers, Discord bot) as soon
+// as this module loads. In dev the Vite `server-startup` plugin handles it.
+if (process.env.NODE_ENV === "production") {
+  initLeagueAgent().catch((err) =>
+    console.error("Failed to initialize server agents:", err)
+  );
+}
+
 export const streamTimeout = 5_000;
 
 export default function handleRequest(

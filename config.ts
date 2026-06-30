@@ -190,6 +190,31 @@ export const translationConfig = lazyGroup<TranslationConfig>(
 );
 
 // ---------------------------------------------------------------------------
+// Group 7 — Google Sheets (optional — disables the Nanikiru quiz question bank)
+// ---------------------------------------------------------------------------
+export interface GoogleSheetsConfig {
+  NANIKIRU_SHEET_ID: string;
+  GOOGLE_SERVICE_ACCOUNT_JSON: string;
+  SUBSCRIPTION_SHEET_ID?: string;
+}
+
+export const googleSheetsConfig = lazyGroup<GoogleSheetsConfig>(
+  "Google Sheets",
+  () => {
+    const sheetId = process.env.NANIKIRU_SHEET_ID;
+    const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    if (!sheetId || !serviceAccount) {
+      return null;
+    }
+    return {
+      NANIKIRU_SHEET_ID: sheetId,
+      GOOGLE_SERVICE_ACCOUNT_JSON: serviceAccount,
+      SUBSCRIPTION_SHEET_ID: process.env.SUBSCRIPTION_SHEET_ID,
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Backward-compatible flat export (deprecated — migrate consumers gradually)
 // ---------------------------------------------------------------------------
 export const config = {
@@ -203,5 +228,7 @@ export const config = {
   RIICHICITY_EMAIL: process.env.RIICHICITY_EMAIL || "",
   RIICHICITY_PASSWD: process.env.RIICHICITY_PASSWD || "",
   RIICHICITY_GUID: process.env.RIICHICITY_GUID || "",
+  NANIKIRU_SHEET_ID: process.env.NANIKIRU_SHEET_ID || "",
+  GOOGLE_SERVICE_ACCOUNT_JSON: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "",
   SERVERS_JSON: process.env.SERVERS_JSON || "",
 };

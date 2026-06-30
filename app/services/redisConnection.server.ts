@@ -45,6 +45,11 @@ function createRedisConnection(): Redis {
   });
   const redisUrl = redisUrlEntry?.[1]?.trim();
   const redisUrlSource = redisUrlEntry?.[0];
+  const _redisUrlPresence = redisUrlCandidates
+    .map(([key, value]) => {
+      return `${key}=${value && value.trim().length > 0 ? "set" : "missing"}`;
+    })
+    .join(", ");
   const redisHost = firstDefined(process.env.REDIS_HOST, process.env.REDISHOST);
   const redisPortRaw = firstDefined(
     process.env.REDIS_PORT,
