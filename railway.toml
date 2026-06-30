@@ -9,3 +9,15 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
+
+# The real container entrypoint is the Dockerfile CMD
+# (`node scripts/start.cjs ./build/server/index.js`). We ALSO pin it here because
+# a stale "Custom Start Command" in the Railway dashboard (`react-router-serve
+# ./build/server/index.js`) otherwise overrides the Dockerfile CMD and fails at
+# container start with "executable `react-router-serve` could not be found":
+# @react-router/serve is a peerOptional of the dev-only @react-router/dev, so its
+# `.bin/react-router-serve` symlink isn't created under `npm ci --omit=dev`.
+# Config-as-code always overrides the dashboard, so this guarantees the correct
+# start command. Keep in sync with the Dockerfile CMD.
+[deploy]
+startCommand = "node scripts/start.cjs ./build/server/index.js"
