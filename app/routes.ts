@@ -4,6 +4,18 @@ export default [
   index("routes/home.tsx"),
 
   // ---------------------------------------------------------------------
+  // Auth — Discord OAuth + session
+  // ---------------------------------------------------------------------
+  route("/account", "routes/account.tsx"),
+  route("/auth/discord/callback", "routes/auth/discord/callback.tsx"),
+  route("/api/auth/me", "routes/api/auth/me.ts"),
+  route("/api/auth/logout", "routes/api/auth/logout.ts"),
+  route("/api/auth/discord-callback", "routes/api/auth/discord-callback.ts"),
+  route("/api/auth/account", "routes/api/auth/account.ts"),
+  route("/api/auth/link-identity", "routes/api/auth/link-identity.ts"),
+  route("/api/auth/validate-identity", "routes/api/auth/validate-identity.ts"),
+
+  // ---------------------------------------------------------------------
   // Online tournaments (public)
   // ---------------------------------------------------------------------
   route("/online-tournaments", "routes/online-tournaments.tsx"),
