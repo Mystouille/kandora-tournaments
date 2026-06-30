@@ -26,6 +26,9 @@ instance without using the original operator's server.
 
 ## Getting started
 
+> For detailed setup instructions (prerequisites, every environment variable,
+> Docker, and troubleshooting) see [INSTALLATION.md](INSTALLATION.md).
+
 ```bash
 # 1. Clone with submodules
 git clone --recurse-submodules <this-repo-url>
