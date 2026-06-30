@@ -26,6 +26,23 @@ function serverStartup() {
 
 export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths(), serverStartup()],
+  resolve: {
+    alias: [
+      // `@ant-design/icons` v6 ships an ESM build, but under SSR Vite resolves
+      // the package's `node` export condition, which points at `index.mjs`
+      // (`export * from "./lib/index.js"` — CommonJS). That CJS chain gets
+      // bundled into the SSR module runner and throws "exports is not defined".
+      // Force the pure-ESM `es/` build instead.
+      { find: /^@ant-design\/icons$/, replacement: "@ant-design/icons/es" },
+      // Even the ESM icon components import their SVG data from the CommonJS
+      // `@ant-design/icons-svg/lib/asn/*` path. Redirect those to the ESM `es/`
+      // twins so no CommonJS module ends up in the SSR graph.
+      {
+        find: /^@ant-design\/icons-svg\/lib\//,
+        replacement: "@ant-design/icons-svg/es/",
+      },
+    ],
+  },
   ssr: {
     // Bundle antd (and its styling deps) into the server build so SSR works.
     noExternal: [

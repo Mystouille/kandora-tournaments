@@ -28,10 +28,41 @@ services:
     networks:
       - kandora-network
 
+  # The app itself. Prefer `docker compose up mongo redis` instead if you run
+  # the app via `npm run dev` / `npm run start` on the host.
+  app:
+    build:
+      context: .
+      args:
+        # The public Discord client id is baked into the browser bundle at build time.
+        VITE_DISCORD_CLIENT_ID: ${VITE_DISCORD_CLIENT_ID:-}
+    container_name: kandora-tnt-app
+    depends_on:
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # Point at the in-compose services (overrides host values from .env).
+      MONGODB_URI: mongodb://mongo:27017/kandora-tournaments
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /data/uploads
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads:/data/uploads
+    restart: unless-stopped
+    networks:
+      - kandora-network
+
 volumes:
   mongo_data:
     driver: local
   redis_data:
+    driver: local
+  uploads:
     driver: local
 
 networks:
