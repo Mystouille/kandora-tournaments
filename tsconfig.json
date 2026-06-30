@@ -5,7 +5,13 @@
     "**/.client/**/*",
     ".react-router/types/**/*"
   ],
-  "exclude": ["app/api/majsoul/**/*", "app/bot/**/*"],
+  "exclude": [
+    "app/api/majsoul/**/*",
+    "app/bot/**/*",
+    "app/game/routes/lobby.tsx",
+    "app/game/routes/match.tsx",
+    "app/game/routes/spectate.tsx"
+  ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "types": ["node", "vite/client", "vitest/globals"],

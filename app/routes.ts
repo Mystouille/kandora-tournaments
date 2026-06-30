@@ -91,7 +91,10 @@ export default [
   // ---------------------------------------------------------------------
   route("/api/replay-tenhou-log", "routes/api/replay-tenhou-log.ts"),
   route("/api/replay-reviews", "routes/api/replay-reviews.ts"),
-  route("/api/replay-reviews/:shortId", "routes/api/replay-reviews.$shortId.ts"),
+  route(
+    "/api/replay-reviews/:shortId",
+    "routes/api/replay-reviews.$shortId.ts"
+  ),
 
   // ---------------------------------------------------------------------
   // API — admin
@@ -109,7 +112,10 @@ export default [
     "/api/admin/league-team-import",
     "routes/api/admin/league-team-import.ts"
   ),
-  route("/api/admin/league-csv-import", "routes/api/admin/league-csv-import.ts"),
+  route(
+    "/api/admin/league-csv-import",
+    "routes/api/admin/league-csv-import.ts"
+  ),
   route(
     "/api/admin/league-finals-roster",
     "routes/api/admin/league-finals-roster.ts"

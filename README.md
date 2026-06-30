@@ -52,16 +52,16 @@ npm run dev
 
 ## Useful scripts
 
-| Script                  | Description                                        |
-| ----------------------- | -------------------------------------------------- |
-| `npm run dev`           | Start the dev server.                              |
-| `npm run build`         | Production build.                                  |
-| `npm run start`         | Serve the production build.                        |
-| `npm run typecheck`     | `react-router typegen` + `tsc`.                    |
-| `npm run test`          | Run the Vitest suite.                              |
+| Script                    | Description                                               |
+| ------------------------- | --------------------------------------------------------- |
+| `npm run dev`             | Start the dev server.                                     |
+| `npm run build`           | Production build.                                         |
+| `npm run start`           | Serve the production build.                               |
+| `npm run typecheck`       | `react-router typegen` + `tsc`.                           |
+| `npm run test`            | Run the Vitest suite.                                     |
 | `npm run submodules:init` | Check out the `kandora-core` + `kandora-game` submodules. |
-| `npm run core:update`   | Update `app/db` to the latest `kandora-core` main. |
-| `npm run game:update`   | Update `app/game` to the latest `kandora-game` main. |
+| `npm run core:update`     | Update `app/db` to the latest `kandora-core` main.        |
+| `npm run game:update`     | Update `app/game` to the latest `kandora-game` main.      |
 
 ## License
 
