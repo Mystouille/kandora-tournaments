@@ -69,6 +69,14 @@ export function createAuthCookie(token: string): string {
     "SameSite=Lax",
     `Max-Age=${7 * 24 * 60 * 60}`, // 7 days
   ];
+  // Optionally scope the cookie to a parent domain (e.g. ".tnt-sessions.com")
+  // so the session is shared across sub-domains — used to SSO between the
+  // portal and the tournaments app. Leave AUTH_COOKIE_DOMAIN unset for a
+  // host-only cookie (the default; right for a single self-hosted instance).
+  const cookieDomain = process.env.AUTH_COOKIE_DOMAIN?.trim();
+  if (cookieDomain) {
+    parts.push(`Domain=${cookieDomain}`);
+  }
   if (isProduction) {
     parts.push("Secure");
   }
@@ -76,10 +84,14 @@ export function createAuthCookie(token: string): string {
 }
 
 /**
- * Create a Set-Cookie header that clears the auth cookie.
+ * Create a Set-Cookie header that clears the auth cookie. Must use the same
+ * Domain scope as `createAuthCookie`, otherwise a domain-scoped cookie won't
+ * be cleared.
  */
 export function clearAuthCookie(): string {
-  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const cookieDomain = process.env.AUTH_COOKIE_DOMAIN?.trim();
+  const domainPart = cookieDomain ? `Domain=${cookieDomain}; ` : "";
+  return `${COOKIE_NAME}=; Path=/; ${domainPart}HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
 /**
