@@ -1,6 +1,7 @@
 {
   "name": "kandora-tournaments",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "core:update": "git submodule update --init --remote app/db",
