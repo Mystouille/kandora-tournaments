@@ -9,6 +9,26 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { Navigation } from "./components/Navigation";
+import { CookieConsent } from "./components/CookieConsent";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { LocaleProvider } from "./contexts/LocaleContext";
+import { TelemetryProvider } from "./contexts/TelemetryContext";
+import { TileSetProvider } from "./contexts/TileSetContext";
+import { GlossaryProvider } from "./contexts/GlossaryContext";
+import { FormFactorProvider } from "./contexts/FormFactorContext";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { basePath } from "./utils/basePath";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes (garbage collection)
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,6 +43,43 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+function parseCookie(cookieHeader: string, name: string): string | null {
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const cookieHeader = request.headers.get("Cookie") || "";
+  const userAgent = request.headers.get("User-Agent") || "";
+  const isProbablyMobile =
+    /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(userAgent);
+  const theme = parseCookie(cookieHeader, "theme") || "dark";
+  const locale = parseCookie(cookieHeader, "locale") || "fr";
+  return { theme, locale, isProbablyMobile };
+}
+
+// Inline script to expose viewport width before React hydrates
+const viewportBootstrapScript = `
+(function() {
+  try {
+    window.__INITIAL_VIEWPORT_WIDTH__ = window.innerWidth;
+  } catch (e) {}
+})()
+`;
+
+// Inline script to apply theme before React hydrates, preventing flash
+const antiFlickerScript = `
+(function() {
+  try {
+    var theme = document.cookie.match(/(?:^|;\\s*)theme=([^;]*)/)?.[1];
+    if (!theme) theme = localStorage.getItem('theme');
+    if (theme !== 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } catch(e) {}
+})()
+`;
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -32,6 +89,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           name="viewport"
           content="width=device-width, initial-scale=1, viewport-fit=cover"
         />
+        <script dangerouslySetInnerHTML={{ __html: viewportBootstrapScript }} />
+        <script dangerouslySetInnerHTML={{ __html: antiFlickerScript }} />
         <Meta />
         <Links />
       </head>
@@ -44,8 +103,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  return <Outlet />;
+export default function App({ loaderData }: Route.ComponentProps) {
+  const initialTheme = (loaderData?.theme as "light" | "dark") || "dark";
+  const initialLocale = (loaderData?.locale as "en" | "fr") || "en";
+  const initialIsMobile = Boolean(loaderData?.isProbablyMobile);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <LocaleProvider initialLocale={initialLocale}>
+        <ThemeProvider initialTheme={initialTheme}>
+          <FormFactorProvider ssrIsMobile={initialIsMobile}>
+            <TileSetProvider>
+              <GlossaryProvider>
+                <TelemetryProvider endpoint={`${basePath}/api/telemetry`}>
+                  <Navigation>
+                    <Outlet />
+                  </Navigation>
+                  <CookieConsent />
+                </TelemetryProvider>
+              </GlossaryProvider>
+            </TileSetProvider>
+          </FormFactorProvider>
+        </ThemeProvider>
+      </LocaleProvider>
+    </QueryClientProvider>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
