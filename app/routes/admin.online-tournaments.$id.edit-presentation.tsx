@@ -1,7 +1,21 @@
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { Button, Segmented, Spin, Modal, message, Typography } from "antd";
-import { SaveOutlined, TranslationOutlined } from "@ant-design/icons";
+import {
+  Button,
+  Segmented,
+  Spin,
+  Modal,
+  message,
+  Typography,
+  Input,
+} from "antd";
+import {
+  SaveOutlined,
+  TranslationOutlined,
+  UploadOutlined,
+  DeleteOutlined,
+  PictureOutlined,
+} from "@ant-design/icons";
 import { useLocale } from "../contexts/LocaleContext";
 import { basePath } from "../utils/basePath";
 import type { Route } from "./+types/admin.online-tournaments.$id.edit-presentation";
@@ -13,7 +27,40 @@ const RichTextEditor = lazy(() =>
   }))
 );
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+
+const COVER_MAX_DIM = 1280;
+
+/**
+ * Read an image file and return a downscaled WebP data URL (bounded to
+ * COVER_MAX_DIM on its longest side) so the upload payload stays small.
+ */
+async function fileToCoverDataUrl(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to load image"));
+    image.src = dataUrl;
+  });
+  const scale = Math.min(1, COVER_MAX_DIM / Math.max(img.width, img.height));
+  const width = Math.max(1, Math.round(img.width * scale));
+  const height = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return dataUrl;
+  }
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL("image/webp", 0.85);
+}
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   await requireLeagueAdminOrRedirect(request, params.id!);
@@ -35,6 +82,10 @@ export default function EditLeaguePresentationPage() {
   const [leagueSlug, setLeagueSlug] = useState("");
   const [contentFr, setContentFr] = useState("");
   const [contentEn, setContentEn] = useState("");
+  const [summaryFr, setSummaryFr] = useState("");
+  const [summaryEn, setSummaryEn] = useState("");
+  const [coverImageUrl, setCoverImageUrl] = useState("");
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const [editingLocale, setEditingLocale] = useState<"fr" | "en">("fr");
 
   useEffect(() => {
@@ -72,7 +123,7 @@ export default function EditLeaguePresentationPage() {
         const league = leagues.find((l) => l._id === id);
         if (!league) {
           message.error("League not found");
-          navigate("/online-tournaments");
+          navigate("/");
           return;
         }
         setLeagueName(league.name);
@@ -92,11 +143,14 @@ export default function EditLeaguePresentationPage() {
         if (detail) {
           setContentFr(detail.presentation?.fr ?? "");
           setContentEn(detail.presentation?.en ?? "");
+          setSummaryFr(detail.summary?.fr ?? "");
+          setSummaryEn(detail.summary?.en ?? "");
+          setCoverImageUrl(detail.coverImageUrl ?? "");
         }
       })
       .catch(() => {
         message.error("Failed to load league");
-        navigate("/online-tournaments");
+        navigate("/");
       })
       .finally(() => setLoading(false));
   }, [isAdmin, id]);
@@ -125,6 +179,9 @@ export default function EditLeaguePresentationPage() {
           leagueId: id,
           fr: contentFr,
           en: contentEn,
+          summaryFr,
+          summaryEn,
+          coverImageUrl,
           translate,
         }),
       });
@@ -135,6 +192,13 @@ export default function EditLeaguePresentationPage() {
           setContentFr(data.presentation.fr ?? "");
           setContentEn(data.presentation.en ?? "");
         }
+        if (data.summary) {
+          setSummaryFr(data.summary.fr ?? "");
+          setSummaryEn(data.summary.en ?? "");
+        }
+        if (typeof data.coverImageUrl === "string") {
+          setCoverImageUrl(data.coverImageUrl);
+        }
         navigate(`/online-tournaments/${encodeURIComponent(leagueSlug)}`);
       } else {
         message.error(data.error || t.onlineTournaments.admin.saveError);
@@ -143,6 +207,15 @@ export default function EditLeaguePresentationPage() {
       message.error(t.onlineTournaments.admin.saveError);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCoverSelected = async (file: File) => {
+    try {
+      const dataUrl = await fileToCoverDataUrl(file);
+      setCoverImageUrl(dataUrl);
+    } catch {
+      message.error(t.onlineTournaments.admin.saveError);
     }
   };
 
@@ -158,6 +231,10 @@ export default function EditLeaguePresentationPage() {
   const setCurrentContent =
     editingLocale === "fr" ? setContentFr : setContentEn;
 
+  const currentSummary = editingLocale === "fr" ? summaryFr : summaryEn;
+  const setCurrentSummary =
+    editingLocale === "fr" ? setSummaryFr : setSummaryEn;
+
   return (
     <div style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
       <Link to={`/online-tournaments/${encodeURIComponent(leagueSlug)}`}>
@@ -169,6 +246,84 @@ export default function EditLeaguePresentationPage() {
       <Title level={3}>
         {t.onlineTournaments.admin.presentationEditor} — {leagueName}
       </Title>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 4, fontWeight: 500 }}>
+          {t.onlineTournaments.admin.coverImageLabel}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              width: 240,
+              height: 120,
+              borderRadius: 8,
+              border: "1px solid #d9d9d9",
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "linear-gradient(135deg, #722ed1, #1677ff)",
+              flexShrink: 0,
+            }}
+          >
+            {coverImageUrl ? (
+              <img
+                src={coverImageUrl}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <PictureOutlined
+                style={{ fontSize: 32, color: "rgba(255,255,255,0.85)" }}
+              />
+            )}
+          </div>
+          <div>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleCoverSelected(file);
+                }
+                e.target.value = "";
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <Button
+                icon={<UploadOutlined />}
+                onClick={() => coverInputRef.current?.click()}
+              >
+                {t.onlineTournaments.admin.coverImageSelect}
+              </Button>
+              {coverImageUrl ? (
+                <Button
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => setCoverImageUrl("")}
+                >
+                  {t.onlineTournaments.admin.coverImageRemove}
+                </Button>
+              ) : null}
+            </div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {coverImageUrl
+                ? t.onlineTournaments.admin.coverImageHint
+                : t.onlineTournaments.admin.coverImageNone}
+            </Text>
+          </div>
+        </div>
+      </div>
 
       <div
         style={{
@@ -191,6 +346,24 @@ export default function EditLeaguePresentationPage() {
               value: "en",
             },
           ]}
+        />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <label
+          style={{ display: "block", marginBottom: 4, fontWeight: 500 }}
+          htmlFor="league-summary"
+        >
+          {t.onlineTournaments.admin.summaryLabel}
+        </label>
+        <Input.TextArea
+          id="league-summary"
+          value={currentSummary}
+          onChange={(e) => setCurrentSummary(e.target.value)}
+          placeholder={t.onlineTournaments.admin.summaryPlaceholder}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          maxLength={280}
+          showCount
         />
       </div>
 

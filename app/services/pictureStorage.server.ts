@@ -87,3 +87,15 @@ export async function storePicturePair(
   ]);
   return { croppedPicture, fullPicture };
 }
+
+/**
+ * Convert a single image (base64 data-URL or already-stored URL) into a stored
+ * WebP variant and return its public URL. Already-stored URLs are returned
+ * unchanged (idempotent). Used for standalone images such as the league cover.
+ */
+export async function storeSingleImage(
+  value: string,
+  width = FULL_WIDTH
+): Promise<string> {
+  return storeVariant(value, width);
+}

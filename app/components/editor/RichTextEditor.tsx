@@ -77,6 +77,12 @@ export function RichTextEditor({
   const handInputRef = useRef<InputRef>(null);
 
   const editor = useEditor({
+    // This app renders with SSR enabled (`ssr: true`). TipTap v3 requires
+    // `immediatelyRender: false` so the editor/view is created on the client
+    // instead of during the server render — otherwise ProseMirror serializes
+    // against a not-yet-initialized schema and throws
+    // "Cannot read properties of null (reading 'cached')".
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: {

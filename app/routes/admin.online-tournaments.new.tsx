@@ -63,7 +63,7 @@ export default function AdminNewOnlineTournamentPage({
       <LeagueForm
         botFriendIds={loaderData.botFriendIds}
         onSuccess={() => {
-          navigate("/online-tournaments");
+          navigate("/");
         }}
       />
     </div>

@@ -11,13 +11,16 @@ export async function loader() {
     const [leagues, teamCounts, gameCounts, gamePlayerCounts] =
       await Promise.all([
         LeagueModel.find({ isDisplayed: true })
-          .select("_id name startTime endTime rulesConfig")
+          .select(
+            "_id name startTime endTime rulesConfig summary coverImageUrl"
+          )
           .sort({ startTime: -1 })
           .lean<League[]>(),
         TeamModel.aggregate([
           {
             $group: {
               _id: "$leagueId",
+              teamCount: { $sum: 1 },
               playerCount: {
                 $sum: {
                   $add: [
@@ -52,8 +55,10 @@ export async function loader() {
       ]);
 
     const teamCountMap = new Map<string, number>();
+    const teamPlayerCountMap = new Map<string, number>();
     for (const tc of teamCounts) {
-      teamCountMap.set(tc._id.toString(), tc.playerCount);
+      teamCountMap.set(tc._id.toString(), tc.teamCount);
+      teamPlayerCountMap.set(tc._id.toString(), tc.playerCount);
     }
 
     const gameCountMap = new Map<string, number>();
@@ -70,7 +75,7 @@ export async function loader() {
       const id = league._id.toString();
       const isTeamMode = league.rulesConfig?.isTeamMode ?? false;
       const playerCount = isTeamMode
-        ? (teamCountMap.get(id) ?? 0)
+        ? (teamPlayerCountMap.get(id) ?? 0)
         : (gamePlayerCountMap.get(id) ?? 0);
 
       return {
@@ -79,7 +84,10 @@ export async function loader() {
         slug: slugify(league.name),
         startTime: league.startTime,
         endTime: league.endTime,
+        summary: league.summary ?? { fr: "", en: "" },
+        coverImageUrl: league.coverImageUrl ?? "",
         playerCount,
+        teamCount: isTeamMode ? (teamCountMap.get(id) ?? 0) : 0,
         gameCount: gameCountMap.get(id) ?? 0,
         rulesConfig: league.rulesConfig,
       };

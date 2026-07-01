@@ -1,7 +1,7 @@
 import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
-  index("routes/home.tsx"),
+  index("routes/online-tournaments.tsx"),
 
   // ---------------------------------------------------------------------
   // Auth — Discord OAuth + session
@@ -18,7 +18,10 @@ export default [
   // ---------------------------------------------------------------------
   // Online tournaments (public)
   // ---------------------------------------------------------------------
-  route("/online-tournaments", "routes/online-tournaments.tsx"),
+  // The tournament list is the app home page (index above). The legacy
+  // "/online-tournaments" path is kept as a redirect so external links
+  // (portal, Discord bot) keep working.
+  route("/online-tournaments", "routes/online-tournaments-redirect.tsx"),
   route("/online-tournaments/:slug", "routes/online-tournaments.$slug.tsx"),
   route(
     "/online-tournaments/:slug/statistics",

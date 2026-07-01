@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Layout, theme, message } from "antd";
+import { useLocation } from "react-router";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { basePath } from "../utils/basePath";
 import { Sidebar } from "./Sidebar";
@@ -28,6 +29,16 @@ export function Navigation({ children }: NavigationProps) {
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
+
+  // Route-aware navigation: the tournament list is shown full-width with no
+  // sidebar, while a single tournament (and its statistics) gets a
+  // tournament-scoped sidebar (info + statistics).
+  const location = useLocation();
+  const tournamentMatch = location.pathname.match(
+    /^\/online-tournaments\/([^/]+)/
+  );
+  const tournamentSlug = tournamentMatch ? tournamentMatch[1] : null;
+  const hideSidebar = location.pathname === "/";
 
   // Swipe gestures for mobile
   useSwipeGesture({
@@ -180,13 +191,16 @@ export function Navigation({ children }: NavigationProps) {
 
   return (
     <>
-      <Layout hasSider style={{ minHeight: "100vh" }}>
-        <Sidebar
-          collapsed={collapsed}
-          isMobile={isMobile}
-          onClose={() => setCollapsed(true)}
-          currentUser={currentUser}
-        />
+      <Layout hasSider={!hideSidebar} style={{ minHeight: "100vh" }}>
+        {!hideSidebar && (
+          <Sidebar
+            collapsed={collapsed}
+            isMobile={isMobile}
+            onClose={() => setCollapsed(true)}
+            currentUser={currentUser}
+            tournamentSlug={tournamentSlug}
+          />
+        )}
         <Layout>
           <Header
             collapsed={collapsed}
@@ -195,6 +209,7 @@ export function Navigation({ children }: NavigationProps) {
             onLogout={handleLogout}
             currentUser={currentUser}
             authLoading={authLoading}
+            showSidebarToggle={!hideSidebar}
           />
 
           <Layout.Content

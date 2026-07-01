@@ -14,7 +14,6 @@ import {
   message,
 } from "antd";
 import {
-  BarChartOutlined,
   CameraOutlined,
   CloudUploadOutlined,
   EditOutlined,
@@ -172,7 +171,7 @@ export default function LeagueDetailPage() {
         title="404"
         subTitle={t.onlineTournaments.leagueNotFound}
         extra={
-          <Link to="/online-tournaments">
+          <Link to="/">
             <Button type="primary">{t.onlineTournaments.backToList}</Button>
           </Link>
         }
@@ -600,7 +599,7 @@ export default function LeagueDetailPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to="/online-tournaments">
+      <Link to="/">
         <Button size="small" style={{ marginBottom: 12 }}>
           ← {t.onlineTournaments.backToList}
         </Button>
@@ -619,11 +618,6 @@ export default function LeagueDetailPage() {
         <Title level={2} style={{ margin: 0 }}>
           {league.name}
         </Title>
-        <Link to={`/online-tournaments/${slug}/statistics`}>
-          <Button type="primary" icon={<BarChartOutlined />}>
-            {t.onlineTournaments.resultsAndStats}
-          </Button>
-        </Link>
       </div>
 
       <Tabs defaultActiveKey="presentation" items={tabItems} />

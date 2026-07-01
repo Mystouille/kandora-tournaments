@@ -446,6 +446,12 @@ export interface Translations {
     endDate: string;
     playerCount: string;
     gameCount: string;
+    teamCount: string;
+    statusUpcoming: string;
+    statusOngoing: string;
+    statusFinished: string;
+    navInfo: string;
+    navStatistics: string;
     platform: string;
     format: string;
     gameRules: string;
@@ -467,6 +473,13 @@ export interface Translations {
     rulesPlaceholder: string;
     admin: {
       createNew: string;
+      coverImageLabel: string;
+      coverImageSelect: string;
+      coverImageRemove: string;
+      coverImageNone: string;
+      coverImageHint: string;
+      summaryLabel: string;
+      summaryPlaceholder: string;
       platformSection: string;
       detailsSection: string;
       discordSection: string;

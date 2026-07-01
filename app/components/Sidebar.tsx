@@ -16,6 +16,7 @@ import {
   BookOutlined,
   TrophyOutlined,
   QuestionCircleOutlined,
+  InfoCircleOutlined,
 } from "@ant-design/icons";
 import { Link, useLocation } from "react-router";
 import { useAppTheme } from "../contexts/ThemeContext";
@@ -45,6 +46,11 @@ interface SidebarProps {
   isMobile?: boolean;
   onClose?: () => void;
   currentUser?: any;
+  /**
+   * When set, the sidebar shows a tournament-scoped menu (info + statistics)
+   * for the given tournament slug instead of the global navigation.
+   */
+  tournamentSlug?: string | null;
 }
 
 export function Sidebar({
@@ -52,6 +58,7 @@ export function Sidebar({
   isMobile,
   onClose,
   currentUser,
+  tournamentSlug,
 }: SidebarProps) {
   const location = useLocation();
   const { isDark, customTokens } = useAppTheme();
@@ -67,31 +74,45 @@ export function Sidebar({
     );
   };
 
-  const items: MenuItem[] = [
-    getItem(<Link to="/">{t.nav.home}</Link>, "/", <HomeOutlined />),
-    getItem(
-      <Link to="/online-tournaments">{t.nav.onlineTournaments}</Link>,
-      "/online-tournaments",
-      <BarChartOutlined />
-    ),
-  ];
+  const items: MenuItem[] = tournamentSlug
+    ? [
+        getItem(
+          <Link to={`/online-tournaments/${tournamentSlug}`}>
+            {t.onlineTournaments.navInfo}
+          </Link>,
+          `/online-tournaments/${tournamentSlug}`,
+          <InfoCircleOutlined />
+        ),
+        getItem(
+          <Link to={`/online-tournaments/${tournamentSlug}/statistics`}>
+            {t.onlineTournaments.navStatistics}
+          </Link>,
+          `/online-tournaments/${tournamentSlug}/statistics`,
+          <BarChartOutlined />
+        ),
+      ]
+    : [getItem(<Link to="/">{t.nav.home}</Link>, "/", <HomeOutlined />)];
 
-  const selectedKey =
-    resolveSelectedKey(location.pathname, [
-      "/posts",
-      "/club-sessions",
-      "/online-events",
-      "/online-tournaments",
-      "/links",
-      "/resources/glossary",
-      "/resources/wait-types",
-      "/exercices",
-      "/review",
-      "/tournaments",
-      "/palmares",
-      "/admin/articles",
-      "/admin/tournaments",
-    ]) || location.pathname;
+  const selectedKey = tournamentSlug
+    ? location.pathname.startsWith(
+        `/online-tournaments/${tournamentSlug}/statistics`
+      )
+      ? `/online-tournaments/${tournamentSlug}/statistics`
+      : `/online-tournaments/${tournamentSlug}`
+    : resolveSelectedKey(location.pathname, [
+        "/posts",
+        "/club-sessions",
+        "/online-events",
+        "/links",
+        "/resources/glossary",
+        "/resources/wait-types",
+        "/exercices",
+        "/review",
+        "/tournaments",
+        "/palmares",
+        "/admin/articles",
+        "/admin/tournaments",
+      ]) || location.pathname;
 
   // Determine which submenu groups should be open based on current path
   const openKeys: string[] = [];

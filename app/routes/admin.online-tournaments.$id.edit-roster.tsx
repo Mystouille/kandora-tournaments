@@ -479,7 +479,7 @@ export default function EditRosterPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/online-tournaments`}>
+      <Link to={`/`}>
         <Button
           size="small"
           icon={<ArrowLeftOutlined />}

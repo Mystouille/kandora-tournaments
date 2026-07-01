@@ -339,6 +339,8 @@ export async function loader({ params }: Route.LoaderArgs) {
       platformConfig: league.platformConfig,
       phaseCutoffTimes: league.phaseCutoffTimes,
       presentation: league.presentation ?? { fr: "", en: "" },
+      summary: league.summary ?? { fr: "", en: "" },
+      coverImageUrl: league.coverImageUrl ?? "",
       gameCount,
       playerCount: userMap.size,
       withTeams,

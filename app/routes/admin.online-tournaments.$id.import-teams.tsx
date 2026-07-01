@@ -88,7 +88,7 @@ export default function ImportTeamsPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/online-tournaments`}>
+      <Link to={`/`}>
         <Button size="small" style={{ marginBottom: 12 }}>
           ← {tt.importBackToLeagues}
         </Button>
@@ -174,7 +174,7 @@ export default function ImportTeamsPage() {
             <Button key="again" onClick={resetAll}>
               {tt.importAgain}
             </Button>,
-            <Link key="back" to="/online-tournaments">
+            <Link key="back" to="/">
               <Button type="primary">{tt.importBackToLeagues}</Button>
             </Link>,
           ]}

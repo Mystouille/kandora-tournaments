@@ -15,6 +15,8 @@ interface HeaderProps {
   onLogout: () => void;
   currentUser: any;
   authLoading?: boolean;
+  /** Whether to show the sidebar collapse toggle (hidden when there is no sidebar). */
+  showSidebarToggle?: boolean;
 }
 
 export function Header({
@@ -24,6 +26,7 @@ export function Header({
   onLogout,
   currentUser,
   authLoading,
+  showSidebarToggle = true,
 }: HeaderProps) {
   const { customTokens } = useAppTheme();
   const { isMobile } = useFormFactor();
@@ -93,20 +96,24 @@ export function Header({
             paddingBottom: "4px",
           }}
         >
-          {React.createElement(
-            collapsed ? MenuUnfoldOutlined : MenuFoldOutlined,
-            {
-              className: "trigger",
-              onClick: onToggleCollapse,
-              style: {
-                gridColumn: "1",
-                gridRow: "1 / span 2",
-                fontSize: "18px",
-                cursor: "pointer",
-                color: buttonTextColor,
-                flexShrink: 0,
-              },
-            }
+          {showSidebarToggle ? (
+            React.createElement(
+              collapsed ? MenuUnfoldOutlined : MenuFoldOutlined,
+              {
+                className: "trigger",
+                onClick: onToggleCollapse,
+                style: {
+                  gridColumn: "1",
+                  gridRow: "1 / span 2",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  color: buttonTextColor,
+                  flexShrink: 0,
+                },
+              }
+            )
+          ) : (
+            <div style={{ gridColumn: "1", gridRow: "1 / span 2" }} />
           )}
 
           <div
@@ -172,18 +179,22 @@ export function Header({
             minHeight: headerHeight,
           }}
         >
-          {React.createElement(
-            collapsed ? MenuUnfoldOutlined : MenuFoldOutlined,
-            {
-              className: "trigger",
-              onClick: onToggleCollapse,
-              style: {
-                fontSize: "18px",
-                cursor: "pointer",
-                color: buttonTextColor,
-                flexShrink: 0,
-              },
-            }
+          {showSidebarToggle ? (
+            React.createElement(
+              collapsed ? MenuUnfoldOutlined : MenuFoldOutlined,
+              {
+                className: "trigger",
+                onClick: onToggleCollapse,
+                style: {
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  color: buttonTextColor,
+                  flexShrink: 0,
+                },
+              }
+            )
+          ) : (
+            <span style={{ width: 18, flexShrink: 0 }} />
           )}
 
           <div
