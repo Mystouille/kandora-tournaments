@@ -87,6 +87,11 @@ export default [
   route("/api/telemetry", "routes/api/telemetry.ts"),
 
   // ---------------------------------------------------------------------
+  // API — uploads (serve team / player pictures from the mounted volume)
+  // ---------------------------------------------------------------------
+  route("/api/uploads/:filename", "routes/api/uploads.$filename.ts"),
+
+  // ---------------------------------------------------------------------
   // API — replay
   // ---------------------------------------------------------------------
   route("/api/replay-tenhou-log", "routes/api/replay-tenhou-log.ts"),
