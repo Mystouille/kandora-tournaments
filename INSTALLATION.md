@@ -161,6 +161,7 @@ In the Discord app's **OAuth2** settings, add this **redirect URI**:
 ```
 
 e.g. `http://localhost:5173/auth/discord/callback` for local development.
+If you don't, users won't be able to log in via discord.
 
 `SERVERS_JSON` is a single-line JSON string. Illustrative shape (the exact
 schema is defined by the bot / permissions layer):
