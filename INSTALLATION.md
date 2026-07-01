@@ -9,14 +9,14 @@ For a high-level overview of the architecture, see the [README](README.md).
 
 ## 1. Prerequisites
 
-| Requirement        | Version / Notes                                                        |
-| ------------------ | ---------------------------------------------------------------------- |
-| **Node.js**        | 20 or later (matches the `node:20` Docker base image).                 |
-| **npm**            | Ships with Node. The repo is locked with `package-lock.json`.          |
-| **Git**            | Required — the project uses two git **submodules** (see below).        |
-| **Docker** *(opt)* | Easiest way to run the MongoDB + Redis backing services.               |
-| **MongoDB**        | v7 (or a hosted cluster / Atlas connection string).                    |
-| **Redis**          | v7 (used by BullMQ for the scheduling / hydration queues).             |
+| Requirement        | Version / Notes                                                 |
+| ------------------ | --------------------------------------------------------------- |
+| **Node.js**        | 20 or later (matches the `node:20` Docker base image).          |
+| **npm**            | Ships with Node. The repo is locked with `package-lock.json`.   |
+| **Git**            | Required — the project uses two git **submodules** (see below). |
+| **Docker** _(opt)_ | Easiest way to run the MongoDB + Redis backing services.        |
+| **MongoDB**        | v7 (or a hosted cluster / Atlas connection string).             |
+| **Redis**          | v7 (used by BullMQ for the scheduling / hydration queues).      |
 
 ### Native build dependencies
 
@@ -111,11 +111,12 @@ in — only the **Core** group is mandatory.
 
 ### Core — required (the app will not start without these)
 
-| Variable       | Description                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| `MONGODB_URI`  | MongoDB connection string, e.g. `mongodb://localhost:27017/kandora-tournaments`.             |
-| `APP_BASE_URL` | Public base URL of the app, e.g. `http://localhost:3000`. Used to build OAuth callback URLs. |
-| `JWT_SECRET`   | Long random string used to sign session tokens. **Generate your own** (see below).           |
+| Variable            | Description                                                                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MONGODB_URI`       | MongoDB connection string, e.g. `mongodb://localhost:27017/kandora-tournaments`.                                                                     |
+| `APP_BASE_URL`      | Public base URL of the app, e.g. `http://localhost:5173`. Used server-side to build OAuth callback URLs.                                             |
+| `VITE_APP_BASE_URL` | Browser-exposed copy of `APP_BASE_URL`, inlined into the client bundle to build the Discord redirect URI client-side. **Must match `APP_BASE_URL`.** |
+| `JWT_SECRET`        | Long random string used to sign session tokens. **Generate your own** (see below).                                                                   |
 
 Generate a strong `JWT_SECRET`:
 
@@ -123,27 +124,34 @@ Generate a strong `JWT_SECRET`:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
+> **Optional SSO — `AUTH_COOKIE_DOMAIN`.** Set to a parent domain (e.g.
+> `.example.com`) to share the login session across sub-domains. Only useful if
+> you also run the Kandora portal under the same domain **with the same
+> `JWT_SECRET`**. Leave unset for a normal host-only cookie (the default). See
+> [`jwt.server.ts`](app/utils/jwt.server.ts).
+
 ### Redis — queues / scheduling
 
-| Variable    | Description                                                                                 |
-| ----------- | ------------------------------------------------------------------------------------------- |
-| `REDIS_URL` | Redis connection string, e.g. `redis://localhost:6379` (use `rediss://` for TLS).           |
+| Variable    | Description                                                                       |
+| ----------- | --------------------------------------------------------------------------------- |
+| `REDIS_URL` | Redis connection string, e.g. `redis://localhost:6379` (use `rediss://` for TLS). |
 
 > The Redis connection helper also accepts `REDIS_URI`, `REDIS_PRIVATE_URL`,
-> `REDIS_PUBLIC_URL`, or discrete `REDIS_HOST` / `REDIS_PORT` values. In
-> **production** it refuses to connect to a `localhost` Redis — set a real
-> `REDIS_URL`. See [`redisConnection.server.ts`](app/services/redisConnection.server.ts).
+> `REDIS_PUBLIC_URL`, or discrete `REDIS_HOST` / `REDIS_PORT` values, and
+> `REDIS_TLS=true` forces TLS even without a `rediss://` URL. In **production**
+> it refuses to connect to a `localhost` Redis — set a real `REDIS_URL`. See
+> [`redisConnection.server.ts`](app/services/redisConnection.server.ts).
 
-### Discord — login (OAuth) + bot *(optional, but needed for sign-in)*
+### Discord — login (OAuth) + bot _(optional, but needed for sign-in)_
 
 Create an application at the
 [Discord Developer Portal](https://discord.com/developers/applications).
 
-| Variable                 | Description                                                                                   |
-| ------------------------ | --------------------------------------------------------------------------------------------- |
-| `VITE_DISCORD_CLIENT_ID` | Discord application **Client ID**. Exposed to the browser (powers the login button).          |
-| `DISCORD_CLIENT_SECRET`  | Discord application **Client Secret** (server-side only — keep secret).                        |
-| `DISCORD_BOT_TOKEN`      | Bot token (only needed if you run the Discord bot integration).                                |
+| Variable                 | Description                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `VITE_DISCORD_CLIENT_ID` | Discord application **Client ID**. Exposed to the browser (powers the login button).                            |
+| `DISCORD_CLIENT_SECRET`  | Discord application **Client Secret** (server-side only — keep secret).                                         |
+| `DISCORD_BOT_TOKEN`      | Bot token (only needed if you run the Discord bot integration).                                                 |
 | `SERVERS_JSON`           | JSON describing the Discord servers this instance manages + the role IDs that grant admin / editor permissions. |
 
 In the Discord app's **OAuth2** settings, add this **redirect URI**:
@@ -152,7 +160,7 @@ In the Discord app's **OAuth2** settings, add this **redirect URI**:
 <APP_BASE_URL>/auth/discord/callback
 ```
 
-e.g. `http://localhost:3000/auth/discord/callback` for local development.
+e.g. `http://localhost:5173/auth/discord/callback` for local development.
 
 `SERVERS_JSON` is a single-line JSON string. Illustrative shape (the exact
 schema is defined by the bot / permissions layer):
@@ -162,40 +170,73 @@ schema is defined by the bot / permissions layer):
   {
     "guildId": "123456789012345678",
     "adminRoleIds": ["111111111111111111"],
-    "editorRoleIds": ["222222222222222222"]
-  }
+    "editorRoleIds": ["222222222222222222"],
+  },
 ]
 ```
 
-### Game-platform connectors *(optional)*
+### Game-platform connectors _(optional)_
 
 These enable auto-hydration of results from external mahjong platforms. Leave
 them blank to keep the connectors disabled. Set
 `PLATFORM_CONNECTORS_DISABLED=true` to force them all off regardless of the
 values below.
 
-| Variable                       | Platform     | Description                          |
-| ------------------------------ | ------------ | ----------------------------------- |
-| `PLATFORM_CONNECTORS_DISABLED` | —            | `true` to force-disable all connectors. |
-| `MAJSOUL_UID`                  | Mahjong Soul | Account UID.                        |
-| `MAJSOUL_TOKEN`                | Mahjong Soul | Auth token.                         |
-| `RIICHICITY_EMAIL`             | Riichi City  | Account email.                      |
-| `RIICHICITY_PASSWD`            | Riichi City  | Account password.                   |
-| `RIICHICITY_GUID`              | Riichi City  | Account GUID.                       |
+| Variable                       | Platform     | Description                                                                                                     |
+| ------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------- |
+| `PLATFORM_CONNECTORS_DISABLED` | —            | `true` to force-disable all connectors.                                                                         |
+| `MAJSOUL_UID`                  | Mahjong Soul | Account UID of the bot. Inspect the login process into majsoul and use the Data.UserInfo.UID2 from the response |
+| `MAJSOUL_FRIENDID`             | Mahjong Soul | Mahjong Soul public friend ID of the bot                                                                        |
+| `MAJSOUL_TOKEN`                | Mahjong Soul | Auth token. Inspect the login process into majsoul and use the Data.UserInfo.Token from the response            |
+| `RIICHICITY_EMAIL`             | Riichi City  | Account email.                                                                                                  |
+| `RIICHICITY_PASSWD`            | Riichi City  | Account password.                                                                                               |
+| `RIICHICITY_FRIENDID`          | Riichi City  | Riichi City public friend ID of the bot                                                                         |
+| `RIICHICITY_GUID`              | Riichi City  | A random string to identify the device used to log in, put what you want.                                       |
 
-### Translation *(optional)*
+> Behind a firewall? Set `http_proxy` to route the outbound Majsoul WebSocket
+> connection through an HTTPS proxy.
 
-| Variable        | Description                                              |
-| --------------- | -------------------------------------------------------- |
-| `DEEPL_API_KEY` | DeepL API key. Enables auto-translation when present.    |
+### Translation _(optional)_
 
-### Uploads & deployment *(optional)*
+| Variable        | Description                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| `DEEPL_API_KEY` | DeepL API key. Enables auto-translation from French to English of tournament home pages when present. |
 
-| Variable    | Default                                              | Description                                                                 |
-| ----------- | ---------------------------------------------------- | --------------------------------------------------------------------------- |
-| `UPLOAD_DIR`| `.data/uploads` (dev) / `/data/uploads` (production) | Where team / player pictures are written. In production mount a **persistent volume** here, or uploads disappear on redeploy. |
-| `BASE_PATH` | `""`                                                 | Mount the app under a sub-path (e.g. behind a shared reverse proxy).        |
-| `PORT`      | `3000`                                               | Port the production server listens on (`npm run start`).                    |
+### Nanikiru quiz — Google Sheets _(optional)_
+
+Powers the Discord bot's "what would you discard" quiz, which pulls its
+questions from a Google Sheet. Requires a Google **service-account** JSON with
+read access to the sheet. Both `NANIKIRU_SHEET_ID` and
+`GOOGLE_SERVICE_ACCOUNT_JSON` must be set for the group to activate.
+
+| Variable                      | Description                                                             |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `NANIKIRU_SHEET_ID`           | ID of the Google Sheet holding the quiz questions.                      |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Service-account credentials JSON (single-line string) with read access. |
+
+### In-app mahjong game _(optional)_
+
+| Variable               | Description                                                                                                                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GAME_ENABLED`         | `true` to enable the built-in mahjong game routes. **Off by default** — game routes return 404 when unset.                                                                                   |
+| `VITE_PUBLIC_BASE_URL` | Canonical public origin baked into in-game share links at **build** time. Set it for prod / mobile builds so shared URLs point at your public hostname instead of the client's local origin. |
+
+### Workers _(optional)_
+
+The league / scheduling / Discord-sync BullMQ workers can run inline in the web
+process or as separate processes.
+
+| Variable               | Description                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENABLE_INLINE_WORKER` | `true` to run the workers inline in the web process. Defaults to inline in production; in development run them separately with `npm run worker:league` / `npm run worker:scheduling`. |
+
+### Uploads & deployment _(optional)_
+
+| Variable     | Default                                              | Description                                                                                                                   |
+| ------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `UPLOAD_DIR` | `.data/uploads` (dev) / `/data/uploads` (production) | Where team / player pictures are written. In production mount a **persistent volume** here, or uploads disappear on redeploy. |
+| `BASE_PATH`  | `""`                                                 | Mount the app under a sub-path (e.g. behind a shared reverse proxy).                                                          |
+| `PORT`       | `3000`                                               | Port the production server listens on (`npm run start`).                                                                      |
 
 ---
 
@@ -233,20 +274,20 @@ docker run -p 3000:3000 --env-file .env kandora-tournaments
 
 ## 7. Useful scripts
 
-| Script                      | Description                                              |
-| --------------------------- | -------------------------------------------------------- |
-| `npm run dev`               | Start the dev server.                                    |
-| `npm run build`             | Production build.                                        |
-| `npm run start`             | Serve the production build.                              |
-| `npm run typecheck`         | `react-router typegen` + `tsc`.                          |
-| `npm run lint`              | Run ESLint. `npm run lint:fix` to auto-fix.              |
-| `npm run test`              | Run the Vitest suite.                                    |
-| `npm run submodules:init`   | Check out the `kandora-core` + `kandora-game` submodules.|
-| `npm run core:update`       | Update `app/db` to the latest `kandora-core` main.       |
-| `npm run game:update`       | Update `app/game` to the latest `kandora-game` main.     |
-| `npm run worker:league`     | Run the league hydration worker.                         |
-| `npm run worker:scheduling` | Run the scheduling worker.                               |
-| `npm run deploy:commands`   | Register the Discord slash commands.                     |
+| Script                      | Description                                               |
+| --------------------------- | --------------------------------------------------------- |
+| `npm run dev`               | Start the dev server.                                     |
+| `npm run build`             | Production build.                                         |
+| `npm run start`             | Serve the production build.                               |
+| `npm run typecheck`         | `react-router typegen` + `tsc`.                           |
+| `npm run lint`              | Run ESLint. `npm run lint:fix` to auto-fix.               |
+| `npm run test`              | Run the Vitest suite.                                     |
+| `npm run submodules:init`   | Check out the `kandora-core` + `kandora-game` submodules. |
+| `npm run core:update`       | Update `app/db` to the latest `kandora-core` main.        |
+| `npm run game:update`       | Update `app/game` to the latest `kandora-game` main.      |
+| `npm run worker:league`     | Run the league hydration worker.                          |
+| `npm run worker:scheduling` | Run the scheduling worker.                                |
+| `npm run deploy:commands`   | Register the Discord slash commands.                      |
 
 ---
 
