@@ -28,6 +28,9 @@ instance without using the original operator's server.
 
 > For detailed setup instructions (prerequisites, every environment variable,
 > Docker, and troubleshooting) see [INSTALLATION.md](INSTALLATION.md).
+>
+> Once the app is running, see the [USER_GUIDE.md](USER_GUIDE.md) for how to
+> create tournaments and manage players/teams rosters.
 
 ```bash
 # 1. Clone with submodules
