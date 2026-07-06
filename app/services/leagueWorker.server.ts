@@ -36,6 +36,12 @@ async function ensureWorkerInitialized(): Promise<void> {
 
 const env = process.env.NODE_ENV === "production" ? "prod" : "dev";
 
+// The league-update job runs on a short recurring interval while games are
+// live, so recording every run floods telemetry with near-identical events.
+// Only log runs that are unusually slow (a useful stall signal). Failures are captured separately via
+// trackError below.
+const SLOW_UPDATE_MS = 30_000;
+
 export const leagueWorker = new Worker(
   "league-updates",
   async (job: Job<LeagueUpdateJob>) => {
@@ -45,14 +51,18 @@ export const leagueWorker = new Worker(
       const name = await LeagueService.instance.updateGamesInLeagueById(
         job.data.leagueId
       );
-      trackEvent({
-        type: "worker",
-        env,
-        method: "updateGames",
-        path: name,
-        durationMs: Date.now() - start,
-        meta: { leagueId: job.data.leagueId },
-      });
+      const durationMs = Date.now() - start;
+      const isSlow = durationMs >= SLOW_UPDATE_MS;
+      if (isSlow) {
+        trackEvent({
+          type: "worker",
+          env,
+          method: "updateGames",
+          path: name,
+          durationMs,
+          meta: { leagueId: job.data.leagueId, slow: isSlow },
+        });
+      }
     } catch (error) {
       trackError(error, {
         env,
