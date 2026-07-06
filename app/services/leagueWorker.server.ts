@@ -18,14 +18,11 @@ async function ensureWorkerInitialized(): Promise<void> {
     workerInitPromise = (async () => {
       await connectToDatabase();
 
-      if (!majsoulConfig()) {
-        throw new Error(
-          "MAJSOUL_UID / MAJSOUL_TOKEN not configured for league worker"
-        );
-      }
-
-      // Initialize connector if not already done (e.g. separate worker process)
-      if (!MahjongSoulConnector.instance.isInitialized) {
+      // The worker is platform-agnostic: each job resolves its own connector
+      // via createConnectorForLeague. Only initialize the Majsoul connector
+      // when Majsoul is configured; other platforms (Riichi City, Tenhou)
+      // manage their own connectors, so the worker no longer requires Majsoul.
+      if (majsoulConfig() && !MahjongSoulConnector.instance.isInitialized) {
         await MahjongSoulConnector.instance.init();
       }
     })().catch((error) => {

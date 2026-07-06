@@ -87,6 +87,30 @@ function createRedisConnection(): Redis {
   });
 }
 
+/**
+ * Returns true when Redis is explicitly configured via any supported env var
+ * (a connection URL or a discrete host/port). Does NOT count the implicit
+ * `127.0.0.1:6379` dev fallback — callers use this to decide whether to bring
+ * up the Redis-backed job subsystem at all, so an unset environment means
+ * "no Redis, don't start the background workers".
+ */
+export function isRedisConfigured(): boolean {
+  return Boolean(
+    firstDefined(
+      process.env.REDIS_URL,
+      process.env.REDIS_URI,
+      process.env.REDIS_PRIVATE_URL,
+      process.env.REDIS_PRIVATE_URI,
+      process.env.REDIS_PUBLIC_URL,
+      process.env.REDIS_PUBLIC_URI,
+      process.env.REDIS_HOST,
+      process.env.REDISHOST,
+      process.env.REDIS_PORT,
+      process.env.REDISPORT
+    )
+  );
+}
+
 let _connection: Redis | null = null;
 
 export function getRedisConnection(): Redis {

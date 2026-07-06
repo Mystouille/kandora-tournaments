@@ -1,7 +1,11 @@
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { LeagueService } from "~/services/LeagueService.server";
 import { initDiscordBot } from "~/bot/client.server";
-import { majsoulConfig, riichiCityConfig } from "config";
+import {
+  majsoulConfig,
+  riichiCityConfig,
+  platformConnectorsDisabled,
+} from "config";
 import {
   markReady,
   markSkipped,
@@ -9,6 +13,7 @@ import {
 } from "~/services/readiness.server";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "~/services/connectors/RiichiCityLeagueConnector.server";
+import { isRedisConfigured } from "~/services/redisConnection.server";
 
 let initialized = false;
 let workerInitialized = false;
@@ -207,10 +212,26 @@ export async function initLeagueAgent(): Promise<void> {
     // Ensure DB connection is active
     await connectToDatabase();
 
-    // Start league job scheduling if configured. Majsoul login is handled by worker.
+    // Per-platform connectors are gated by their own credentials below.
+    // Majsoul and Riichi City need config; Tenhou needs none and is polled by
+    // the shared league queue whenever league polling is on.
     const mjCfg = majsoulConfig();
+    const rcCfg = riichiCityConfig();
+
+    // The BullMQ background-job subsystem only depends on Redis. Gate the whole
+    // subsystem on Redis availability so the app can still boot (web-only)
+    // without Redis in local dev.
+    const redisJobsEnabled = isRedisConfigured();
+    // League + scheduling polling additionally drive the external-platform
+    // connectors (createConnectorForLeague throws when the kill switch is on),
+    // so they need connectors enabled too. All three platforms share this
+    // queue — Tenhou rides along with no credentials.
+    const leaguePollingEnabled =
+      redisJobsEnabled && !platformConnectorsDisabled;
+
+    // Initialize the Majsoul connector (WebSocket + Contest REST API) only when
+    // Majsoul is configured.
     if (mjCfg) {
-      // Initialize Majsoul connector (WebSocket + Contest REST API)
       try {
         await MahjongSoulConnector.instance.init();
         markReady("majsoul-connector", "Majsoul connector initialized");
@@ -221,7 +242,30 @@ export async function initLeagueAgent(): Promise<void> {
           (error as Error).message
         );
       }
+    } else {
+      markSkipped("majsoul-connector");
+    }
 
+    // Initialize the Riichi City connector (independent of Majsoul) only when
+    // Riichi City is configured.
+    if (rcCfg) {
+      try {
+        // Accessing the singleton triggers construction + lazy login on first use
+        RiichiCityLeagueConnector.instance;
+        markReady("riichicity-connector", "Riichi City connector initialized");
+      } catch (error) {
+        markFailed("riichicity-connector", String(error));
+        console.error("Failed to initialize Riichi City connector:", error);
+      }
+    } else {
+      markSkipped("riichicity-connector");
+    }
+
+    // League update queue + worker + scheduling worker: poll external
+    // platforms (Majsoul, Riichi City, Tenhou) for finished games and
+    // scheduling status. These drive the platform connectors, so they need
+    // Redis AND connectors enabled.
+    if (leaguePollingEnabled) {
       // Start the league update job queue
       await LeagueService.instance.InitLeague();
       markReady("league-queue", "league job scheduling active");
@@ -240,40 +284,32 @@ export async function initLeagueAgent(): Promise<void> {
       // Initialize the job worker (ideally in a separate process)
       await initLeagueWorker();
 
-      // Initialize the scheduling status polling worker
+      // Initialize the scheduling status polling worker (also drives connectors)
       await initSchedulingWorker();
-
-      // Initialize the Discord display-name sync worker and schedule its
-      // daily repeatable job.
-      await initDiscordSyncWorker();
-      await scheduleDiscordSync();
     } else {
       markSkipped("league-queue");
       markSkipped("league-worker");
-      markSkipped("majsoul-connector");
-      console.log(
-        "MAJSOUL_UID / MAJSOUL_TOKEN not configured — league agent disabled."
-      );
+      if (!redisJobsEnabled) {
+        console.log(
+          "Redis not configured — league job subsystem disabled (set REDIS_URL to enable)."
+        );
+      } else {
+        console.log(
+          "Platform connectors disabled (PLATFORM_CONNECTORS_DISABLED=true) — league polling disabled."
+        );
+      }
     }
 
-    // Initialize Riichi City connector (independent of Majsoul)
-    const rcCfg = riichiCityConfig();
-    if (rcCfg) {
-      try {
-        // Accessing the singleton triggers construction + lazy login on first use
-        RiichiCityLeagueConnector.instance;
-        markReady("riichicity-connector", "Riichi City connector initialized");
-      } catch (error) {
-        markFailed("riichicity-connector", String(error));
-        console.error("Failed to initialize Riichi City connector:", error);
-      }
-    } else {
-      markSkipped("riichicity-connector");
+    // Discord display-name sync is platform-agnostic — it only needs Redis and
+    // the Discord bot — so it runs independently of league polling.
+    if (redisJobsEnabled) {
+      await initDiscordSyncWorker();
+      await scheduleDiscordSync();
     }
   } catch (error) {
     markFailed("league-queue", String(error));
     markFailed("league-worker", String(error));
-    console.error("Failed to initialize Majsoul/League:", error);
+    console.error("Failed to initialize league agent:", error);
   }
 
   // Initialize Discord bot independently so it starts even if Majsoul fails

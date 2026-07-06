@@ -1,0 +1,77 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "redis:ensure-local",
+      "type": "shell",
+      "command": "redis-cli ping >/dev/null 2>&1 || redis-server --daemonize yes",
+      "isBackground": false,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker:redis:up",
+      "type": "shell",
+      "command": "docker",
+      "args": ["compose", "up", "-d", "redis"],
+      "isBackground": false,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "docker:redis:down",
+      "type": "shell",
+      "command": "docker",
+      "args": ["compose", "down"],
+      "isBackground": false,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "redis:check",
+      "type": "shell",
+      "command": "redis-cli",
+      "args": ["ping"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "redis:stop-local",
+      "type": "shell",
+      "command": "redis-cli",
+      "args": ["shutdown"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
