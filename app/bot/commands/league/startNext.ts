@@ -20,7 +20,10 @@ import {
 } from "~/services/bracketUtils";
 import { resolveBracketStagesForConfig } from "~/services/league-strategies/finalPhaseStrategies";
 import { resolveFinalDeltaComputer } from "~/services/league-strategies/finalPhaseStrategies";
-import { resolveFinalPhaseGameCutoff } from "~/services/league-configs/index";
+import {
+  buildFinalsGameMatch,
+  resolveFinalPhaseGameCutoff,
+} from "~/services/league-configs/index";
 import { TeamModel, type Team } from "~/db/Team";
 import { UserModel, type User } from "~/db/User";
 import {
@@ -212,8 +215,9 @@ export async function executeStartNext(
     league: league._id,
     isValid: true,
   };
-  if (finalsCutoff) {
-    gameFilter.startTime = { $gte: finalsCutoff };
+  const finalsMatch = buildFinalsGameMatch(config, league);
+  if (finalsMatch) {
+    Object.assign(gameFilter, finalsMatch);
   }
   const games = await GameModel.find(gameFilter).lean<Game[]>();
   const bracketGames = games.map((g) => ({

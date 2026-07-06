@@ -24,6 +24,8 @@ import {
 } from "../../services/bracketUtils";
 import { computePlayerDeltas } from "../../services/leagueUtils";
 import {
+  buildFinalsGameMatch,
+  buildRegularGameMatch,
   computeScoreCarryOverOffsets,
   resolveConfiguredBracketStages,
   resolveFinalPhaseGameCutoff,
@@ -149,8 +151,14 @@ export async function loader({ request }: Route.LoaderArgs) {
       league: new mongoose.Types.ObjectId(leagueId),
       isValid: true,
     };
-    if (finalsCutoff) {
-      gamesQuery.startTime = { $gte: finalsCutoff };
+    // Prefer the per-game phase tag over the time cutoff (per-phase leagues),
+    // falling back to `startTime >= cutoff` for untagged (legacy) games.
+    const finalsMatch = buildFinalsGameMatch(
+      leagueType,
+      league ?? ({} as League)
+    );
+    if (finalsMatch) {
+      Object.assign(gamesQuery, finalsMatch);
     }
     const games = await Game.find(gamesQuery)
       .select("gameId context results startTime platform log")
@@ -296,10 +304,14 @@ export async function loader({ request }: Route.LoaderArgs) {
       leagueType.finalPhase.scoreCarryOver.num > 0 &&
       finalsCutoff
     ) {
+      const regularMatch = buildRegularGameMatch(
+        leagueType,
+        league ?? ({} as League)
+      );
       const regularPhaseGames = await Game.find({
         league: new mongoose.Types.ObjectId(leagueId),
         isValid: true,
-        startTime: { $lt: finalsCutoff },
+        ...(regularMatch ?? { startTime: { $lt: finalsCutoff } }),
       })
         .select("results startTime")
         .lean<Game[]>();

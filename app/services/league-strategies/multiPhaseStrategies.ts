@@ -40,7 +40,10 @@ export interface MultiPhaseResult {
  */
 export function computeMultiPhaseStandings(
   leagueType: LeagueTypeConfig,
-  allGames: (RegularGameInput & { startTime?: Date | string | number })[],
+  allGames: (RegularGameInput & {
+    startTime?: Date | string | number;
+    phaseId?: string | null;
+  })[],
   rules: Ruleset,
   teams: TeamLike[],
   cutoffs: Date[],
@@ -57,16 +60,28 @@ export function computeMultiPhaseStandings(
     phases.length - 1
   );
 
-  // Partition games into per-phase buckets by cutoff dates.
+  // Map each regular-phase id to its index so games tagged at ingestion
+  // (per-phase leagues — see `Game.phaseId`) are bucketed by their tag,
+  // preferring it over the time-based cutoff fallback used for untagged games.
+  const phaseIdToIndex = new Map<string, number>();
+  phases.forEach((phase, index) => phaseIdToIndex.set(phase.id, index));
+
+  // Partition games into per-phase buckets, preferring the phaseId tag and
+  // falling back to cutoff dates for untagged games.
   const phaseBuckets: RegularGameInput[][] = phases.map(() => []);
   for (const game of allGames) {
-    const t = new Date(game.startTime ?? 0).getTime();
-    let bucket = 0;
-    for (let c = 0; c < cutoffs.length; c++) {
-      if (t >= cutoffs[c].getTime()) {
-        bucket = c + 1;
-      } else {
-        break;
+    let bucket: number;
+    if (game.phaseId != null && phaseIdToIndex.has(game.phaseId)) {
+      bucket = phaseIdToIndex.get(game.phaseId)!;
+    } else {
+      const t = new Date(game.startTime ?? 0).getTime();
+      bucket = 0;
+      for (let c = 0; c < cutoffs.length; c++) {
+        if (t >= cutoffs[c].getTime()) {
+          bucket = c + 1;
+        } else {
+          break;
+        }
       }
     }
     if (bucket < phaseBuckets.length) {

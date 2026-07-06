@@ -196,11 +196,12 @@ export async function loader({ request }: Route.LoaderArgs) {
           league: leagueObjId,
           isValid: true,
         })
-          .select("league startTime results")
+          .select("league startTime results phaseId")
           .lean<Game[]>();
 
         const games = multiPhaseGames.map((g) => ({
           startTime: g.startTime,
+          phaseId: g.phaseId,
           results: (g.results ?? []).map((r) => ({
             userId: r.userId.toString(),
             score: r.score,

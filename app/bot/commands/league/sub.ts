@@ -17,7 +17,7 @@ import { computeBracket, type BracketContext } from "~/services/bracketUtils";
 import { buildOfficialSubstituteTeamMap } from "~/services/schedulingMessageService.server";
 import { resolveBracketStagesForConfig } from "~/services/league-strategies/finalPhaseStrategies";
 import { resolveFinalDeltaComputer } from "~/services/league-strategies/finalPhaseStrategies";
-import { resolveFinalPhaseGameCutoff } from "~/services/league-configs/index";
+import { buildFinalsGameMatch } from "~/services/league-configs/index";
 import {
   generateTeamBracketSeating,
   generateIndividualScheduling,
@@ -418,13 +418,13 @@ export async function executeSub(
     }
   }
 
-  const finalsCutoff = resolveFinalPhaseGameCutoff(config, league);
   const gameFilter: Record<string, unknown> = {
     league: league._id,
     isValid: true,
   };
-  if (finalsCutoff) {
-    gameFilter.startTime = { $gte: finalsCutoff };
+  const finalsMatch = buildFinalsGameMatch(config, league);
+  if (finalsMatch) {
+    Object.assign(gameFilter, finalsMatch);
   }
   const games = await GameModel.find(gameFilter).lean<Game[]>();
   const bracketGames = games.map((g) => ({

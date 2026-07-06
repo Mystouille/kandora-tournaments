@@ -7,6 +7,7 @@ import { UserModel } from "~/db/User";
 import type { League } from "~/db/League";
 import { computePlayerDeltas } from "~/services/leagueUtils";
 import type { ILeagueTournamentConnector } from "~/services/connectors/ILeagueTournamentConnector.server";
+import { resolveLeagueTypeConfig } from "~/services/league-configs";
 import type { UsersRounds } from "~/api/majsoul/types/gameRecordData";
 import type { GameSummary } from "~/types/GameSummary";
 import { sendChannelMessage } from "~/services/discordPublisher.server";
@@ -54,6 +55,71 @@ function isInFinalsPhase(
 }
 
 /**
+ * Tag-aware finals-phase check. Prefers the game's phase tag
+ * (`phaseId === finalPhaseId`), and falls back to the time-based
+ * {@link isInFinalsPhase} boundary for untagged games (single-lobby leagues or
+ * games ingested before per-phase mode).
+ */
+function isGameInFinalsPhase(
+  game: { phaseId?: string | null; startTime?: Date | null | undefined },
+  league: { phaseCutoffTimes?: Date[] | null },
+  finalPhaseId: string | undefined
+): boolean {
+  if (game.phaseId != null) {
+    return finalPhaseId != null && game.phaseId === finalPhaseId;
+  }
+  return isInFinalsPhase(game.startTime, league);
+}
+
+/** A tournament lobby to fetch games from, tagged with the phase it feeds. */
+interface LeagueLobby {
+  /** Config phase id this lobby feeds, or `null` for the single legacy lobby
+   *  (games stay untagged and phase attribution remains time-based). */
+  phaseId: string | null;
+  tournamentId: string;
+  internalTournamentId?: string;
+  seasonId?: string;
+}
+
+/**
+ * Resolves the tournament lobbies to fetch games from.
+ *
+ * When `platformConfig.phaseTournaments` is non-empty (per-phase mode), returns
+ * one lobby per entry, each carrying its `phaseId` so ingested games are tagged
+ * (see `Game.phaseId`). Otherwise returns the single legacy lobby
+ * (`platformConfig.tournamentId`) with a `null` phaseId, preserving time-based
+ * phase attribution. Returns an empty array when no lobby is configured.
+ */
+function resolveLeagueLobbies(league: League): LeagueLobby[] {
+  const platformConfig = league.platformConfig;
+  const phaseTournaments = platformConfig.phaseTournaments ?? [];
+  if (phaseTournaments.length > 0) {
+    return phaseTournaments
+      .filter((entry) => !!entry.tournamentId)
+      .map((entry) => ({
+        phaseId: entry.phaseId,
+        tournamentId: entry.tournamentId,
+        internalTournamentId: entry.internalTournamentId ?? undefined,
+        seasonId: entry.seasonId ?? undefined,
+      }));
+  }
+  if (platformConfig.tournamentId) {
+    return [
+      {
+        phaseId: null,
+        tournamentId: platformConfig.tournamentId,
+        internalTournamentId: platformConfig.internalTournamentId ?? undefined,
+        seasonId: platformConfig.seasonId ?? undefined,
+      },
+    ];
+  }
+  return [];
+}
+
+/** A game summary tagged with the phase of the lobby it was fetched from. */
+type TaggedGameSummary = GameSummary & { phaseId: string | null };
+
+/**
  * Platform-agnostic league game hydration.
  *
  * Given a League and its matching ILeagueTournamentConnector:
@@ -65,14 +131,21 @@ export async function hydrateLeagueGames(
   league: League,
   connector: ILeagueTournamentConnector
 ): Promise<void> {
-  if (!league.platformConfig.tournamentId) {
+  const lobbies = resolveLeagueLobbies(league);
+  if (lobbies.length === 0) {
     console.warn(
-      `hydrateLeagueGames: league ${league.name} has no tournamentId`
+      `hydrateLeagueGames: league ${league.name} has no tournament lobby configured`
     );
     return;
   }
 
-  const options = await connector.resolveOptions?.(league);
+  const leagueType = resolveLeagueTypeConfig(league.leagueTypeConfig);
+  const finalPhaseId = leagueType?.finalPhase?.id;
+
+  // Preserve primary internal-tournament-id caching for legacy single-lobby
+  // leagues (resolveOptions resolves and writes the id back onto the League
+  // doc). Per-phase lobbies resolve their own id inside getGameSummaries.
+  const primaryOptions = await connector.resolveOptions?.(league);
 
   let hasNewData = false;
 
@@ -107,16 +180,33 @@ export async function hydrateLeagueGames(
   // Using fetchSince caused games older than the newest known game to be
   // permanently skipped during initial ingestion or after a wipe.
 
-  const summaries = await connector.getGameSummaries(
-    league.platformConfig.tournamentId,
-    {
-      ...options,
-      knownGameIds,
+  // Fetch from every configured lobby and tag each summary with the phase it
+  // feeds. In legacy single-lobby mode there is exactly one lobby with a null
+  // phaseId, so games stay untagged (time-based attribution).
+  const summaries: TaggedGameSummary[] = [];
+  for (const lobby of lobbies) {
+    // internalTournamentId is specific to a tournamentId, so only reuse the
+    // primary-resolved id for the primary lobby; other lobbies pass their own
+    // (or undefined, letting the connector resolve it from the tournamentId).
+    const internalTournamentId =
+      lobby.internalTournamentId ??
+      (lobby.tournamentId === league.platformConfig.tournamentId
+        ? primaryOptions?.internalTournamentId
+        : undefined);
+    const lobbySummaries = await connector.getGameSummaries(
+      lobby.tournamentId,
+      {
+        internalTournamentId,
+        knownGameIds,
+      }
+    );
+    for (const lobbySummary of lobbySummaries) {
+      summaries.push({ ...lobbySummary, phaseId: lobby.phaseId });
     }
-  );
+  }
 
   console.log(
-    `[${league.name}] Hydration: ${summaries.length} new from platform, ${knownGameIds.size} known`
+    `[${league.name}] Hydration: ${summaries.length} new from ${lobbies.length} lobby/lobbies, ${knownGameIds.size} known`
   );
 
   for (const summary of summaries) {
@@ -159,7 +249,11 @@ export async function hydrateLeagueGames(
         if (!league.rulesConfig.isTeamMode) {
           // Non-team league: no check during regular phase.
           // During finals, only allow qualified players or official subs.
-          const useFinalsPhase = isInFinalsPhase(summary.startTime, league);
+          const useFinalsPhase = isGameInFinalsPhase(
+            { phaseId: summary.phaseId, startTime: summary.startTime },
+            league,
+            finalPhaseId
+          );
           if (useFinalsPhase) {
             const officialSubIds = new Set(
               (league.officialSubstitutes ?? []).map((id: any) => id.toString())
@@ -209,7 +303,11 @@ export async function hydrateLeagueGames(
             ],
           }).exec();
 
-          const useFinalsPhase = isInFinalsPhase(summary.startTime, league);
+          const useFinalsPhase = isGameInFinalsPhase(
+            { phaseId: summary.phaseId, startTime: summary.startTime },
+            league,
+            finalPhaseId
+          );
 
           const playersNotInTeam = playerInfos.filter(
             (p) =>
@@ -252,6 +350,7 @@ export async function hydrateLeagueGames(
         results,
         log: summary.log,
         league: league._id,
+        phaseId: summary.phaseId ?? undefined,
       });
 
       hasNewData = true;
@@ -603,9 +702,12 @@ async function hydrateGameRecord(
       league.rulesConfig.gameRules
     );
 
-    const useFinalsPhase = isInFinalsPhase(
-      realStartTime ?? game.startTime,
-      league
+    const finalPhaseId = resolveLeagueTypeConfig(league.leagueTypeConfig)
+      ?.finalPhase?.id;
+    const useFinalsPhase = isGameInFinalsPhase(
+      { phaseId: game.phaseId, startTime: realStartTime ?? game.startTime },
+      league,
+      finalPhaseId
     );
 
     for (const userData of recordData.byUserData) {

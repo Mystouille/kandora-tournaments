@@ -576,6 +576,12 @@ export const en: Translations = {
       validating: "Validating…",
       validationSuccess: "Bot access confirmed",
       validationFailed: "Could not validate bot access to this tournament",
+      perPhaseLobbies: "Per-phase tournament lobbies",
+      perPhaseLobbiesHelp:
+        "Bind each phase of the tournament to its own lobby. Games are fetched from every lobby and attributed to their phase. The primary tournament above remains the main lobby used for scheduling and live game management.",
+      phaseLobbyFor: "Lobby for phase “{phase}”",
+      phaseLobbyRequired:
+        "Every phase needs a tournament lobby ID before you can create the tournament.",
       seasonLabel: "Season",
       seasonPlaceholder: "Optional (defaults to 1)",
       seasonOption: "Season {id}: {start} – {end}",

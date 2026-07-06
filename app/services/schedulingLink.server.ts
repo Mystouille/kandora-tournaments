@@ -6,7 +6,7 @@ import { TeamModel, type Team } from "~/db/Team";
 import { SchedulingMessageModel } from "~/db/SchedulingMessage";
 import {
   resolveLeagueTypeConfig,
-  resolveFinalPhaseGameCutoff,
+  buildFinalsGameMatch,
 } from "~/services/league-configs/index";
 import type { LeagueTypeConfig } from "~/services/league-configs/types";
 import {
@@ -91,10 +91,10 @@ export async function linkPlayedGamesToTables(
   // and must be linked. The matcher only links a game whose players are an
   // exact set or a validated substitution of a table; once linked, the game is
   // marked `isValid` (markLinkedGamesValid) so the bracket counts it.
-  const finalsCutoff = resolveFinalPhaseGameCutoff(config, league);
   const gameFilter: Record<string, unknown> = { league: league._id };
-  if (finalsCutoff) {
-    gameFilter.startTime = { $gte: finalsCutoff };
+  const finalsMatch = buildFinalsGameMatch(config, league);
+  if (finalsMatch) {
+    Object.assign(gameFilter, finalsMatch);
   }
   const games = await GameModel.find(gameFilter)
     .select("gameId results startTime")

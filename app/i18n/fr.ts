@@ -589,6 +589,12 @@ export const fr: Translations = {
       validating: "Validation en cours…",
       validationSuccess: "Accès du bot confirmé",
       validationFailed: "Impossible de valider l'accès du bot à ce tournoi",
+      perPhaseLobbies: "Salons de tournoi par phase",
+      perPhaseLobbiesHelp:
+        "Associez chaque phase du tournoi à son propre salon. Les parties sont récupérées depuis chaque salon et attribuées à leur phase. Le tournoi principal ci-dessus reste le salon principal utilisé pour la planification et la gestion des parties en direct.",
+      phaseLobbyFor: "Salon pour la phase « {phase} »",
+      phaseLobbyRequired:
+        "Chaque phase nécessite un ID de salon de tournoi avant de pouvoir créer le tournoi.",
       seasonLabel: "Saison",
       seasonPlaceholder: "Optionnel (par défaut 1)",
       seasonOption: "Saison {id} : {start} – {end}",

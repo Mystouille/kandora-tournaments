@@ -39,6 +39,8 @@ import {
   deleteChannelMessage,
 } from "~/services/discordPublisher.server";
 import {
+  buildFinalsGameMatch,
+  buildRegularGameMatch,
   computeScoreCarryOverOffsets,
   isMultiPhaseLeague,
   resolveConfiguredBracketStages,
@@ -1014,6 +1016,7 @@ export class LeagueService {
       leagueType,
       games.map((game) => ({
         startTime: game.startTime,
+        phaseId: game.phaseId,
         results: (game.results ?? []).map((r) => ({
           userId: r.userId.toString(),
           score: r.score,
@@ -1162,7 +1165,9 @@ export class LeagueService {
     const regularPhaseGames = await GameModel.find({
       league: league._id,
       isValid: true,
-      startTime: { $lt: finalsCutoff },
+      ...(buildRegularGameMatch(leagueType, league) ?? {
+        startTime: { $lt: finalsCutoff },
+      }),
     }).lean<Game[]>();
 
     if (regularPhaseGames.length === 0) {
@@ -1326,8 +1331,9 @@ export class LeagueService {
       league: league._id,
       isValid: true,
     };
-    if (finalsCutoff) {
-      gamesQuery.startTime = { $gte: finalsCutoff };
+    const finalsMatch = buildFinalsGameMatch(leagueType, league);
+    if (finalsMatch) {
+      Object.assign(gamesQuery, finalsMatch);
     }
     const games = await GameModel.find(gamesQuery).lean<Game[]>();
 
@@ -1412,7 +1418,9 @@ export class LeagueService {
       const regularPhaseGames = await GameModel.find({
         league: league._id,
         isValid: true,
-        startTime: { $lt: finalsCutoff },
+        ...(buildRegularGameMatch(leagueType, league) ?? {
+          startTime: { $lt: finalsCutoff },
+        }),
       }).lean<Game[]>();
 
       const regularRankingInput = regularPhaseGames.map((g) => ({

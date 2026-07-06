@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Dayjs } from "dayjs";
 import {
   Alert,
@@ -92,6 +92,23 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
     }>
   >([]);
 
+  // Per-phase tournament lobbies. When `perPhaseMode` is on, each config phase
+  // is bound to its own tournament lobby (keyed by phase id) instead of the
+  // single primary lobby above.
+  const [perPhaseMode, setPerPhaseMode] = useState(false);
+  const [phaseLobbies, setPhaseLobbies] = useState<
+    Record<
+      string,
+      {
+        tournamentId: string;
+        internalTournamentId?: string;
+        validating: boolean;
+        validated: boolean;
+        error?: string;
+      }
+    >
+  >({});
+
   // Section C: discord
   const [publishOnDiscord, setPublishOnDiscord] = useState(false);
   const [servers, setServers] = useState<DiscordServer[]>([]);
@@ -120,6 +137,34 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
     : hasRegularPhase && leagueTypeConfig?.finalPhase
       ? 1
       : 0;
+
+  // Ordered list of config phases (regular phases first, then finals). Each can
+  // be bound to its own tournament lobby in per-phase mode.
+  const orderedPhases = useMemo(() => {
+    const phases: { id: string; kind: "regular" | "final" }[] = [];
+    if (
+      leagueTypeConfig?.regularPhases &&
+      leagueTypeConfig.regularPhases.length > 0
+    ) {
+      for (const phase of leagueTypeConfig.regularPhases) {
+        phases.push({ id: phase.id, kind: "regular" });
+      }
+    } else if (leagueTypeConfig?.regularPhase) {
+      phases.push({ id: leagueTypeConfig.regularPhase.id, kind: "regular" });
+    }
+    if (leagueTypeConfig?.finalPhase) {
+      phases.push({ id: leagueTypeConfig.finalPhase.id, kind: "final" });
+    }
+    return phases;
+  }, [leagueTypeConfig]);
+
+  // Per-phase mode is only meaningful once the config exposes phases; turn it
+  // off automatically when no phases are available.
+  useEffect(() => {
+    if (orderedPhases.length === 0 && perPhaseMode) {
+      setPerPhaseMode(false);
+    }
+  }, [orderedPhases.length, perPhaseMode]);
 
   // Sync cutoff slots when structure changes
   useEffect(() => {
@@ -297,6 +342,76 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
     }
   };
 
+  const setPhaseLobbyTournamentId = (phaseId: string, value: string) => {
+    setPhaseLobbies((prev) => ({
+      ...prev,
+      [phaseId]: {
+        tournamentId: value,
+        internalTournamentId: undefined,
+        validating: prev[phaseId]?.validating ?? false,
+        validated: false,
+        error: undefined,
+      },
+    }));
+  };
+
+  const handleValidatePhase = async (phaseId: string) => {
+    const tid = phaseLobbies[phaseId]?.tournamentId?.trim();
+    if (!platform || !tid) {
+      return;
+    }
+    setPhaseLobbies((prev) => ({
+      ...prev,
+      [phaseId]: {
+        tournamentId: prev[phaseId]?.tournamentId ?? "",
+        internalTournamentId: undefined,
+        validating: true,
+        validated: false,
+        error: undefined,
+      },
+    }));
+    try {
+      const res = await fetch(
+        `${basePath}/api/admin/validate-tournament?platform=${encodeURIComponent(platform)}&tournamentId=${encodeURIComponent(tid)}`
+      );
+      const data = await res.json();
+      if (data.valid) {
+        setPhaseLobbies((prev) => ({
+          ...prev,
+          [phaseId]: {
+            tournamentId: prev[phaseId]?.tournamentId ?? "",
+            internalTournamentId: data.internalTournamentId,
+            validating: false,
+            validated: true,
+            error: undefined,
+          },
+        }));
+      } else {
+        setPhaseLobbies((prev) => ({
+          ...prev,
+          [phaseId]: {
+            tournamentId: prev[phaseId]?.tournamentId ?? "",
+            internalTournamentId: undefined,
+            validating: false,
+            validated: false,
+            error: data.error || t.onlineTournaments.admin.validationFailed,
+          },
+        }));
+      }
+    } catch {
+      setPhaseLobbies((prev) => ({
+        ...prev,
+        [phaseId]: {
+          tournamentId: prev[phaseId]?.tournamentId ?? "",
+          internalTournamentId: undefined,
+          validating: false,
+          validated: false,
+          error: t.onlineTournaments.admin.validationFailed,
+        },
+      }));
+    }
+  };
+
   const updateCutoffDate = (index: number, value: Dayjs | null) => {
     setCutoffDates((prev) => prev.map((d, i) => (i === index ? value : d)));
   };
@@ -317,6 +432,25 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
         .filter((d): d is Dayjs => d !== null && d.isValid())
         .map((d) => d.toISOString());
 
+      // In per-phase mode, bind each config phase to its own tournament lobby.
+      const phaseTournaments =
+        perPhaseMode && orderedPhases.length > 0
+          ? orderedPhases.map((phase) => ({
+              phaseId: phase.id,
+              tournamentId: phaseLobbies[phase.id]?.tournamentId?.trim() ?? "",
+              internalTournamentId:
+                phaseLobbies[phase.id]?.internalTournamentId || undefined,
+            }))
+          : [];
+
+      if (perPhaseMode) {
+        const missing = phaseTournaments.filter((p) => !p.tournamentId);
+        if (missing.length > 0) {
+          message.error(t.onlineTournaments.admin.phaseLobbyRequired);
+          return;
+        }
+      }
+
       const payload: Record<string, unknown> = {
         name: values.name,
         startTime,
@@ -332,6 +466,7 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
           tournamentId: needsTournamentId ? tournamentId.trim() : undefined,
           internalTournamentId: internalTournamentId || undefined,
           seasonId: seasonId || undefined,
+          phaseTournaments: perPhaseMode ? phaseTournaments : undefined,
         },
         leagueTypeConfigId:
           configResult?.mode === "existing" ? configResult.configId : undefined,
@@ -631,6 +766,66 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
           value={leagueTypeConfig}
           onChange={setConfigResult}
         />
+
+        {/* Per-phase tournament lobbies (optional): bind each config phase to
+            its own tournament lobby for fetching + attribution. The primary
+            lobby above stays the main lobby used for scheduling and live game
+            management. */}
+        {orderedPhases.length > 0 && needsTournamentId && (
+          <>
+            <Form.Item
+              label={t.onlineTournaments.admin.perPhaseLobbies}
+              tooltip={t.onlineTournaments.admin.perPhaseLobbiesHelp}
+            >
+              <Switch checked={perPhaseMode} onChange={setPerPhaseMode} />
+            </Form.Item>
+            {perPhaseMode &&
+              orderedPhases.map((phase) => {
+                const entry = phaseLobbies[phase.id];
+                const trimmed = entry?.tournamentId?.trim();
+                return (
+                  <Form.Item
+                    key={phase.id}
+                    label={t.onlineTournaments.admin.phaseLobbyFor.replace(
+                      "{phase}",
+                      phase.id
+                    )}
+                    style={{ marginBottom: 8 }}
+                    validateStatus={entry?.error ? "error" : undefined}
+                    help={entry?.error}
+                  >
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Input
+                        value={entry?.tournamentId ?? ""}
+                        onChange={(e) =>
+                          setPhaseLobbyTournamentId(phase.id, e.target.value)
+                        }
+                        placeholder={
+                          t.onlineTournaments.admin.tournamentIdPlaceholder
+                        }
+                        disabled={entry?.validated}
+                      />
+                      <Button
+                        type={entry?.validated ? "default" : "primary"}
+                        icon={entry?.validated ? <ReloadOutlined /> : undefined}
+                        onClick={() =>
+                          entry?.validated
+                            ? setPhaseLobbyTournamentId(phase.id, "")
+                            : handleValidatePhase(phase.id)
+                        }
+                        loading={entry?.validating}
+                        disabled={!entry?.validated && !trimmed}
+                      >
+                        {entry?.validated
+                          ? t.onlineTournaments.admin.validated
+                          : t.onlineTournaments.admin.validate}
+                      </Button>
+                    </Space.Compact>
+                  </Form.Item>
+                );
+              })}
+          </>
+        )}
 
         {/* Cutoff dates (driven by leagueTypeConfig) */}
         {cutoffCount > 0 && (

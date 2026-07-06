@@ -12,7 +12,7 @@ import { TeamModel, type Team } from "~/db/Team";
 import { UserModel, type User } from "~/db/User";
 import {
   resolveLeagueTypeConfig,
-  resolveFinalPhaseGameCutoff,
+  buildFinalsGameMatch,
 } from "~/services/league-configs/index";
 import type { LeagueTypeConfig } from "~/services/league-configs/types";
 import { computeBracket, type BracketContext } from "~/services/bracketUtils";
@@ -189,13 +189,13 @@ export async function saveAllRiichiCityTablesForLeague(
     }
   }
 
-  const finalsCutoff = resolveFinalPhaseGameCutoff(config, league);
   const gameFilter: Record<string, unknown> = {
     league: id,
     isValid: true,
   };
-  if (finalsCutoff) {
-    gameFilter.startTime = { $gte: finalsCutoff };
+  const finalsMatch = buildFinalsGameMatch(config, league);
+  if (finalsMatch) {
+    Object.assign(gameFilter, finalsMatch);
   }
   const games = await GameModel.find(gameFilter).lean<Game[]>();
   const bracketGames = games.map((g) => ({

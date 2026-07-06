@@ -131,3 +131,160 @@ export function resolveCurrentPhaseIndex(
   const maxPhase = (leagueType?.regularPhases?.length ?? 1) - 1;
   return Math.min(phase, maxPhase);
 }
+
+/** A single phase in the league's ordered phase sequence. */
+export type OrderedPhaseKind = "regular" | "final";
+
+export interface OrderedPhase {
+  /** Phase id from the config (`regularPhase.id`, `regularPhases[].id`, or
+   *  `finalPhase.id`). Unique within a league type config. */
+  id: string;
+  kind: OrderedPhaseKind;
+  /** 0-based position in the ordered phase sequence (regular phases first,
+   *  finals last). */
+  index: number;
+}
+
+/**
+ * Returns the league type's phases in play order: the single `regularPhase`
+ * (or every entry of `regularPhases`, whichever is configured) followed by the
+ * `finalPhase` when present. Each entry carries the phase `id` used to bind a
+ * tournament lobby (`League.platformConfig.phaseTournaments`) and to tag games
+ * (`Game.phaseId`). Returns an empty array when no config or no phases exist.
+ */
+export function resolveOrderedPhases(
+  leagueType: LeagueTypeConfig | null
+): OrderedPhase[] {
+  if (!leagueType) {
+    return [];
+  }
+  const phases: OrderedPhase[] = [];
+  if (leagueType.regularPhases && leagueType.regularPhases.length > 0) {
+    for (const phase of leagueType.regularPhases) {
+      phases.push({ id: phase.id, kind: "regular", index: phases.length });
+    }
+  } else if (leagueType.regularPhase) {
+    phases.push({
+      id: leagueType.regularPhase.id,
+      kind: "regular",
+      index: phases.length,
+    });
+  }
+  if (leagueType.finalPhase) {
+    phases.push({
+      id: leagueType.finalPhase.id,
+      kind: "final",
+      index: phases.length,
+    });
+  }
+  return phases;
+}
+
+/**
+ * Resolves the phase id a game belongs to, preferring the game's stored
+ * `phaseId` tag (set at ingestion from its tournament lobby in per-phase
+ * leagues) and falling back to time-based attribution via `phaseCutoffTimes`
+ * for untagged games (single-lobby leagues, or games ingested before per-phase
+ * mode was enabled). Returns `null` when the phase cannot be determined.
+ */
+export function resolveGamePhaseId(
+  game: { phaseId?: string | null; startTime?: Date | string | null },
+  leagueType: LeagueTypeConfig | null,
+  league: { phaseCutoffTimes?: Date[] | null }
+): string | null {
+  if (game.phaseId) {
+    return game.phaseId;
+  }
+  const orderedPhases = resolveOrderedPhases(leagueType);
+  if (orderedPhases.length === 0) {
+    return null;
+  }
+  const time = game.startTime ? new Date(game.startTime).getTime() : NaN;
+  if (Number.isNaN(time)) {
+    return orderedPhases[0].id;
+  }
+  const cutoffs = (league.phaseCutoffTimes ?? []).map((d) => new Date(d));
+  let bucket = 0;
+  for (const cutoff of cutoffs) {
+    if (time >= cutoff.getTime()) {
+      bucket++;
+    } else {
+      break;
+    }
+  }
+  const index = Math.min(bucket, orderedPhases.length - 1);
+  return orderedPhases[index].id;
+}
+
+/**
+ * In-memory predicate: does this game belong to the finals phase? Prefers the
+ * game's `phaseId` tag (`=== finalPhase.id`) and falls back to the time-based
+ * finals cutoff for untagged games. Returns false when no finals phase exists.
+ */
+export function isFinalsPhaseGame(
+  game: { phaseId?: string | null; startTime?: Date | string | null },
+  leagueType: LeagueTypeConfig | null,
+  league: { phaseCutoffTimes?: Date[] | null }
+): boolean {
+  const finalPhaseId = leagueType?.finalPhase?.id;
+  if (!finalPhaseId) {
+    return false;
+  }
+  if (game.phaseId != null) {
+    return game.phaseId === finalPhaseId;
+  }
+  const cutoff = resolveFinalPhaseGameCutoff(leagueType, league);
+  if (!cutoff || !game.startTime) {
+    return false;
+  }
+  return new Date(game.startTime) >= cutoff;
+}
+
+/**
+ * Mongo query fragment matching finals-phase games, preferring the game's
+ * `phaseId` tag over the time cutoff. Merge into a `GameModel` filter via
+ * `Object.assign` / spread. Returns `null` when the league has no finals phase
+ * (no split applies → callers should include all games).
+ *
+ * For legacy (untagged) leagues this reduces exactly to the previous
+ * `startTime >= cutoff` behavior, since untagged games match `{ phaseId: null }`.
+ */
+export function buildFinalsGameMatch(
+  leagueType: LeagueTypeConfig | null,
+  league: { phaseCutoffTimes?: Date[] | null }
+): Record<string, unknown> | null {
+  const finalPhaseId = leagueType?.finalPhase?.id;
+  if (!finalPhaseId) {
+    return null;
+  }
+  const cutoff = resolveFinalPhaseGameCutoff(leagueType, league);
+  const untaggedMatch: Record<string, unknown> = cutoff
+    ? { phaseId: null, startTime: { $gte: cutoff } }
+    : { phaseId: null };
+  return { $or: [{ phaseId: finalPhaseId }, untaggedMatch] };
+}
+
+/**
+ * Mongo query fragment matching regular-phase (pre-finals) games, preferring
+ * the `phaseId` tag over the time cutoff. Complement of
+ * {@link buildFinalsGameMatch}. Returns `null` when the league has no finals
+ * phase (no split → every game is "regular").
+ *
+ * For legacy (untagged) leagues this reduces exactly to `startTime < cutoff`.
+ */
+export function buildRegularGameMatch(
+  leagueType: LeagueTypeConfig | null,
+  league: { phaseCutoffTimes?: Date[] | null }
+): Record<string, unknown> | null {
+  const finalPhaseId = leagueType?.finalPhase?.id;
+  if (!finalPhaseId) {
+    return null;
+  }
+  const cutoff = resolveFinalPhaseGameCutoff(leagueType, league);
+  const untaggedMatch: Record<string, unknown> = cutoff
+    ? { phaseId: null, startTime: { $lt: cutoff } }
+    : { phaseId: null };
+  return {
+    $or: [{ phaseId: { $nin: [null, finalPhaseId] } }, untaggedMatch],
+  };
+}

@@ -4,6 +4,8 @@ import { getAuthenticatedUser } from "../../../utils/jwt.server";
 import { LeagueModel } from "../../../db/League";
 import { LeagueTypeConfigModel } from "../../../db/LeagueTypeConfig";
 import { validateLeagueTypeConfig } from "../../../services/league-configs/validation";
+import { resolveOrderedPhases } from "../../../services/league-configs";
+import type { LeagueTypeConfig } from "../../../services/league-configs/types";
 import { LeagueService } from "../../../services/LeagueService.server";
 
 async function requireAdmin(request: Request): Promise<Response | null> {
@@ -58,6 +60,7 @@ export async function action({ request }: { request: Request }) {
 
     // Resolve leagueTypeConfig ref: accept an existing ID or create a new config
     let leagueTypeConfigId: string | null = null;
+    let resolvedConfigForPhases: LeagueTypeConfig | null = null;
     if (body.leagueTypeConfigId) {
       // Reference to an existing config
       const existing = await LeagueTypeConfigModel.findById(
@@ -70,6 +73,8 @@ export async function action({ request }: { request: Request }) {
         );
       }
       leagueTypeConfigId = existing._id.toString();
+      resolvedConfigForPhases =
+        existing.toObject() as unknown as LeagueTypeConfig;
     } else if (body.leagueTypeConfig != null) {
       // Create a new config document inline
       const configErrors = validateLeagueTypeConfig(body.leagueTypeConfig);
@@ -83,6 +88,86 @@ export async function action({ request }: { request: Request }) {
         body.leagueTypeConfig as Record<string, unknown>
       );
       leagueTypeConfigId = (created as any)._id.toString();
+      resolvedConfigForPhases = body.leagueTypeConfig as LeagueTypeConfig;
+    }
+
+    // ── Per-phase tournament lobbies (optional) ──
+    // When present, the league runs in "per-phase" mode: each config phase is
+    // bound to its own tournament lobby. Games are fetched from every lobby and
+    // tagged with the corresponding phaseId (see Game.phaseId).
+    const phaseTournaments: Array<{
+      phaseId: string;
+      tournamentId: string;
+      internalTournamentId?: string;
+      seasonId?: string;
+    }> = Array.isArray(body.platformConfig.phaseTournaments)
+      ? body.platformConfig.phaseTournaments
+          .filter(
+            (entry: { phaseId?: unknown; tournamentId?: unknown }) =>
+              entry && entry.phaseId && entry.tournamentId
+          )
+          .map(
+            (entry: {
+              phaseId: unknown;
+              tournamentId: unknown;
+              internalTournamentId?: unknown;
+              seasonId?: unknown;
+            }) => ({
+              phaseId: String(entry.phaseId),
+              tournamentId: String(entry.tournamentId),
+              internalTournamentId: entry.internalTournamentId
+                ? String(entry.internalTournamentId)
+                : undefined,
+              seasonId: entry.seasonId ? String(entry.seasonId) : undefined,
+            })
+          )
+      : [];
+
+    // Coverage validation: in per-phase mode every config phase must be bound
+    // to exactly one lobby, and every lobby must reference a real phase.
+    if (phaseTournaments.length > 0) {
+      const orderedPhases = resolveOrderedPhases(resolvedConfigForPhases);
+      if (orderedPhases.length === 0) {
+        return Response.json(
+          {
+            error:
+              "Per-phase lobbies require a league type config with at least one phase",
+          },
+          { status: 400 }
+        );
+      }
+      const phaseIdsInConfig = new Set(orderedPhases.map((p) => p.id));
+      const assignedPhaseIds = new Set<string>();
+      for (const entry of phaseTournaments) {
+        if (!phaseIdsInConfig.has(entry.phaseId)) {
+          return Response.json(
+            {
+              error: `Per-phase lobby references unknown phase "${entry.phaseId}"`,
+            },
+            { status: 400 }
+          );
+        }
+        if (assignedPhaseIds.has(entry.phaseId)) {
+          return Response.json(
+            {
+              error: `Duplicate per-phase lobby for phase "${entry.phaseId}"`,
+            },
+            { status: 400 }
+          );
+        }
+        assignedPhaseIds.add(entry.phaseId);
+      }
+      const missing = orderedPhases
+        .filter((p) => !assignedPhaseIds.has(p.id))
+        .map((p) => p.id);
+      if (missing.length > 0) {
+        return Response.json(
+          {
+            error: `Every phase requires a lobby; missing: ${missing.join(", ")}`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // ── Duplicate tournament guard ──
@@ -112,6 +197,36 @@ export async function action({ request }: { request: Request }) {
       }
     }
 
+    // Per-phase lobby duplicate guard: none of the phase lobbies may already be
+    // tracked by another league (as its primary lobby or one of its phase
+    // lobbies). Only lobbies with a resolved internalTournamentId are checked.
+    const phaseInternalIds = phaseTournaments
+      .map((entry) => entry.internalTournamentId)
+      .filter((value): value is string => !!value);
+    if (phaseInternalIds.length > 0) {
+      const dupExisting = await LeagueModel.findOne({
+        "platformConfig.platformName": pName,
+        $or: [
+          {
+            "platformConfig.internalTournamentId": { $in: phaseInternalIds },
+          },
+          {
+            "platformConfig.phaseTournaments.internalTournamentId": {
+              $in: phaseInternalIds,
+            },
+          },
+        ],
+      })
+        .select("name")
+        .lean();
+      if (dupExisting) {
+        return Response.json(
+          { error: "duplicateTournament", existingName: dupExisting.name },
+          { status: 409 }
+        );
+      }
+    }
+
     const league = await LeagueModel.create({
       name: body.name,
       startTime: new Date(body.startTime),
@@ -132,6 +247,7 @@ export async function action({ request }: { request: Request }) {
         seasonId: body.platformConfig.seasonId
           ? String(body.platformConfig.seasonId)
           : undefined,
+        phaseTournaments,
       },
       discordConfig: body.discordConfig
         ? {

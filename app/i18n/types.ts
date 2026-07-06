@@ -491,6 +491,10 @@ export interface Translations {
       validating: string;
       validationSuccess: string;
       validationFailed: string;
+      perPhaseLobbies: string;
+      perPhaseLobbiesHelp: string;
+      phaseLobbyFor: string;
+      phaseLobbyRequired: string;
       seasonLabel: string;
       seasonPlaceholder: string;
       seasonOption: string;
