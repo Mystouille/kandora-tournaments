@@ -135,7 +135,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       if (entityIds.length > 0) {
         resolvedPlayerIds = entityIds;
       } else {
-        // No players selected – load all players in selected leagues via teams
+        // No players selected – load all players in selected leagues via
+        // teams and actual game participants. Individual (non-team) leagues
+        // have no teams, so their players come from who has played games.
         const allTeams = await Team.find({
           leagueId: {
             $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)),
@@ -150,6 +152,20 @@ export async function loader({ request }: Route.LoaderArgs) {
           for (const memberId of team.roster.substitutes ?? []) {
             resolvedPlayerIds.push(memberId.toString());
           }
+        }
+        const gamePlayerRows = await Game.aggregate([
+          {
+            $match: {
+              league: {
+                $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)),
+              },
+            },
+          },
+          { $unwind: "$results" },
+          { $group: { _id: null, userIds: { $addToSet: "$results.userId" } } },
+        ]);
+        for (const uid of gamePlayerRows[0]?.userIds ?? []) {
+          resolvedPlayerIds.push(uid.toString());
         }
         resolvedPlayerIds = [...new Set(resolvedPlayerIds)];
       }

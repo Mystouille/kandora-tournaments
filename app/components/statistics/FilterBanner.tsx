@@ -26,6 +26,7 @@ interface FilterBannerProps {
   loading: boolean;
   filteredTeams: TeamOption[];
   filterMode: "teams" | "players";
+  hasTeams: boolean;
   phaseFilter: PhaseFilter;
   phaseCutoffTimes: string[];
   selectedLeague: string | null;
@@ -50,6 +51,7 @@ export default function FilterBanner({
   loading,
   filteredTeams,
   filterMode,
+  hasTeams,
   phaseFilter,
   phaseCutoffTimes,
   selectedLeague,
@@ -105,16 +107,18 @@ export default function FilterBanner({
         <Spin size="small" />
       ) : (
         <>
-          {/* Filter mode: Teams / Players */}
-          <Segmented
-            value={filterMode}
-            onChange={onFilterModeChange}
-            disabled={!selectedLeague}
-            options={[
-              { label: t.statistics.filterTeams, value: "teams" },
-              { label: t.statistics.filterPlayers, value: "players" },
-            ]}
-          />
+          {/* Filter mode: Teams / Players (hidden for individual leagues) */}
+          {hasTeams && (
+            <Segmented
+              value={filterMode}
+              onChange={onFilterModeChange}
+              disabled={!selectedLeague}
+              options={[
+                { label: t.statistics.filterTeams, value: "teams" },
+                { label: t.statistics.filterPlayers, value: "players" },
+              ]}
+            />
+          )}
 
           {/* Team filter (shown in teams mode) */}
           {filterMode === "teams" && (

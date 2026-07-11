@@ -189,7 +189,12 @@ export function useStatisticsFilters(initialLeagueSlug?: string) {
           // Restore per-league filter state
           const hasCutoff = (leagueData.phaseCutoffTimes ?? []).length > 0;
           const saved = loadLeagueFilters(chosenLeagueId);
-          setFilterMode(saved.filterMode);
+          // Individual (non-team) leagues have no teams, so team mode would
+          // show nothing — always use player mode for them, ignoring any
+          // stale saved preference.
+          setFilterMode(
+            leagueData.hasTeams === false ? "players" : saved.filterMode
+          );
           _setPhaseFilter(hasCutoff ? saved.phaseFilter : "both");
 
           let restoredTab = saved.activeTab;

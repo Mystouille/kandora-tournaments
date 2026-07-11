@@ -511,6 +511,7 @@ export default function Statistics({
           loading={loading}
           filteredTeams={filteredTeams}
           filterMode={filterMode}
+          hasTeams={selectedLeagueData?.hasTeams !== false}
           phaseFilter={phaseFilter}
           phaseCutoffTimes={selectedLeaguePhaseCutoffs}
           selectedLeague={selectedLeague}
