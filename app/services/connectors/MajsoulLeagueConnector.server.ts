@@ -9,6 +9,7 @@ import type {
   PlayerLobbyEntry,
   TeamEntry,
   TeamConfig,
+  PlayerConfig,
 } from "./ILeagueTournamentConnector.server";
 import { OngoingGameStatus } from "./ILeagueTournamentConnector.server";
 import type { GameSummary, GameSummaryPlayer } from "~/types/GameSummary";
@@ -430,6 +431,22 @@ export class MajsoulLeagueConnector implements ILeagueTournamentConnector {
     }
 
     return result;
+  }
+
+  async getPlayersConfig(
+    tournamentId: string | number,
+    options?: { seasonId?: string }
+  ): Promise<PlayerConfig[]> {
+    const contestApi = this.connector.contestApi;
+    const id = tournamentId.toString();
+    const seasonId = options?.seasonId;
+
+    // The season player list is the contest's registered roster.
+    const players = await contestApi.fetchSeasonPlayerList(id, seasonId);
+    return players.map((p) => ({
+      accountId: p.account_id,
+      nickname: p.nickname,
+    }));
   }
 
   async startGame(

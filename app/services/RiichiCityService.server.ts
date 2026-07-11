@@ -11,6 +11,7 @@ import type {
   OnlineRoomResponse,
   PlayerStatusResponse,
   RankResponse,
+  SelfIdentityData,
   StartGameResponse,
   TournamentInfoResponse,
 } from "./riichiCityModels";
@@ -397,6 +398,27 @@ export class RiichiCityService {
     if (payload.code === 10 && fallBack) {
       await this.login();
       return this.getPlayersStatus(tournamentId, false);
+    }
+
+    return payload;
+  }
+
+  /**
+   * Returns the tournament's registered player roster (self identity info).
+   * Unlike getSelfManageInfo (which reflects live lobby status), this endpoint
+   * returns the full list of players enrolled in the tournament.
+   */
+  async getSelfIdentityInfo(
+    tournamentId: number,
+    fallBack = true
+  ): Promise<RiichiCityApiResponse<SelfIdentityData[]>> {
+    const payload = await this.postAuthed<
+      RiichiCityApiResponse<SelfIdentityData[]>
+    >("/lobbys/selfIdentityInfo", { matchID: tournamentId });
+
+    if (payload.code === 10 && fallBack) {
+      await this.login();
+      return this.getSelfIdentityInfo(tournamentId, false);
     }
 
     return payload;

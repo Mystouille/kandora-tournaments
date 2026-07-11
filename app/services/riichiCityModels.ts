@@ -45,6 +45,16 @@ export interface PlayerStatusData {
   userID: number;
 }
 
+/**
+ * A single entry from `/lobbys/selfIdentityInfo` — the tournament's enrolled
+ * roster. `identity` marks the role: 1 = competitor, 3 = organiser/staff.
+ */
+export interface SelfIdentityData {
+  userID: number;
+  identity: number;
+  nickname: string;
+}
+
 export interface TournamentInfoResponse {
   code: number;
   data: TournamentInfoData;

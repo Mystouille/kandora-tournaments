@@ -409,6 +409,56 @@ export class MajsoulContestApi {
     return json.data.list;
   }
 
+  /**
+   * Fetches the season roster (registered players) for a contest. `state` 2
+   * selects accepted roster players. Paginates through every page so that
+   * contests with more than `limit` players are returned in full.
+   */
+  public async fetchSeasonPlayerList(
+    contestId: string,
+    seasonId: string = "1"
+  ): Promise<Array<{ account_id: number; nickname: string }>> {
+    const all: Array<{ account_id: number; nickname: string }> = [];
+    const limit = 100;
+    let offset = 0;
+
+    for (;;) {
+      const url = new URL(`${BASE_URI}contest_season_player_list`);
+      url.searchParams.append("unique_id", contestId);
+      url.searchParams.append("season_id", seasonId);
+      url.searchParams.append("search", "");
+      url.searchParams.append("state", "2");
+      url.searchParams.append("offset", String(offset));
+      url.searchParams.append("limit", String(limit));
+
+      const response = await this.contestAuthFetch(url.toString());
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch contest season player list: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const json = (await response.json()) as {
+        data: {
+          list: Array<{ account_id: number; nickname: string }>;
+          total: number;
+        };
+      };
+
+      const list = json.data?.list ?? [];
+      all.push(...list);
+      offset += list.length;
+
+      const total = json.data?.total ?? all.length;
+      if (list.length === 0 || offset >= total) {
+        break;
+      }
+    }
+
+    return all;
+  }
+
   public async fetchTeamMembers(
     contestId: string,
     teamId: number,

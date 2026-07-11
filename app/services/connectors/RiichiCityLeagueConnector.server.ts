@@ -11,6 +11,7 @@ import type {
   PlayerLobbyEntry,
   TeamEntry,
   TeamConfig,
+  PlayerConfig,
 } from "./ILeagueTournamentConnector.server";
 import { OngoingGameStatus } from "./ILeagueTournamentConnector.server";
 import type { GameSummary, GameSummaryPlayer } from "~/types/GameSummary";
@@ -484,6 +485,30 @@ export class RiichiCityLeagueConnector implements ILeagueTournamentConnector {
         nickname: u.nickname,
       })),
     }));
+  }
+
+  async getPlayersConfig(
+    tournamentId: string | number
+  ): Promise<PlayerConfig[]> {
+    const id =
+      typeof tournamentId === "string"
+        ? parseInt(tournamentId, 10)
+        : tournamentId;
+
+    // selfIdentityInfo returns the tournament's enrolled roster. identity 3
+    // marks organisers/staff (e.g. the admin account), so we keep only
+    // competitors and de-duplicate by userID.
+    const response = await this.service.getSelfIdentityInfo(id);
+    const seen = new Set<number>();
+    const players: PlayerConfig[] = [];
+    for (const p of response.data ?? []) {
+      if (p.identity === 3 || seen.has(p.userID)) {
+        continue;
+      }
+      seen.add(p.userID);
+      players.push({ accountId: p.userID, nickname: p.nickname });
+    }
+    return players;
   }
 
   async startGame(

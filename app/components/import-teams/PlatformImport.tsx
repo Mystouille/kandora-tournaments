@@ -54,8 +54,10 @@ interface ImportPreview {
   leagueId: string;
   leagueName: string;
   platform: string;
+  isTeamMode: boolean;
   discordServerId: string | null;
   teams: TeamPreview[];
+  players?: MemberPreview[];
 }
 
 type DiscordOverrides = Record<string, DiscordMemberOption>;
@@ -164,18 +166,24 @@ export function PlatformImport({ id, onResult, onReset }: PlatformImportProps) {
       return;
     }
 
-    const newUsersCount = preview.teams
-      .flatMap((team) => team.members)
-      .filter((m) => !m.existingUser).length;
+    const isTeamMode = preview.isTeamMode;
+    const allMembers = isTeamMode
+      ? preview.teams.flatMap((team) => team.members)
+      : (preview.players ?? []);
+    const newUsersCount = allMembers.filter((m) => !m.existingUser).length;
 
     Modal.confirm({
-      title: tt.importConfirmTitle,
+      title: isTeamMode ? tt.importConfirmTitle : tt.importConfirmPlayersTitle,
       content: (
         <div>
           <p>
-            {formatString(tt.importConfirmBody, {
-              count: preview.teams.length,
-            })}
+            {isTeamMode
+              ? formatString(tt.importConfirmBody, {
+                  count: preview.teams.length,
+                })
+              : formatString(tt.importConfirmPlayersBody, {
+                  count: allMembers.length,
+                })}
           </p>
           {newUsersCount > 0 && (
             <p>
@@ -223,10 +231,15 @@ export function PlatformImport({ id, onResult, onReset }: PlatformImportProps) {
 
           onResult(data);
           message.success(
-            formatString(tt.importSuccess, {
-              teams: data.teamsProcessed,
-              users: data.usersCreated,
-            })
+            isTeamMode
+              ? formatString(tt.importSuccess, {
+                  teams: data.teamsProcessed,
+                  users: data.usersCreated,
+                })
+              : formatString(tt.importPlayersSuccess, {
+                  players: data.playersProcessed,
+                  users: data.usersCreated,
+                })
           );
         } catch {
           message.error(tt.importConfirmFailed);
@@ -421,11 +434,17 @@ export function PlatformImport({ id, onResult, onReset }: PlatformImportProps) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {preview.teams.map((team) => (
-          <Card key={team.name} title={team.name} size="small" type="inner">
-            {team.members.map(renderMemberRow)}
+        {preview.isTeamMode ? (
+          preview.teams.map((team) => (
+            <Card key={team.name} title={team.name} size="small" type="inner">
+              {team.members.map(renderMemberRow)}
+            </Card>
+          ))
+        ) : (
+          <Card title={tt.importPlayersTitle} size="small" type="inner">
+            {(preview.players ?? []).map(renderMemberRow)}
           </Card>
-        ))}
+        )}
       </div>
 
       <div

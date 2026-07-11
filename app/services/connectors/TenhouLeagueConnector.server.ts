@@ -10,6 +10,7 @@ import type {
   PlayerLobbyEntry,
   TeamEntry,
   TeamConfig,
+  PlayerConfig,
 } from "./ILeagueTournamentConnector.server";
 import { OngoingGameStatus } from "./ILeagueTournamentConnector.server";
 import type { GameSummary } from "~/types/GameSummary";
@@ -170,6 +171,22 @@ export class TenhouLeagueConnector implements ILeagueTournamentConnector {
   ): Promise<TeamConfig[]> {
     // Tenhou does not expose team configuration
     return [];
+  }
+
+  async getPlayersConfig(
+    tournamentId: string | number
+  ): Promise<PlayerConfig[]> {
+    // The tournament config's comma-separated MEMBER field holds the list
+    // of registered players (by Tenhou username).
+    const config = await this.service.fetchTournamentConfig(
+      String(tournamentId)
+    );
+    const members = config.MEMBER
+      ? config.MEMBER.split(",")
+          .map((n) => n.trim())
+          .filter((n) => n.length > 0)
+      : [];
+    return members.map((name) => ({ accountId: name, nickname: name }));
   }
 
   async startGame(

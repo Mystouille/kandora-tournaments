@@ -35,6 +35,12 @@ export interface TeamConfig {
   members: Array<{ accountId: number; nickname: string }>;
 }
 
+/** A single player registered in an individual (non-team) tournament. */
+export interface PlayerConfig {
+  accountId: number | string;
+  nickname: string;
+}
+
 export interface LeagueTournamentConnectorOptions {
   internalTournamentId?: string | number;
   /** Game IDs already fully processed (have a GameRecord). Connectors may
@@ -118,6 +124,18 @@ export interface ILeagueTournamentConnector {
     tournamentId: string | number,
     options?: { seasonId?: string }
   ): Promise<TeamConfig[]>;
+
+  /**
+   * Fetches the flat list of individual players registered in a
+   * (non-team) tournament from the platform. Used by the roster import
+   * for individual-mode leagues, where players are not grouped into
+   * teams. Returns undefined/omitted when the platform cannot list the
+   * tournament's individual players.
+   */
+  getPlayersConfig?(
+    tournamentId: string | number,
+    options?: { seasonId?: string }
+  ): Promise<PlayerConfig[]>;
 
   /**
    * Schedule / start a game table in the platform's tournament.
