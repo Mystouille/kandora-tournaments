@@ -140,7 +140,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       if (entityIds.length > 0) {
         resolvedPlayerIds = entityIds;
       } else {
-        // All players in the selected leagues via teams
+        // All players in the selected leagues: union of team rosters and
+        // actual game participants. Individual (non-team) leagues have no
+        // teams, so their player set is derived from who has played games.
         const allTeams = await Team.find({
           leagueId: {
             $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)),
@@ -155,6 +157,20 @@ export async function loader({ request }: Route.LoaderArgs) {
           for (const memberId of team.roster.substitutes ?? []) {
             resolvedPlayerIds.push(memberId.toString());
           }
+        }
+        const gamePlayerRows = await Game.aggregate([
+          {
+            $match: {
+              league: {
+                $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)),
+              },
+            },
+          },
+          { $unwind: "$results" },
+          { $group: { _id: null, userIds: { $addToSet: "$results.userId" } } },
+        ]);
+        for (const uid of gamePlayerRows[0]?.userIds ?? []) {
+          resolvedPlayerIds.push(uid.toString());
         }
         resolvedPlayerIds = [...new Set(resolvedPlayerIds)];
       }
@@ -471,8 +487,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           label: team.displayName,
           avatarUrl: (team as any).pictures?.croppedPicture ?? null,
           leaguePicture: null as
-            | import("../../types/pictures").PicturePair
-            | null,
+            import("../../types/pictures").PicturePair | null,
           teamId: null as string | null,
           teamName: null as string | null,
           totalScore: Math.round(totalScore * 10) / 10,

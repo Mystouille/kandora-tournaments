@@ -133,6 +133,24 @@ export async function loader({ request }: Route.LoaderArgs) {
             playerIdSet.add(s.toString());
           }
         }
+        // Individual (non-team) leagues have no teams — include everyone who
+        // has actually played games so their stats are not dropped.
+        const gamePlayerRows = await Game.aggregate([
+          {
+            $match: {
+              league: {
+                $in: effectiveLeagueIds.map(
+                  (id) => new mongoose.Types.ObjectId(id)
+                ),
+              },
+            },
+          },
+          { $unwind: "$results" },
+          { $group: { _id: null, userIds: { $addToSet: "$results.userId" } } },
+        ]);
+        for (const uid of gamePlayerRows[0]?.userIds ?? []) {
+          playerIdSet.add(uid.toString());
+        }
         resolvedPlayerIds = [...playerIdSet];
       }
     }
