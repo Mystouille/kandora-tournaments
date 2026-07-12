@@ -83,8 +83,12 @@ export async function loader({ request }: Route.LoaderArgs) {
       })
         .select("_id")
         .lean<Team[]>();
-      effectiveTeamIds = allTeams.map((t) => t._id.toString());
-      useTeamMode = true;
+      // Individual (non-team) leagues have no teams — leave team mode off so we
+      // fall through to the player-participant default below.
+      if (allTeams.length > 0) {
+        effectiveTeamIds = allTeams.map((t) => t._id.toString());
+        useTeamMode = true;
+      }
     }
 
     if (useTeamMode) {
@@ -110,8 +114,27 @@ export async function loader({ request }: Route.LoaderArgs) {
     } else if (playerIds.length > 0) {
       resolvedPlayerIds = playerIds;
     } else {
-      // No players or teams selected – return empty
-      return Response.json({ series: [] });
+      // Individual-league default: no teams and no explicit selection. Include
+      // everyone who has actually played games so their series are not dropped.
+      const gamePlayerRows = await Game.aggregate([
+        {
+          $match: {
+            league: {
+              $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)),
+            },
+          },
+        },
+        { $unwind: "$results" },
+        { $group: { _id: null, userIds: { $addToSet: "$results.userId" } } },
+      ]);
+      const playerIdSet = new Set<string>();
+      for (const uid of gamePlayerRows[0]?.userIds ?? []) {
+        playerIdSet.add(uid.toString());
+      }
+      resolvedPlayerIds = [...playerIdSet];
+      if (resolvedPlayerIds.length === 0) {
+        return Response.json({ series: [] });
+      }
     }
 
     // Build game match filter
@@ -254,7 +277,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       // One series per player
       // Fetch user names
       const usersData = await User.find({
-        _id: { $in: playerIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        _id: {
+          $in: resolvedPlayerIds.map((id) => new mongoose.Types.ObjectId(id)),
+        },
       })
         .select("_id name discordIdentity majsoulIdentity")
         .lean<User[]>();
@@ -267,7 +292,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         );
       }
 
-      const series = playerIds.map((pid) => {
+      const series = resolvedPlayerIds.map((pid) => {
         const entries = playerDailyMap.get(pid) ?? [];
         const dayScoreMap = new Map<string, number>();
         for (const e of entries) {
