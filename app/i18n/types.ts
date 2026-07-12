@@ -670,6 +670,7 @@ export interface Translations {
         hasProgression: string;
         advancingCount: string;
         scoreRetention: string;
+        minGamesToQualify: string;
         addPhase: string;
         finalPhaseSection: string;
         hasFinalPhase: string;

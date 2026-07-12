@@ -178,7 +178,8 @@ interface AggregatedPlayerScore {
 type NonTeamRankingComputation = (
   players: AggregatedPlayerScore[],
   userToTeamMap: Map<string, string>,
-  scoring: RegularScoringConfig
+  scoring: RegularScoringConfig,
+  minGames: number
 ) => {
   scoredPlayers: PlayerRankingScore[];
   qualifiedByFaction: Set<string>;
@@ -187,7 +188,8 @@ type NonTeamRankingComputation = (
 const bestConsecutiveWindowWithFactionCut: NonTeamRankingComputation = (
   players,
   userToTeamMap,
-  scoring
+  scoring,
+  minGames
 ) => {
   const windowSize =
     scoring.type === "best-consecutive-window" ? scoring.windowSize : 5;
@@ -233,6 +235,11 @@ const bestConsecutiveWindowWithFactionCut: NonTeamRankingComputation = (
       if (!player.factionTeamId) {
         continue;
       }
+      // Players below the phase's minimum-games gate stay in `scoredPlayers`
+      // (returned for display) but are excluded from faction qualification.
+      if (minGames > 0 && (player.totalGamesPlayed ?? 0) < minGames) {
+        continue;
+      }
       const factionPlayers = byFaction.get(player.factionTeamId) ?? [];
       factionPlayers.push(player);
       byFaction.set(player.factionTeamId, factionPlayers);
@@ -252,7 +259,8 @@ const bestConsecutiveWindowWithFactionCut: NonTeamRankingComputation = (
 const cumulativeNonTeam: NonTeamRankingComputation = (
   players,
   userToTeamMap,
-  _scoring
+  _scoring,
+  _minGames
 ) => {
   return {
     scoredPlayers: players.map((player) => ({
@@ -279,7 +287,8 @@ export function computeNonTeamRankingData(
   games: RegularGameInput[],
   rules: Ruleset,
   scoring: RegularScoringConfig | undefined,
-  userToTeamMap: Map<string, string>
+  userToTeamMap: Map<string, string>,
+  minGames = 0
 ): {
   sortedPlayers: PlayerRankingScore[];
   qualifiedByFaction: Set<string>;
@@ -321,7 +330,8 @@ export function computeNonTeamRankingData(
   const { scoredPlayers, qualifiedByFaction } = strategy(
     Array.from(playerScores.values()),
     userToTeamMap,
-    scoring ?? { type: "cumulative" }
+    scoring ?? { type: "cumulative" },
+    minGames
   );
 
   const sortedPlayers = scoredPlayers.sort(

@@ -98,6 +98,15 @@ function validateRegularPhase(
   }
   validateScoring(phase.scoring, `${prefix}.scoring`, errors, false);
 
+  if (
+    phase.minGames != null &&
+    (typeof phase.minGames !== "number" ||
+      phase.minGames < 0 ||
+      !Number.isInteger(phase.minGames))
+  ) {
+    errors.push(`${prefix}.minGames must be a non-negative integer`);
+  }
+
   if (requireProgression) {
     if (phase.progression == null) {
       errors.push(`${prefix}.progression is required (not the last phase)`);

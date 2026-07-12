@@ -781,6 +781,7 @@ export const en: Translations = {
         hasProgression: "Has progression to next phase",
         advancingCount: "Advancing count",
         scoreRetention: "Score retention",
+        minGamesToQualify: "Min games to qualify",
         addPhase: "Add phase",
         finalPhaseSection: "Final Phase (Bracket)",
         hasFinalPhase: "Has final bracket phase",

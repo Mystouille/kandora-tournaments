@@ -141,7 +141,16 @@ export function computeMultiPhaseStandings(
       return { phaseIndex: p, phaseId: phaseDef.id, standings };
     }
 
-    const advancing = standings.slice(0, progression.advancingCount);
+    // Only teams meeting the phase's minimum-games gate are eligible to
+    // advance. Below-threshold teams remain in `standings` (returned above for
+    // display) but are excluded from the advancing pool, so the freed slots go
+    // to the next eligible teams.
+    const minGames = phaseDef.minGames ?? 0;
+    const eligible =
+      minGames > 0
+        ? standings.filter((s) => s.gamesPlayed >= minGames)
+        : standings;
+    const advancing = eligible.slice(0, progression.advancingCount);
     advancingTeamIds = new Set(advancing.map((s) => s.teamId));
     retainedScores = new Map<string, number>();
     for (const s of advancing) {

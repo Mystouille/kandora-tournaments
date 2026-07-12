@@ -5,6 +5,7 @@ import {
   Divider,
   Form,
   Input,
+  InputNumber,
   Select,
   Space,
   Switch,
@@ -357,6 +358,24 @@ export function LeagueTypeConfigForm({
                     }
                     ct={ct}
                   />
+                  <Form.Item
+                    label={ct.minGamesToQualify}
+                    style={{ marginBottom: 8 }}
+                  >
+                    <InputNumber
+                      min={0}
+                      step={1}
+                      value={config.regularPhase.minGames}
+                      onChange={(v) =>
+                        update({
+                          regularPhase: {
+                            ...config.regularPhase!,
+                            minGames: v ?? undefined,
+                          },
+                        })
+                      }
+                    />
+                  </Form.Item>
                 </Card>
               )}
 
@@ -407,6 +426,22 @@ export function LeagueTypeConfigForm({
                         }}
                         ct={ct}
                       />
+                      <Form.Item
+                        label={ct.minGamesToQualify}
+                        style={{ marginBottom: 8 }}
+                      >
+                        <InputNumber
+                          min={0}
+                          step={1}
+                          value={phase.minGames}
+                          onChange={(v) => {
+                            const next = config.regularPhases!.map((p, j) =>
+                              j === i ? { ...p, minGames: v ?? undefined } : p
+                            );
+                            update({ regularPhases: next });
+                          }}
+                        />
+                      </Form.Item>
                       {i < config.regularPhases!.length - 1 && (
                         <ProgressionFields
                           progression={phase.progression}

@@ -218,13 +218,18 @@ function includeMissingFactionMembers(
 
 function computeFactionQualifiedUsers(
   players: PlayerRankingScore[],
-  qualificationCount: number
+  qualificationCount: number,
+  minGames = 0
 ): Set<string> {
   const qualified = new Set<string>();
   const byFaction = new Map<string, PlayerRankingScore[]>();
 
   for (const player of players) {
     if (!player.factionTeamId) {
+      continue;
+    }
+    // Exclude players below the phase's minimum-games gate from qualification.
+    if (minGames > 0 && (player.totalGamesPlayed ?? 0) < minGames) {
       continue;
     }
     const factionPlayers = byFaction.get(player.factionTeamId) ?? [];
@@ -480,7 +485,8 @@ export class LeagueService {
         })),
         league.rulesConfig.gameRules,
         scoring,
-        userToTeamMap
+        userToTeamMap,
+        leagueType?.regularPhase?.minGames ?? 0
       );
 
       const hasFactions = teams.length > 0;
@@ -1192,16 +1198,51 @@ export class LeagueService {
 
     const isTeamMode = leagueType.isTeamMode;
 
+    // Minimum-games gate for finals qualification. The finals follow the last
+    // regular phase, so a multi-phase league uses that final phase's threshold.
+    const lastRegularPhase =
+      leagueType.regularPhase ??
+      leagueType.regularPhases?.[leagueType.regularPhases.length - 1];
+    const regularMinGames = lastRegularPhase?.minGames ?? 0;
+
     const seedings: { seed: number; teamId?: string; userId?: string }[] = [];
 
     if (isTeamMode) {
-      const { sortedTeams } = computeTeamBasedRankingData(
-        regularRankingInput,
-        league.rulesConfig.gameRules,
-        userToTeamMap
-      );
-      for (let i = 0; i < Math.min(maxSeed, sortedTeams.length); i++) {
-        seedings.push({ seed: i + 1, teamId: sortedTeams[i].teamId });
+      // Seed from the minimum-games-aware phase results. For multi-phase
+      // leagues that is the final phase's standings (which already apply
+      // per-phase gating and cross-phase narrowing); for a single regular
+      // phase it is a straight ranking of that phase's games.
+      let sortedForSeeding: { teamId: string; gamesPlayed: number }[];
+      if (isMultiPhaseLeague(leagueType)) {
+        const { standings } = computeMultiPhaseStandings(
+          leagueType,
+          regularPhaseGames.map((g) => ({
+            startTime: g.startTime,
+            phaseId: g.phaseId,
+            results: (g.results ?? []).map((r) => ({
+              userId: r.userId.toString(),
+              score: r.score,
+            })),
+          })),
+          league.rulesConfig.gameRules,
+          teams,
+          resolveMultiPhaseCutoffs(leagueType, league)
+        );
+        sortedForSeeding = standings;
+      } else {
+        const { sortedTeams } = computeTeamBasedRankingData(
+          regularRankingInput,
+          league.rulesConfig.gameRules,
+          userToTeamMap
+        );
+        sortedForSeeding = sortedTeams;
+      }
+      const eligibleTeams =
+        regularMinGames > 0
+          ? sortedForSeeding.filter((t) => t.gamesPlayed >= regularMinGames)
+          : sortedForSeeding;
+      for (let i = 0; i < Math.min(maxSeed, eligibleTeams.length); i++) {
+        seedings.push({ seed: i + 1, teamId: eligibleTeams[i].teamId });
       }
     } else {
       const scoring = leagueType.regularPhase?.scoring;
@@ -1209,7 +1250,8 @@ export class LeagueService {
         regularRankingInput,
         league.rulesConfig.gameRules,
         scoring,
-        userToTeamMap
+        userToTeamMap,
+        regularMinGames
       );
 
       const useFactionGroupedSeeding =
@@ -1224,7 +1266,8 @@ export class LeagueService {
       const effectiveQualifiedByFaction = useFactionGroupedSeeding
         ? computeFactionQualifiedUsers(
             effectivePlayers,
-            scoring.qualificationCount ?? 2
+            scoring.qualificationCount ?? 2,
+            regularMinGames
           )
         : qualifiedByFaction;
 
@@ -1235,13 +1278,23 @@ export class LeagueService {
           )
         : effectivePlayers;
 
+      // Players below the minimum-games gate are never seeded (they remain in
+      // the standings for display only). Restrict both the plain top-N slice
+      // and the backfill pool to eligible players.
+      const eligiblePlayers =
+        regularMinGames > 0
+          ? effectivePlayers.filter(
+              (p) => (p.totalGamesPlayed ?? 0) >= regularMinGames
+            )
+          : effectivePlayers;
+
       const selectedPlayers = useFactionGroupedSeeding
         ? orderedPlayers
-        : orderedPlayers.slice(0, Math.min(maxSeed, orderedPlayers.length));
+        : eligiblePlayers.slice(0, Math.min(maxSeed, eligiblePlayers.length));
 
       const seenUserIds = new Set(selectedPlayers.map((p) => p.userId));
-      if (selectedPlayers.length < Math.min(maxSeed, effectivePlayers.length)) {
-        for (const player of effectivePlayers) {
+      if (selectedPlayers.length < Math.min(maxSeed, eligiblePlayers.length)) {
+        for (const player of eligiblePlayers) {
           if (seenUserIds.has(player.userId)) {
             continue;
           }
