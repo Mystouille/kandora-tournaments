@@ -7,7 +7,7 @@ import { connectToDatabase } from "../../../utils/dbConnection.server";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type { TeamEntry } from "../../../services/connectors/ILeagueTournamentConnector.server";
-import { MahjongSoulConnector } from "../../../api/majsoul/data/MajsoulConnector";
+import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "../../../services/connectors/RiichiCityLeagueConnector.server";
 
 interface PlayerInRoster {
@@ -284,9 +284,7 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: { request: Request }) {
   if (request.method === "POST") {
     const body = (await request.json()) as
-      | ValidatePayload
-      | FindOrCreatePayload
-      | CreateUnlinkedUserPayload;
+      ValidatePayload | FindOrCreatePayload | CreateUnlinkedUserPayload;
 
     if (body.intent === "validate-platform-id") {
       const result = await lookupPlatformId(

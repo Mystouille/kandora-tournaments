@@ -3,7 +3,7 @@ import { UserModel } from "../../../db/User";
 import { TeamModel } from "../../../db/Team";
 import { LeagueModel, Platform, type League } from "../../../db/League";
 import { fetchGuildMembers } from "../../../utils/discord-guilds.server";
-import { MahjongSoulConnector } from "../../../api/majsoul/data/MajsoulConnector";
+import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "../../../services/connectors/RiichiCityLeagueConnector.server";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type { TeamEntry } from "../../../services/connectors/ILeagueTournamentConnector.server";

@@ -6,7 +6,7 @@
     ".react-router/types/**/*"
   ],
   "exclude": [
-    "app/api/majsoul/**/*",
+    "app/db/majsoul/**/*",
     "app/bot/**/*",
     "app/game/routes/lobby.tsx",
     "app/game/routes/match.tsx",
@@ -21,6 +21,7 @@
     "jsx": "react-jsx",
     "rootDirs": [".", "./.react-router/types"],
     "paths": {
+      "~/api/majsoul/*": ["./app/db/majsoul/*"],
       "~/*": ["./app/*"],
       "config": ["./config.ts"]
     },

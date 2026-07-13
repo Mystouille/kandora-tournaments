@@ -7,7 +7,7 @@
     "core:update": "git submodule update --init --remote app/db",
     "game:update": "git submodule update --init --remote app/game",
     "submodules:init": "git submodule update --init --recursive",
-    "liqi:generate": "node app/api/majsoul/data/_gen-liqi.mjs",
+    "liqi:generate": "node app/db/majsoul/data/_gen-liqi.mjs",
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
