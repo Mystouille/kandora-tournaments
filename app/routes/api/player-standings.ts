@@ -3,10 +3,11 @@ import { getLeagueUserPictureMapForLeagues } from "../../services/leagueUserPict
 import type { Route } from "./+types/player-standings";
 import mongoose from "mongoose";
 import { GameModel, type Game } from "../../db/Game";
-import { LeagueModel, type League } from "../../db/League";
+import { LeagueModel, Ruleset, type League } from "../../db/League";
 import { TeamModel, type Team } from "../../db/Team";
 import { UserModel, type User } from "../../db/User";
 import { GameRecordModel, type GameRecord } from "../../db/GameRecord";
+import { getStartingScore } from "../../services/leagueUtils";
 import { resolveLeagueTypeConfig } from "~/services/league-configs";
 import {
   buildUserToTeamMap,
@@ -93,17 +94,25 @@ export async function loader({ request }: Route.LoaderArgs) {
     const useTeamMode = entityType === "team";
     let effectiveTeamIds: string[] = [];
 
-    // Collect official substitute IDs to exclude from standings
+    // Collect official substitute IDs to exclude from standings, and map each
+    // league to its ruleset. The ruleset determines the starting score used to
+    // derive raw table points (EMA/WRC/Indonesian start at 30000, not 25000);
+    // this must match the starting score used when deltaPoints was computed.
     const leagues = await LeagueModel.find({
       _id: { $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)) },
     })
-      .select("officialSubstitutes")
-      .lean<Pick<League, "_id" | "officialSubstitutes">[]>();
+      .select("officialSubstitutes rulesConfig")
+      .lean<Pick<League, "_id" | "officialSubstitutes" | "rulesConfig">[]>();
     const officialSubIdSet = new Set<string>();
+    const leagueRulesetMap = new Map<string, Ruleset>();
     for (const lg of leagues) {
       for (const id of lg.officialSubstitutes ?? []) {
         officialSubIdSet.add(id.toString());
       }
+      leagueRulesetMap.set(
+        lg._id.toString(),
+        lg.rulesConfig?.gameRules as Ruleset
+      );
     }
 
     if (useTeamMode) {
@@ -210,13 +219,23 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
 
     const matchingGames = await Game.find(gameMatchFilter)
-      .select("_id gameId")
+      .select("_id gameId league")
       .lean<Game[]>();
 
     if (matchingGames.length === 0) {
       const result = { standings: [] };
       setCache(cacheKey, result);
       return Response.json(result);
+    }
+
+    // Map each game to its league's ruleset so raw points can be derived from
+    // the ruleset-specific starting score (matching how deltaPoints was stored).
+    const gameIdToRuleset = new Map<string, Ruleset>();
+    for (const g of matchingGames) {
+      const ruleset = leagueRulesetMap.get(g.league?.toString() ?? "");
+      if (g.gameId && ruleset) {
+        gameIdToRuleset.set(g.gameId, ruleset);
+      }
     }
 
     const gameIdSet = new Set(
@@ -256,7 +275,10 @@ export async function loader({ request }: Route.LoaderArgs) {
         const deltaPoints = userData.deltaPoints ?? 0;
         const score = userData.score ?? 25000;
         const place = userData.place ?? 4;
-        const rawPts = (score - 25000) / 1000;
+        const startingScore = getStartingScore(
+          gameIdToRuleset.get(record.gameId ?? "") ?? Ruleset.MLEAGUE
+        );
+        const rawPts = (score - startingScore) / 1000;
 
         // Count yakuman
         let yakumanCount = 0;

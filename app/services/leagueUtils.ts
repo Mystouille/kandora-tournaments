@@ -148,7 +148,7 @@ function getFloatingUmaModifiers(
   }
 }
 
-function getStartingScore(ruleSet: Ruleset): number {
+export function getStartingScore(ruleSet: Ruleset): number {
   switch (ruleSet) {
     case Ruleset.EMA:
     case Ruleset.WRC:
