@@ -547,6 +547,10 @@ export const fr: Translations = {
       selectPlatform: "Sélectionner une plateforme",
       tournamentId: "ID du tournoi",
       tournamentIdPlaceholder: "ID ou ID interne",
+      tenhouBotId: "ID du bot Tenhou (optionnel)",
+      tenhouBotIdPlaceholder: "ex. IDXXXXXXXX-XXXXXXXX",
+      tenhouBotIdHelp:
+        "ID de compte Tenhou utilisé par le moniteur pour lire le salon quand il refuse les invités. Laisser vide pour une connexion anonyme.",
       validate: "Valider",
       validated: "Validé",
       validating: "Validation en cours…",

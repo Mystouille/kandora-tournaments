@@ -1,6 +1,7 @@
 import { TenhouService } from "~/api/tenhou/TenhouService.server";
 import { parseTenhouLobbyLog } from "~/api/tenhou/parseTenhouLobbyLog";
 import { parseTenhouXmlReplay } from "~/api/tenhou/replayAdapter";
+import { fetchTenhouLobbyReady } from "~/api/tenhou/tenhouLobbyWatch.server";
 import { buildGameRecordFromReplay } from "~/api/replayToGameRecord";
 import type {
   ILeagueTournamentConnector,
@@ -93,14 +94,22 @@ export class TenhouLeagueConnector implements ILeagueTournamentConnector {
   // ---------------------------------------------------------------------------
 
   async getTournamentLobbyStatus(
-    tournamentId: string | number
+    tournamentId: string | number,
+    options?: { tenhouBotId?: string }
   ): Promise<TournamentLobbyStatus | undefined> {
-    const { idle, playing } = await this.service.fetchLobbyPlayers(
-      String(tournamentId)
-    );
+    const lobbyId = String(tournamentId);
+    // The REST endpoint only exposes idle vs playing, so it cannot tell how
+    // many players have sat down ready. Probe the lobby websocket in parallel
+    // for the accurate ready count, falling back to the idle count when the
+    // probe is unavailable. The configured bot ID (if any) lets the monitor
+    // read lobbies that refuse guest logins.
+    const [{ idle, playing }, wsReady] = await Promise.all([
+      this.service.fetchLobbyPlayers(lobbyId),
+      fetchTenhouLobbyReady(lobbyId, options?.tenhouBotId),
+    ]);
     return {
       online: idle.length,
-      ready: idle.length,
+      ready: wsReady ?? idle.length,
       inGame: playing.length,
     };
   }

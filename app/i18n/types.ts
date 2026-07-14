@@ -455,6 +455,9 @@ export interface Translations extends CoreTranslations {
       selectPlatform: string;
       tournamentId: string;
       tournamentIdPlaceholder: string;
+      tenhouBotId: string;
+      tenhouBotIdPlaceholder: string;
+      tenhouBotIdHelp: string;
       validate: string;
       validated: string;
       validating: string;

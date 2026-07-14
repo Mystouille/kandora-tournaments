@@ -800,7 +800,8 @@ export class LeagueService {
     const t = getLeagueText(league);
     try {
       const status = await connector.getTournamentLobbyStatus(
-        league.platformConfig.tournamentId
+        league.platformConfig.tournamentId,
+        { tenhouBotId: league.platformConfig.tenhouBotId ?? undefined }
       );
       if (!status) {
         return undefined;

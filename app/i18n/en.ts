@@ -536,6 +536,10 @@ export const en: Translations = {
       selectPlatform: "Select a platform",
       tournamentId: "Tournament ID",
       tournamentIdPlaceholder: "ID or internal ID",
+      tenhouBotId: "Tenhou bot ID (optional)",
+      tenhouBotIdPlaceholder: "e.g. IDXXXXXXXX-XXXXXXXX",
+      tenhouBotIdHelp:
+        "Tenhou account ID the lobby monitor logs in with when the lobby refuses guests. Leave empty to connect anonymously.",
       validate: "Validate",
       validated: "Validated",
       validating: "Validating…",

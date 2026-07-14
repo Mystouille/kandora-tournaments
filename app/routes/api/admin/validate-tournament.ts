@@ -132,7 +132,17 @@ export async function loader({ request }: { request: Request }) {
           error: "Could not reach Tenhou lobby. Check the tournament ID.",
         });
       }
-      return Response.json({ valid: true });
+      // Best-effort: pull the lobby title (cmd_load.cgi) to auto-fill the
+      // tournament name. A failure here must not fail validation.
+      let tournamentName: string | undefined;
+      try {
+        const config =
+          await TenhouService.instance.fetchTournamentConfig(tournamentId);
+        tournamentName = config.TITLE?.trim() || undefined;
+      } catch {
+        // title is optional — ignore fetch / parse failures
+      }
+      return Response.json({ valid: true, tournamentName });
     }
 
     if (platform === Platform.IRL) {

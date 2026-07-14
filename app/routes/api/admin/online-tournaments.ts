@@ -247,6 +247,7 @@ export async function action({ request }: { request: Request }) {
         seasonId: body.platformConfig.seasonId
           ? String(body.platformConfig.seasonId)
           : undefined,
+        tenhouBotId: body.platformConfig.tenhouBotId || undefined,
         phaseTournaments,
       },
       discordConfig: body.discordConfig

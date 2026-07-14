@@ -93,7 +93,8 @@ export interface ILeagueTournamentConnector {
    * not support this query.
    */
   getTournamentLobbyStatus?(
-    tournamentId: string | number
+    tournamentId: string | number,
+    options?: { tenhouBotId?: string }
   ): Promise<TournamentLobbyStatus | undefined>;
 
   /**

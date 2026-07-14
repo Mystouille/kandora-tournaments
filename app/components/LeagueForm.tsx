@@ -75,6 +75,9 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
   // Section A: platform validation
   const [platform, setPlatform] = useState<string | null>(null);
   const [tournamentId, setTournamentId] = useState("");
+  // Optional Tenhou account ID used by the lobby monitor for guest-refusing
+  // lobbies. Independent of validation; empty means anonymous.
+  const [tenhouBotId, setTenhouBotId] = useState("");
   const [validating, setValidating] = useState(false);
   const [validated, setValidated] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -466,6 +469,10 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
           tournamentId: needsTournamentId ? tournamentId.trim() : undefined,
           internalTournamentId: internalTournamentId || undefined,
           seasonId: seasonId || undefined,
+          tenhouBotId:
+            platform === Platform.TENHOU
+              ? tenhouBotId.trim() || undefined
+              : undefined,
           phaseTournaments: perPhaseMode ? phaseTournaments : undefined,
         },
         leagueTypeConfigId:
@@ -648,6 +655,18 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
               )}
             </Space.Compact>
           </Form.Item>
+          {platform === Platform.TENHOU && (
+            <Form.Item
+              label={t.onlineTournaments.admin.tenhouBotId}
+              tooltip={t.onlineTournaments.admin.tenhouBotIdHelp}
+            >
+              <Input
+                value={tenhouBotId}
+                onChange={(e) => setTenhouBotId(e.target.value)}
+                placeholder={t.onlineTournaments.admin.tenhouBotIdPlaceholder}
+              />
+            </Form.Item>
+          )}
         </>
       )}
 
