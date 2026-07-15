@@ -535,6 +535,10 @@ export function LeagueTypeConfigForm({
                       })
                     }
                     ct={ct}
+                    regularPhaseIds={
+                      config.regularPhases?.map((p) => p.id) ??
+                      (config.regularPhase ? [config.regularPhase.id] : [])
+                    }
                   />
                 </Card>
               )}

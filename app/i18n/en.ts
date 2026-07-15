@@ -668,6 +668,23 @@ export const en: Translations = {
       importCsvNoPlatformId:
         "No platform ID provided — player will not be added to the platform tournament",
       importCsvNoPlatformIdName: "(no name)",
+      importCsvFormatTitle: "Expected CSV format",
+      importCsvFormatIntro:
+        "One row per player, values separated by commas, in this exact order (do not add a header row):",
+      importCsvFormatTeamColumns:
+        "Team name, Display name, Platform ID, Discord ID, Substitute",
+      importCsvFormatIndividualColumns: "Platform ID, Discord ID, Substitute",
+      importCsvFormatTeamNameHelp:
+        "Team name — players sharing the same team name are grouped into one team.",
+      importCsvFormatDisplayNameHelp:
+        "Display name — used only when creating a new player; existing players keep their name.",
+      importCsvFormatPlatformIdHelp:
+        "Platform ID — the friend / numeric ID on the game platform. Leave empty for a player without a platform account.",
+      importCsvFormatDiscordHelp:
+        "Discord ID — optional; links the player to their Discord account.",
+      importCsvFormatSubstituteHelp:
+        'Substitute — optional; write "sub" to mark the player as a substitute.',
+      importCsvFormatExample: "Example",
       importConfirmPlayersTitle: "Confirm Player Import",
       importConfirmPlayersBody:
         "This will import {count} player(s) into the tournament.",
@@ -763,6 +780,12 @@ export const en: Translations = {
         slicePlaceholder: "auto (from bracket depth)",
         directSeeds: "Direct seeds (comma-separated positions)",
         directSeedsPlaceholder: "e.g. 1, 2, 3, 4",
+        seedFromRegularPhase: "Seed from regular phase",
+        seedSourceLabel: "Source",
+        seedFromRegistrationOrder:
+          "Seeded by registration order (no regular phase)",
+        seedFromRegularPhaseHint:
+          "The first slice is seeded from the regular-phase standings — choose Top N or list specific ranks.",
         fromStages: "From stages",
         stageIdPlaceholder: "Stage ID",
         top: "Top",

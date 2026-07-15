@@ -683,6 +683,24 @@ export const fr: Translations = {
       importCsvNoPlatformId:
         "Aucun identifiant plateforme — le joueur ne sera pas ajouté au tournoi sur la plateforme",
       importCsvNoPlatformIdName: "(sans nom)",
+      importCsvFormatTitle: "Format CSV attendu",
+      importCsvFormatIntro:
+        "Une ligne par joueur, valeurs séparées par des virgules, dans cet ordre exact (n'ajoutez pas de ligne d'en-tête) :",
+      importCsvFormatTeamColumns:
+        "Nom d'équipe, Nom affiché, Identifiant plateforme, Identifiant Discord, Remplaçant",
+      importCsvFormatIndividualColumns:
+        "Identifiant plateforme, Identifiant Discord, Remplaçant",
+      importCsvFormatTeamNameHelp:
+        "Nom d'équipe — les joueurs partageant le même nom d'équipe sont regroupés dans une même équipe.",
+      importCsvFormatDisplayNameHelp:
+        "Nom affiché — utilisé uniquement lors de la création d'un nouveau joueur ; les joueurs existants conservent leur nom.",
+      importCsvFormatPlatformIdHelp:
+        "Identifiant plateforme — l'identifiant ami / numérique sur la plateforme de jeu. Laissez vide pour un joueur sans compte sur la plateforme.",
+      importCsvFormatDiscordHelp:
+        "Identifiant Discord — facultatif ; associe le joueur à son compte Discord.",
+      importCsvFormatSubstituteHelp:
+        "Remplaçant — facultatif ; écrivez « sub » pour marquer le joueur comme remplaçant.",
+      importCsvFormatExample: "Exemple",
       importConfirmPlayersTitle: "Confirmer l'import des joueurs",
       importConfirmPlayersBody:
         "Cela importera {count} joueur(s) dans le tournoi.",
@@ -781,6 +799,12 @@ export const fr: Translations = {
         slicePlaceholder: "auto (selon la profondeur)",
         directSeeds: "Seeds directs (positions séparées par des virgules)",
         directSeedsPlaceholder: "ex. 1, 2, 3, 4",
+        seedFromRegularPhase: "Têtes de série depuis la phase régulière",
+        seedSourceLabel: "Source",
+        seedFromRegistrationOrder:
+          "Têtes de série par ordre d'inscription (pas de phase régulière)",
+        seedFromRegularPhaseHint:
+          "La première tranche est constituée à partir du classement de la phase régulière — choisissez Top N ou indiquez des rangs précis.",
         fromStages: "Depuis les étapes",
         stageIdPlaceholder: "ID d'étape",
         top: "Top",

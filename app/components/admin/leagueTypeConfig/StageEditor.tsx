@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Button,
   Collapse,
@@ -6,6 +7,7 @@ import {
   InputNumber,
   Select,
   Space,
+  Tag,
   Typography,
 } from "antd";
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
@@ -17,13 +19,42 @@ const { Text } = Typography;
 
 type FinalStage = NonNullable<LeagueTypeConfig["finalPhase"]>["stages"][0];
 
+type SeedMode = "top" | "places";
+
+/** Derive the default seed-input mode from a stage's seed list: a list that is
+ *  exactly `[1..n]` reads as "Top N", anything else as explicit ranks. */
+function deriveSeedMode(seeds: number[]): SeedMode {
+  if (seeds.length > 0 && seeds.every((s, k) => s === k + 1)) {
+    return "top";
+  }
+  return seeds.length > 0 ? "places" : "top";
+}
+
 interface StageEditorProps {
   stages: FinalStage[];
   onChange: (s: FinalStage[]) => void;
   ct: ConfigT;
+  /** Regular-phase ids (in order) that the first bracket slice is seeded from.
+   *  Empty for finals-only leagues (seeded by registration order). Surfaced as
+   *  the seeding source so the user can see where direct seeds come from. */
+  regularPhaseIds: string[];
 }
 
-export function StageEditor({ stages, onChange, ct }: StageEditorProps) {
+export function StageEditor({
+  stages,
+  onChange,
+  ct,
+  regularPhaseIds,
+}: StageEditorProps) {
+  // Per-stage seed-input mode (Top N vs specific ranks). Kept in local UI
+  // state so typing `1, 2, 3` in ranks mode doesn't snap the control back to
+  // "Top N" just because the list happens to be contiguous.
+  const [seedModes, setSeedModes] = useState<Record<number, SeedMode>>({});
+  const seedModeFor = (i: number): SeedMode =>
+    seedModes[i] ?? deriveSeedMode(stages[i].seeds);
+  const setSeedMode = (i: number, mode: SeedMode) =>
+    setSeedModes((prev) => ({ ...prev, [i]: mode }));
+
   const updateStage = (index: number, patch: Partial<FinalStage>) => {
     const next = stages.map((s, i) => (i === index ? { ...s, ...patch } : s));
     onChange(next);
@@ -95,18 +126,79 @@ export function StageEditor({ stages, onChange, ct }: StageEditorProps) {
                   placeholder={ct.slicePlaceholder}
                 />
               </Form.Item>
-              <Form.Item label={ct.directSeeds} style={{ marginBottom: 8 }}>
-                <Input
-                  value={stage.seeds.join(", ")}
-                  onChange={(e) => {
-                    const seeds = e.target.value
-                      .split(",")
-                      .map((s) => parseInt(s.trim(), 10))
-                      .filter((n) => !isNaN(n) && n > 0);
-                    updateStage(i, { seeds });
-                  }}
-                  placeholder={ct.directSeedsPlaceholder}
-                />
+              <Form.Item
+                label={ct.seedFromRegularPhase}
+                style={{ marginBottom: 8 }}
+                tooltip={ct.seedFromRegularPhaseHint}
+              >
+                <Space direction="vertical" style={{ width: "100%" }}>
+                  {regularPhaseIds.length > 0 ? (
+                    <Text type="secondary">
+                      {ct.seedSourceLabel}:{" "}
+                      {regularPhaseIds.map((id) => (
+                        <Tag key={id}>{id}</Tag>
+                      ))}
+                    </Text>
+                  ) : (
+                    <Text type="secondary">{ct.seedFromRegistrationOrder}</Text>
+                  )}
+                  <Space wrap>
+                    <Select
+                      value={seedModeFor(i)}
+                      options={[
+                        { label: ct.topMode, value: "top" },
+                        { label: ct.placesMode, value: "places" },
+                      ]}
+                      onChange={(v) => {
+                        const mode = v as SeedMode;
+                        setSeedMode(i, mode);
+                        if (mode === "top") {
+                          const count = stage.seeds.length || 4;
+                          updateStage(i, {
+                            seeds: Array.from(
+                              { length: count },
+                              (_, k) => k + 1
+                            ),
+                          });
+                        }
+                      }}
+                      style={{ width: 160 }}
+                    />
+                    {seedModeFor(i) === "top" ? (
+                      <InputNumber
+                        min={0}
+                        step={1}
+                        value={stage.seeds.length}
+                        onChange={(v) => {
+                          setSeedMode(i, "top");
+                          const count = v ?? 0;
+                          updateStage(i, {
+                            seeds: Array.from(
+                              { length: count },
+                              (_, k) => k + 1
+                            ),
+                          });
+                        }}
+                        addonBefore={ct.top}
+                        style={{ width: 140 }}
+                      />
+                    ) : (
+                      <Input
+                        value={stage.seeds.join(", ")}
+                        onChange={(e) => {
+                          setSeedMode(i, "places");
+                          const seeds = e.target.value
+                            .split(",")
+                            .map((s) => parseInt(s.trim(), 10))
+                            .filter((n) => !isNaN(n) && n > 0);
+                          updateStage(i, { seeds });
+                        }}
+                        placeholder={ct.directSeedsPlaceholder}
+                        style={{ width: 240 }}
+                      />
+                    )}
+                  </Space>
+                </Space>
               </Form.Item>
               <Form.Item label={ct.fromStages} style={{ marginBottom: 8 }}>
                 {stage.fromStages.map((edge, j) => {

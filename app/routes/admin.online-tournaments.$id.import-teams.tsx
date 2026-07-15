@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
-import { Button, Result, Typography } from "antd";
+import { Link, useLoaderData, useNavigate, useParams } from "react-router";
+import { Button, Card, Result, Typography } from "antd";
 import { ImportOutlined, UploadOutlined } from "@ant-design/icons";
 import { basePath } from "../utils/basePath";
 import { requireLeagueAdminOrRedirect } from "../utils/league-permissions.server";
+import { connectToDatabase } from "../utils/dbConnection.server";
+import { LeagueModel } from "../db/League";
 import { useLocale } from "../contexts/LocaleContext";
 import {
   type ImportResult,
@@ -12,7 +14,19 @@ import {
 import { PlatformImport } from "../components/import-teams/PlatformImport";
 import { CsvImport } from "../components/import-teams/CsvImport";
 
-const { Title } = Typography;
+const { Title, Text, Paragraph } = Typography;
+
+const csvCodeStyle: React.CSSProperties = {
+  margin: 0,
+  padding: "8px 12px",
+  background: "#f5f5f5",
+  border: "1px solid #f0f0f0",
+  borderRadius: 4,
+  fontSize: 13,
+  fontFamily: "monospace",
+  whiteSpace: "pre",
+  overflowX: "auto",
+};
 
 export async function loader({
   request,
@@ -22,7 +36,11 @@ export async function loader({
   params: { id: string };
 }) {
   await requireLeagueAdminOrRedirect(request, params.id!);
-  return null;
+  await connectToDatabase();
+  const league = await LeagueModel.findById(params.id!)
+    .select("rulesConfig.isTeamMode")
+    .lean();
+  return { isTeamMode: league?.rulesConfig?.isTeamMode ?? true };
 }
 
 export function meta() {
@@ -34,6 +52,7 @@ type ImportMode = "choose" | "platform" | "csv";
 export default function ImportTeamsPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const { isTeamMode } = useLoaderData<typeof loader>();
   const { t } = useLocale();
   const tt = t.onlineTournaments.admin;
 
@@ -107,32 +126,84 @@ export default function ImportTeamsPage() {
 
       {/* Mode selection buttons */}
       {mode === "choose" && !result && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: 48,
-            display: "flex",
-            gap: 16,
-            justifyContent: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <Button
-            type="primary"
-            size="large"
-            icon={<ImportOutlined />}
-            onClick={() => setMode("platform")}
+        <>
+          <div
+            style={{
+              textAlign: "center",
+              padding: 48,
+              display: "flex",
+              gap: 16,
+              justifyContent: "center",
+              flexWrap: "wrap",
+            }}
           >
-            {tt.importButton}
-          </Button>
-          <Button
-            size="large"
-            icon={<UploadOutlined />}
-            onClick={handleCsvFileSelect}
-          >
-            {tt.importCsvButton}
-          </Button>
-        </div>
+            <Button
+              type="primary"
+              size="large"
+              icon={<ImportOutlined />}
+              onClick={() => setMode("platform")}
+            >
+              {tt.importButton}
+            </Button>
+            <Button
+              size="large"
+              icon={<UploadOutlined />}
+              onClick={handleCsvFileSelect}
+            >
+              {tt.importCsvButton}
+            </Button>
+          </div>
+
+          {/* CSV format guidance so admins know how to prepare their file */}
+          <Card size="small" style={{ maxWidth: 640, margin: "0 auto" }}>
+            <Text strong>{tt.importCsvFormatTitle}</Text>
+            <Paragraph
+              type="secondary"
+              style={{ marginTop: 8, marginBottom: 8 }}
+            >
+              {tt.importCsvFormatIntro}
+            </Paragraph>
+            <pre style={csvCodeStyle}>
+              {isTeamMode
+                ? tt.importCsvFormatTeamColumns
+                : tt.importCsvFormatIndividualColumns}
+            </pre>
+            <ul style={{ margin: "12px 0 0", paddingLeft: 18 }}>
+              {isTeamMode && (
+                <li>
+                  <Text type="secondary">{tt.importCsvFormatTeamNameHelp}</Text>
+                </li>
+              )}
+              {isTeamMode && (
+                <li>
+                  <Text type="secondary">
+                    {tt.importCsvFormatDisplayNameHelp}
+                  </Text>
+                </li>
+              )}
+              <li>
+                <Text type="secondary">{tt.importCsvFormatPlatformIdHelp}</Text>
+              </li>
+              <li>
+                <Text type="secondary">{tt.importCsvFormatDiscordHelp}</Text>
+              </li>
+              <li>
+                <Text type="secondary">{tt.importCsvFormatSubstituteHelp}</Text>
+              </li>
+            </ul>
+            <Paragraph
+              type="secondary"
+              style={{ margin: "12px 0 4px", fontWeight: 500 }}
+            >
+              {tt.importCsvFormatExample}
+            </Paragraph>
+            <pre style={csvCodeStyle}>
+              {isTeamMode
+                ? "Red Dragons,Alice,12345678,123456789012345678\nRed Dragons,Bob,87654321,,sub"
+                : "12345678,123456789012345678\n87654321,,sub"}
+            </pre>
+          </Card>
+        </>
       )}
 
       {/* Platform import */}

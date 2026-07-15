@@ -571,6 +571,16 @@ export interface Translations extends CoreTranslations {
       importCsvDiscordError: string;
       importCsvNoPlatformId: string;
       importCsvNoPlatformIdName: string;
+      importCsvFormatTitle: string;
+      importCsvFormatIntro: string;
+      importCsvFormatTeamColumns: string;
+      importCsvFormatIndividualColumns: string;
+      importCsvFormatTeamNameHelp: string;
+      importCsvFormatDisplayNameHelp: string;
+      importCsvFormatPlatformIdHelp: string;
+      importCsvFormatDiscordHelp: string;
+      importCsvFormatSubstituteHelp: string;
+      importCsvFormatExample: string;
       importConfirmPlayersTitle: string;
       importConfirmPlayersBody: string;
       importPlayersSuccess: string;
@@ -655,6 +665,10 @@ export interface Translations extends CoreTranslations {
         slicePlaceholder: string;
         directSeeds: string;
         directSeedsPlaceholder: string;
+        seedFromRegularPhase: string;
+        seedSourceLabel: string;
+        seedFromRegistrationOrder: string;
+        seedFromRegularPhaseHint: string;
         fromStages: string;
         stageIdPlaceholder: string;
         top: string;
