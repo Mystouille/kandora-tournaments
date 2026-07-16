@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLoaderData, useNavigate, useParams } from "react-router";
-import { Button, Card, Result, Typography } from "antd";
+import { Button, Card, Result, Typography, theme } from "antd";
 import { ImportOutlined, UploadOutlined } from "@ant-design/icons";
 import { basePath } from "../utils/basePath";
 import { requireLeagueAdminOrRedirect } from "../utils/league-permissions.server";
@@ -19,8 +19,6 @@ const { Title, Text, Paragraph } = Typography;
 const csvCodeStyle: React.CSSProperties = {
   margin: 0,
   padding: "8px 12px",
-  background: "#f5f5f5",
-  border: "1px solid #f0f0f0",
   borderRadius: 4,
   fontSize: 13,
   fontFamily: "monospace",
@@ -55,6 +53,15 @@ export default function ImportTeamsPage() {
   const { isTeamMode } = useLoaderData<typeof loader>();
   const { t } = useLocale();
   const tt = t.onlineTournaments.admin;
+  const {
+    token: { colorFillTertiary, colorBorderSecondary, colorText },
+  } = theme.useToken();
+  const codeStyle: React.CSSProperties = {
+    ...csvCodeStyle,
+    background: colorFillTertiary,
+    border: `1px solid ${colorBorderSecondary}`,
+    color: colorText,
+  };
 
   const [mode, setMode] = useState<ImportMode>("choose");
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -163,7 +170,7 @@ export default function ImportTeamsPage() {
             >
               {tt.importCsvFormatIntro}
             </Paragraph>
-            <pre style={csvCodeStyle}>
+            <pre style={codeStyle}>
               {isTeamMode
                 ? tt.importCsvFormatTeamColumns
                 : tt.importCsvFormatIndividualColumns}
@@ -197,7 +204,7 @@ export default function ImportTeamsPage() {
             >
               {tt.importCsvFormatExample}
             </Paragraph>
-            <pre style={csvCodeStyle}>
+            <pre style={codeStyle}>
               {isTeamMode
                 ? "Red Dragons,Alice,12345678,123456789012345678\nRed Dragons,Bob,87654321,,sub"
                 : "12345678,123456789012345678\n87654321,,sub"}
