@@ -440,6 +440,8 @@ export interface Translations extends CoreTranslations {
     officialSubstitute: string;
     officialSubstitutes: string;
     rulesPlaceholder: string;
+    configDetails: string;
+    phaseCutoffDates: string;
     admin: {
       createNew: string;
       coverImageLabel: string;

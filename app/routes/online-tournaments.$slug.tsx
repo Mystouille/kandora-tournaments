@@ -5,8 +5,10 @@ import {
   Tabs,
   Button,
   Spin,
+  Collapse,
   Descriptions,
   List,
+  Space,
   Tag,
   Card,
   Result,
@@ -28,6 +30,8 @@ import { basePath } from "../utils/basePath";
 import { ArticleContent } from "../components/ArticleContent";
 import { TeamLogo } from "../components/TeamLogo";
 import { PlayerAvatar } from "../components/PlayerAvatar";
+import { LeagueConfigDetails } from "../components/LeagueConfigDetails";
+import type { LeagueTypeConfig } from "../db/types/league-config";
 
 const { Title, Text } = Typography;
 
@@ -67,6 +71,7 @@ interface LeagueDetail {
     isTeamMode: boolean;
   };
   leagueTypeConfigName: string | null;
+  leagueTypeConfig: LeagueTypeConfig | null;
   platformConfig: {
     platformName: string;
     tournamentId?: string;
@@ -90,6 +95,16 @@ function formatDate(iso: string, locale: string): string {
     year: "numeric",
     month: "long",
     day: "numeric",
+  });
+}
+
+function formatDateTime(iso: string, locale: string): string {
+  return new Date(iso).toLocaleString(locale === "fr" ? "fr-FR" : "en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -221,7 +236,38 @@ export default function LeagueDetailPage() {
         </Descriptions.Item>
         <Descriptions.Item label={t.onlineTournaments.format}>
           <Tag>{league.leagueTypeConfigName ?? "—"}</Tag>
+          {league.leagueTypeConfig && (
+            <Collapse
+              ghost
+              size="small"
+              style={{ marginTop: 8 }}
+              items={[
+                {
+                  key: "config",
+                  label: t.onlineTournaments.configDetails,
+                  children: (
+                    <LeagueConfigDetails config={league.leagueTypeConfig} />
+                  ),
+                },
+              ]}
+            />
+          )}
         </Descriptions.Item>
+        {league.phaseCutoffTimes?.length > 0 && (
+          <Descriptions.Item label={t.onlineTournaments.phaseCutoffDates}>
+            <Space direction="vertical" size={2}>
+              {league.phaseCutoffTimes.map((iso, index) => (
+                <Text key={iso}>
+                  {t.onlineTournaments.admin.cutoffDateLabel.replace(
+                    "{n}",
+                    String(index + 1)
+                  )}
+                  : {formatDateTime(iso, locale)}
+                </Text>
+              ))}
+            </Space>
+          </Descriptions.Item>
+        )}
         <Descriptions.Item label={t.onlineTournaments.gameRules}>
           <Tag>{league.rulesConfig?.gameRules ?? "—"}</Tag>
         </Descriptions.Item>

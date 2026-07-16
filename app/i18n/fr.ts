@@ -531,6 +531,8 @@ export const fr: Translations = {
     officialSubstitutes: "Remplaçants officiels",
     rulesPlaceholder:
       "Les informations sur les règles seront ajoutées prochainement.",
+    configDetails: "Détails de la configuration",
+    phaseCutoffDates: "Dates de coupure de phase",
     admin: {
       createNew: "Créer un nouveau tournoi",
       coverImageLabel: "Image de couverture",

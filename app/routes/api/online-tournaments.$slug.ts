@@ -336,6 +336,15 @@ export async function loader({ params }: Route.LoaderArgs) {
       rulesConfig: league.rulesConfig,
       leagueTypeConfigName:
         (league.leagueTypeConfig as any)?.displayName ?? null,
+      leagueTypeConfig: leagueTypeConfig
+        ? {
+            displayName: (leagueTypeConfig as any).displayName,
+            isTeamMode: (leagueTypeConfig as any).isTeamMode ?? false,
+            regularPhase: (leagueTypeConfig as any).regularPhase ?? undefined,
+            regularPhases: (leagueTypeConfig as any).regularPhases ?? undefined,
+            finalPhase: (leagueTypeConfig as any).finalPhase ?? undefined,
+          }
+        : null,
       platformConfig: league.platformConfig,
       phaseCutoffTimes: league.phaseCutoffTimes,
       presentation: league.presentation ?? { fr: "", en: "" },

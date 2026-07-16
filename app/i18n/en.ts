@@ -521,6 +521,8 @@ export const en: Translations = {
     officialSubstitute: "Official Sub",
     officialSubstitutes: "Official Substitutes",
     rulesPlaceholder: "Rules information will be added soon.",
+    configDetails: "Configuration details",
+    phaseCutoffDates: "Phase cutoff dates",
     admin: {
       createNew: "Create new tournament",
       coverImageLabel: "Cover image",
