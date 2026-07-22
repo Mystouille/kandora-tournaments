@@ -14,11 +14,44 @@ import {
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "~/services/connectors/RiichiCityLeagueConnector.server";
 import { isRedisConfigured } from "~/services/redisConnection.server";
+import { trackError } from "~/services/telemetry.server";
+
+const env = process.env.NODE_ENV === "production" ? "prod" : "dev";
 
 let initialized = false;
 let workerInitialized = false;
 let schedulingWorkerInitialized = false;
 let discordSyncWorkerInitialized = false;
+let processGuardsInstalled = false;
+
+/**
+ * Install last-resort process-level guards. In production the BullMQ workers
+ * run inline in the web process, so a single unhandled promise rejection or
+ * uncaught EventEmitter "error" (e.g. a third-party WebSocket failing its
+ * handshake) would otherwise terminate the whole app. Record such errors to
+ * telemetry and keep the process alive. Idempotent.
+ */
+function installProcessGuards(): void {
+  if (processGuardsInstalled) {
+    return;
+  }
+  processGuardsInstalled = true;
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("[processGuard] Unhandled promise rejection:", reason);
+    trackError(reason, { env, source: "unhandledRejection" });
+  });
+
+  process.on("uncaughtException", (error) => {
+    // Intentionally do NOT exit: the inline BullMQ workers share this process
+    // with the web server in production, so exiting here would take the entire
+    // app down — exactly the failure we are guarding against. Log to telemetry
+    // and keep serving; a stray uncaught error (typically a library emitting
+    // an "error" event with no listener) must not kill the server.
+    console.error("[processGuard] Uncaught exception:", error);
+    trackError(error, { env, source: "uncaughtException" });
+  });
+}
 
 /**
  * Initialize the BullMQ worker for league update jobs.
@@ -203,6 +236,10 @@ async function recoverOrphanedSchedulingJobs(): Promise<void> {
  * Safe to call multiple times — only runs once.
  */
 export async function initLeagueAgent(): Promise<void> {
+  // Install last-resort crash guards before anything else so early failures
+  // are captured (and survived) rather than killing the inline-worker process.
+  installProcessGuards();
+
   if (initialized) {
     return;
   }
