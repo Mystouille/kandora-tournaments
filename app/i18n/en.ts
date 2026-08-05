@@ -900,7 +900,7 @@ export const en: Translations = {
     title: "Review",
     subtitle: "Review a game from Tenhou, Mahjong Soul, or Riichi City",
     description:
-      "Paste a replay id or share link from Tenhou, Mahjong Soul, or Riichi City to import it and review the game.",
+      "Paste a replay id or share link from Tenhou, Mahjong Soul, or Riichi City to import it and review the game. You can add comments, draw on the table, and share your review with others.",
     manualReviewTitle: "Manual review",
     placeholder: "Replay id or share link",
     openReplay: "Open replay",
