@@ -174,3 +174,110 @@ export function fetchTenhouLobbyReady(
     ws.on("close", () => finish(csPlayers));
   });
 }
+
+/** A single JSON frame observed on the lobby socket. */
+export interface TenhouLobbyFrame {
+  /** The frame's `tag` field, or `"<untagged>"`. */
+  tag: string;
+  /** The full parsed JSON frame. */
+  raw: Record<string, unknown>;
+  /** Milliseconds since the probe opened. */
+  at: number;
+}
+
+export interface TenhouLobbyProbeResult {
+  /** Normalised public lobby id actually subscribed. */
+  lobby: string;
+  /** Count of received JSON frames by tag. */
+  tagCounts: Record<string, number>;
+  /** Every JSON frame received (capped by `maxFrames`), in arrival order. */
+  frames: TenhouLobbyFrame[];
+}
+
+/**
+ * DIAGNOSTIC (Phase 0a — watch-id discovery). Read-only: opens the lobby probe,
+ * subscribes (`CS`), and collects EVERY JSON frame Tenhou broadcasts for
+ * `durationMs`, so we can see whether the lobby advertises ongoing-game watch
+ * ids (`WG.id`) and how they map to tables / player names. Never joins a table.
+ * Best-effort — resolves with whatever was captured (empty on error).
+ *
+ * Investigation scaffolding, not production code: run it against a live league
+ * lobby to determine the watch-id source, then fold the finding into the
+ * connector (or delete it).
+ */
+export function collectTenhouLobbyFrames(
+  rawLobbyId: string,
+  options?: { helloName?: string; durationMs?: number; maxFrames?: number }
+): Promise<TenhouLobbyProbeResult> {
+  const lobby = toTenhouWsLobbyId(rawLobbyId);
+  const loginName = options?.helloName?.trim() || "NoName";
+  const durationMs = options?.durationMs ?? 30_000;
+  const maxFrames = options?.maxFrames ?? 500;
+
+  return new Promise<TenhouLobbyProbeResult>((resolve) => {
+    const frames: TenhouLobbyFrame[] = [];
+    const tagCounts: Record<string, number> = {};
+    const startedAt = Date.now();
+    let settled = false;
+    let keepAlive: ReturnType<typeof setInterval> | undefined;
+
+    const ws = new WebSocket(TENHOU_LOBBY_WS_URL, {
+      headers: { "User-Agent": USER_AGENT, Origin: "https://tenhou.net" },
+    });
+
+    const finish = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (keepAlive) {
+        clearInterval(keepAlive);
+      }
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        // best-effort tear-down
+      }
+      resolve({ lobby, tagCounts, frames });
+    };
+
+    const timer = setTimeout(finish, durationMs);
+    timer.unref?.();
+
+    ws.on("open", () => {
+      ws.send(JSON.stringify({ tag: "HELO", name: loginName, sx: "M" }));
+    });
+
+    ws.on("message", (raw: RawData) => {
+      const text = toText(raw).replace(/\0+$/, "").trim();
+      if (!text.startsWith("{")) {
+        return; // XML keepalive / echo frame — ignore
+      }
+      let msg: Record<string, unknown>;
+      try {
+        msg = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      const tag = typeof msg.tag === "string" ? msg.tag : "<untagged>";
+      tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+      if (frames.length < maxFrames) {
+        frames.push({ tag, raw: msg, at: Date.now() - startedAt });
+      }
+      if (tag === "HELO") {
+        // Greeted — subscribe to the lobby and start keepalives.
+        ws.send(JSON.stringify({ tag: "CS", lobby }));
+        keepAlive = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send("<Z/>");
+          }
+        }, KEEPALIVE_MS);
+        keepAlive.unref?.();
+      }
+    });
+
+    ws.on("error", finish);
+    ws.on("close", finish);
+  });
+}

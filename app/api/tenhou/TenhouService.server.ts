@@ -12,6 +12,67 @@ export interface TenhouTournamentConfig {
   EDITAUTH: string;
 }
 
+/** One ongoing (watchable) game from `cmd_get_wg.cgi`. */
+export interface TenhouWatchGame {
+  /** Spectator watch id — the 8-hex value the kansen client sends as `WG.id`. */
+  watchId: string;
+  /** Seat-ordered player names (E, S, W, N), decoded from base64. */
+  players: string[];
+  /** Per-seat Tenhou rating (R), parallel to `players`. */
+  ratings: number[];
+}
+
+/**
+ * Parses a `cmd_get_wg.cgi` body. The response is a JSONP wrapper
+ * `sw([ "<row>", … ]);` with one comma-separated row per ongoing game:
+ * `watchId,meta,timer,meta,<b64name>,<games>,<rating>` repeated for 4 seats.
+ * Player names are base64; the leading + per-seat count metadata is skipped.
+ * Returns `[]` on any unexpected shape (best-effort).
+ */
+export function parseTenhouWatchGames(raw: string): TenhouWatchGame[] {
+  const match = raw.trim().match(/^sw\((\[[\s\S]*\])\);?$/);
+  if (!match) {
+    return [];
+  }
+  let rows: unknown;
+  try {
+    rows = JSON.parse(match[1]);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+  const games: TenhouWatchGame[] = [];
+  for (const row of rows) {
+    if (typeof row !== "string") {
+      continue;
+    }
+    const f = row.split(",");
+    // 4 header fields (watchId + 3 meta) + 4 players × 3 fields each = 16.
+    if (f.length < 16) {
+      continue;
+    }
+    const players: string[] = [];
+    const ratings: number[] = [];
+    for (let seat = 0; seat < 4; seat++) {
+      const base = 4 + seat * 3;
+      players.push(decodeBase64Utf8(f[base]));
+      ratings.push(Number.parseFloat(f[base + 2]));
+    }
+    games.push({ watchId: f[0], players, ratings });
+  }
+  return games;
+}
+
+function decodeBase64Utf8(b64: string): string {
+  try {
+    return Buffer.from(b64, "base64").toString("utf8");
+  } catch {
+    return b64;
+  }
+}
+
 /**
  * Low-level HTTP client for Tenhou private lobby (C-number) APIs.
  *
@@ -25,6 +86,9 @@ export class TenhouService {
 
   private static readonly PLAYERS_URL =
     "https://tenhou.net/cs/edit/cmd_get_players.cgi";
+
+  private static readonly GET_WG_URL =
+    "https://tenhou.net/cs/edit/cmd_get_wg.cgi";
 
   private static readonly LOAD_URL = "https://tenhou.net/cs/edit/cmd_load.cgi";
 
@@ -168,6 +232,32 @@ export class TenhouService {
       idle: decodeNames(params.get("IDLE")),
       playing: decodeNames(params.get("PLAY")),
     };
+  }
+
+  /**
+   * Fetches the ongoing (watchable) games in a Tenhou private lobby, each with
+   * its spectator watch-id and seat-ordered players, via `cmd_get_wg.cgi`.
+   * Requires the full edit-auth lobby id (the long `C…` form). Returns `[]`
+   * when no game is in progress.
+   */
+  async fetchLobbyWatchGames(lobbyId: string): Promise<TenhouWatchGame[]> {
+    const res = await fetch(TenhouService.GET_WG_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain",
+        "User-Agent": TenhouService.USER_AGENT,
+        Referer: `https://tenhou.net/cs/edit/?${lobbyId}`,
+      },
+      body: `L=${lobbyId}`,
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Tenhou cmd_get_wg.cgi returned ${res.status} for ${lobbyId}`
+      );
+    }
+
+    return parseTenhouWatchGames(await res.text());
   }
 
   /**
