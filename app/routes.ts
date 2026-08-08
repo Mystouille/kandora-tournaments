@@ -37,6 +37,15 @@ export default [
   route("/replays/:gameId", "routes/game/replay.tsx"),
 
   // ---------------------------------------------------------------------
+  // Live spectator viewer — gated by `GAME_ENABLED`
+  // ---------------------------------------------------------------------
+  // Connects to the SHARED game-server as a public, read-only spectator
+  // (see `/api/game/session`). Reuses the shared `kandora-game` spectate
+  // route file; tournaments only spectates (no lobby / play routes).
+  route("/spectate/:matchId", "game/routes/spectate.tsx"),
+  route("/api/game/session", "routes/api/game/session.ts"),
+
+  // ---------------------------------------------------------------------
   // Admin — online tournaments
   // ---------------------------------------------------------------------
   route(
