@@ -9,6 +9,7 @@ import {
   StepForwardOutlined,
 } from "@ant-design/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { parseTenhouSpectateHar } from "~/api/tenhou/spectateHarAdapter";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import type { MatchView } from "~/game/client/store";
@@ -80,6 +81,13 @@ export default function TenhouHarSpectator({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<TableRenderer | null>(null);
   const latestRenderRef = useRef<MatchView | null>(null);
+  // Dev-only: `?logos=1` overlays a dummy team logo/name on every seat to
+  // eyeball the nameplate enrichment without a live relay.
+  const [searchParams] = useSearchParams();
+  const showLogos = searchParams.has("logos");
+  // Dev-only: `?live=1` simulates the live-spectate wall (dead wall
+  // only, fixed at the left of the bottom wall).
+  const showLive = searchParams.has("live");
 
   const session = loaderData.sessions[sessionIndex];
   const { replay } = session;
@@ -195,8 +203,17 @@ export default function TenhouHarSpectator({
     renderer.setShowHands(showHands);
     renderer.setShowWaits(showWaits);
     renderer.setShowNames(true);
+    renderer.setLiveSpectate(showLive);
+    if (showLogos) {
+      renderer.setSeatEnrichment([
+        { teamName: "Red Hags", teamLogoUrl: "/hag.png" },
+        { teamName: "Blue Hags", teamLogoUrl: "/hag.png" },
+        { teamName: "Green Hags", teamLogoUrl: "/hag.png" },
+        { teamName: "Gold Hags", teamLogoUrl: "/hag.png" },
+      ]);
+    }
     renderer.render(renderArgs);
-  }, [renderArgs, showHands, showWaits]);
+  }, [renderArgs, showHands, showWaits, showLogos, showLive]);
 
   const pauseView = (): void => {
     setFollowLive(false);
