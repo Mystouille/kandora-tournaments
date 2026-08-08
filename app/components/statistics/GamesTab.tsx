@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   Button,
   Card,
@@ -17,6 +17,7 @@ import { basePath } from "../../utils/basePath";
 import type { TeamOption } from "./types";
 import { CopyLogIdButton } from "./CopyLogIdButton";
 import { WatchReplayButton } from "./WatchReplayButton";
+import { WatchLiveButton } from "./WatchLiveButton";
 import { TeamLogo } from "../TeamLogo";
 import { PlayerAvatar } from "../PlayerAvatar";
 
@@ -43,6 +44,27 @@ interface GameEntry {
   endTime: string | null;
   replayUrl: string | null;
   players: PlayerEntry[];
+}
+
+interface OngoingPlayerEntry {
+  userId: string | null;
+  seat: number;
+  name: string;
+  nickname: string;
+  avatarUrl: string | null;
+  leaguePicture: import("../../types/pictures").PicturePair | null;
+  teamName: string | null;
+  teamPicture: import("../../types/pictures").PicturePair | null;
+}
+
+interface OngoingGameEntry {
+  gameId: string;
+  platform: string | null;
+  status: "ongoing";
+  startTime: string | null;
+  watchId: string | null;
+  matchId: string | null;
+  players: OngoingPlayerEntry[];
 }
 
 interface GamesTabProps {
@@ -154,6 +176,24 @@ export default function GamesTab({
   );
   const totalGames = data?.pages[0]?.total ?? 0;
 
+  // Live (in-progress) games — read from the DB projection, refreshed often.
+  const { data: ongoingData } = useQuery({
+    queryKey: ["ongoing-games", leagueIds.join(",")],
+    queryFn: async () => {
+      const res = await fetch(
+        `${basePath}/api/ongoing-games?leagueIds=${leagueIds.join(",")}`
+      );
+      if (!res.ok) {
+        throw new Error("Failed to fetch ongoing games");
+      }
+      const json = await res.json();
+      return (json.games ?? []) as OngoingGameEntry[];
+    },
+    enabled: leagueIds.length > 0,
+    refetchInterval: 30_000,
+  });
+  const ongoingGames = ongoingData ?? [];
+
   // Apply intersection filtering client-side
   const filteredGames = useMemo(() => {
     if (matchMode === "union" || entityIds.length === 0) {
@@ -200,7 +240,7 @@ export default function GamesTab({
     );
   }
 
-  if (games.length === 0) {
+  if (games.length === 0 && ongoingGames.length === 0) {
     return (
       <div style={{ padding: "80px 0" }}>
         <Empty description={t.statistics.noDataForSelection} />
@@ -253,6 +293,33 @@ export default function GamesTab({
                 ({filteredGames.length}/{games.length})
               </Text>
             )}
+        </div>
+      )}
+      {ongoingGames.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <Text
+            strong
+            style={{ fontSize: "1rem", display: "block", marginBottom: 12 }}
+          >
+            🔴 Ongoing
+          </Text>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
+              gap: 16,
+            }}
+          >
+            {ongoingGames.map((game) => (
+              <OngoingGameCard
+                key={game.gameId}
+                game={game}
+                isDark={isDark}
+                locale={locale}
+                highlightedPlayerIds={highlightedPlayerIds}
+              />
+            ))}
+          </div>
         </div>
       )}
       <div
@@ -370,6 +437,145 @@ function GameCard({
             highlighted={highlightedPlayerIds.has(player.userId)}
           />
         ))}
+      </div>
+    </Card>
+  );
+}
+
+function OngoingGameCard({
+  game,
+  isDark,
+  locale,
+  highlightedPlayerIds,
+}: {
+  game: OngoingGameEntry;
+  isDark: boolean;
+  locale: string;
+  highlightedPlayerIds: Set<string>;
+}) {
+  const cardBg = isDark
+    ? "linear-gradient(135deg, #2a1a1a 0%, #3e1616 100%)"
+    : "linear-gradient(135deg, #fff5f5 0%, #ffecec 100%)";
+  const startStr = game.startTime ? formatTime(game.startTime, locale) : null;
+
+  return (
+    <Card
+      size="small"
+      style={{
+        background: cardBg,
+        border: isDark ? "1px solid #5c2626" : "1px solid #ffccc7",
+        borderRadius: 10,
+      }}
+      styles={{ body: { padding: "12px 16px" } }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+          gap: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Tag color="red" style={{ margin: 0, fontWeight: 600 }}>
+            ● LIVE
+          </Tag>
+          {startStr && (
+            <Text
+              type="secondary"
+              style={{
+                fontSize: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <ClockCircleOutlined />
+              {startStr}
+            </Text>
+          )}
+        </div>
+        {game.platform === "tenhou" && game.watchId && (
+          <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+            <WatchLiveButton watchId={game.watchId} matchId={game.matchId} />
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {game.players.map((player) => {
+          const highlighted =
+            player.userId != null && highlightedPlayerIds.has(player.userId);
+          return (
+            <div
+              key={`${game.gameId}-${player.seat}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 8px",
+                borderRadius: 6,
+                background: highlighted
+                  ? isDark
+                    ? "rgba(24, 144, 255, 0.12)"
+                    : "rgba(24, 144, 255, 0.08)"
+                  : undefined,
+              }}
+            >
+              <PlayerAvatar
+                size={28}
+                src={player.avatarUrl}
+                leaguePicture={player.leaguePicture}
+                style={{ flexShrink: 0 }}
+              />
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <Text
+                  strong
+                  style={{
+                    fontSize: "0.9rem",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {player.name}
+                </Text>
+                {player.teamName && (
+                  <>
+                    {player.teamPicture && (
+                      <TeamLogo
+                        pictures={player.teamPicture}
+                        size={16}
+                        style={{ flexShrink: 0 }}
+                      />
+                    )}
+                    <Text
+                      type="secondary"
+                      style={{
+                        fontSize: "0.8rem",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        flexShrink: 1,
+                      }}
+                    >
+                      ({player.teamName})
+                    </Text>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </Card>
   );

@@ -22,6 +22,7 @@ import { inferReplaySource } from "~/game/replay/inferSource";
 import { fetchOrphanReplayLog } from "~/services/fetchOrphanReplayLog.server";
 import { annotateWallSchedule } from "~/game/replay/annotateWallSchedule";
 import { annotateWaits } from "~/services/annotateWaits";
+import { resolveSeatEnrichmentForReplay } from "~/services/replayEnrichment.server";
 import {
   bytesToBase64,
   base64ToBytes,
@@ -46,6 +47,7 @@ import {
   type ReviewDraft,
 } from "./ReplayReviewCartridge";
 import { useLocale } from "~/contexts/LocaleContext";
+import { useTelemetry } from "~/contexts/TelemetryContext";
 import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
 import { ArticleContent } from "~/components/ArticleContent";
@@ -307,7 +309,17 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     // Pre-compute per-event wait snapshots server-side so the
     // renderer never runs shanten on the client.
     const waitsByIndex = annotateWaits(log.events);
-    return { log, waitsByIndex, review: loadedReview, currentUserId };
+    const seatEnrichment = await resolveSeatEnrichmentForReplay(
+      cleanGameId,
+      log.seats
+    );
+    return {
+      log,
+      waitsByIndex,
+      review: loadedReview,
+      currentUserId,
+      seatEnrichment,
+    };
   }
 
   // Cache miss: try to fetch + parse from the platform on-demand
@@ -348,6 +360,10 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     waitsByIndex: annotateWaits(annotatedLog.events),
     review: loadedReview,
     currentUserId,
+    seatEnrichment: await resolveSeatEnrichmentForReplay(
+      cleanGameId,
+      annotatedLog.seats
+    ),
   };
 }
 
@@ -397,8 +413,23 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     waitsByIndex,
     review: initialReview,
     currentUserId,
+    seatEnrichment,
   } = loaderData;
   const { t } = useLocale();
+  const { track } = useTelemetry();
+  // Spectating telemetry: replay open + leave (with dwell time).
+  useEffect(() => {
+    const openedAt = Date.now();
+    track("replay_open", { gameId: log.sourceGameId, source: log.source });
+    return () => {
+      track("replay_leave", {
+        gameId: log.sourceGameId,
+        source: log.source,
+        durationMs: Date.now() - openedAt,
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [log.sourceGameId]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<TableRenderer | null>(null);
   // Mirrors the latest `MatchView` rendered so the renderer's
@@ -1131,6 +1162,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             return;
           }
           rendererRef.current = renderer;
+          renderer.setSeatEnrichment(seatEnrichment);
           const initialArgs = replayViewToMatchView(currentView, {
             index,
             mySeat: focusSeat,

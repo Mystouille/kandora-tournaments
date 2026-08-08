@@ -118,6 +118,23 @@ export function TelemetryProvider({
     });
   }, [location.pathname, location.search, track]);
 
+  // Flush buffered events when the page is hidden / unloaded so "leave"
+  // events aren't lost on tab close or backgrounding.
+  useEffect(() => {
+    const onHide = (): void => flush();
+    const onVisibility = (): void => {
+      if (document.visibilityState === "hidden") {
+        flush();
+      }
+    };
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [flush]);
+
   return (
     <TelemetryContext.Provider value={{ sessionId, track, trackError }}>
       {children}

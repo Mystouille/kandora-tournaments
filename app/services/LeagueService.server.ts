@@ -16,6 +16,7 @@ import { hydrateLeagueGames } from "~/services/GameHydrationService.server";
 import { createConnectorForLeague } from "~/services/connectors/createConnectorForLeague.server";
 import type { ILeagueTournamentConnector } from "~/services/connectors/ILeagueTournamentConnector.server";
 import { syncOngoingGameMessages } from "~/services/ongoingGameMessageService.server";
+import { syncLiveGames } from "~/services/liveGameService.server";
 import {
   buildUserToTeamMap,
   computeNonTeamRankingData,
@@ -403,6 +404,14 @@ export class LeagueService {
     } catch (error) {
       console.error(
         `Failed to sync ongoing-game messages for league ${league.name}:`,
+        error
+      );
+    }
+    try {
+      await syncLiveGames(league, connector);
+    } catch (error) {
+      console.error(
+        `Failed to sync live games for league ${league.name}:`,
         error
       );
     }

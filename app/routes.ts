@@ -44,6 +44,8 @@ export default [
   // route file; tournaments only spectates (no lobby / play routes).
   route("/spectate/:matchId", "game/routes/spectate.tsx"),
   route("/api/game/session", "routes/api/game/session.ts"),
+  route("/api/game/watch", "routes/api/game/watch.ts"),
+  route("/api/game/enrichment", "routes/api/game/enrichment.ts"),
 
   // ---------------------------------------------------------------------
   // Admin — online tournaments
@@ -95,6 +97,7 @@ export default [
   route("/api/score-evolution", "routes/api/score-evolution.ts"),
   route("/api/game-records", "routes/api/game-records.ts"),
   route("/api/games", "routes/api/games.ts"),
+  route("/api/ongoing-games", "routes/api/ongoing-games.ts"),
   route("/api/statistics-filters", "routes/api/statistics-filters.ts"),
   route("/api/yaku-map", "routes/api/yaku-map.ts"),
   route("/api/telemetry", "routes/api/telemetry.ts"),
