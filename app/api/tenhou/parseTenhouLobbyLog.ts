@@ -92,8 +92,8 @@ function computePlacements(scores: number[]): number[] {
  * Parses the raw text returned by Tenhou's `cmd_get_log.cgi` into an
  * array of {@link GameSummary} objects.
  *
- * The response contains three types of lines per game (identified by
- * `type=0001`):
+ * The response contains three types of lines per game. Game rows include a
+ * `type` bit field whose value varies with the lobby rules:
  *
  * 1. **START** — contains `log=<logId>` (the game replay identifier).
  * 2. **END**   — `#END` chat message with human-readable scores (ignored).
@@ -122,8 +122,10 @@ export function parseTenhouLobbyLog(
       continue;
     }
 
-    // Only process game-type lines (type=0001)
-    if (line.params.type !== "0001") {
+    // START and result rows are typed; chat-only rows such as #END are not.
+    // The type value is a rule bit field (for example 0001 or 0009), so it
+    // must not be used as a fixed game-type discriminator.
+    if (!line.params.type) {
       continue;
     }
 
