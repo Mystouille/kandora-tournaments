@@ -66,6 +66,7 @@ interface RosterTeam {
 interface RosterData {
   leagueId: string;
   leagueName: string;
+  leagueSlug: string;
   platform: string;
   isTeamMode: boolean;
   hasTournamentId: boolean;
@@ -476,10 +477,12 @@ export default function EditRosterPage() {
     value: t._id ?? t.simpleName,
     label: t.displayName,
   }));
+  const supportsPlatformSync =
+    data.platform === "MAJSOUL" || data.platform === "RIICHICITY";
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/`}>
+      <Link to={`/online-tournaments/${encodeURIComponent(data.leagueSlug)}`}>
         <Button
           size="small"
           icon={<ArrowLeftOutlined />}
@@ -499,7 +502,7 @@ export default function EditRosterPage() {
         style={{ margin: "16px 0" }}
       />
 
-      {data.hasTournamentId && (
+      {data.hasTournamentId && supportsPlatformSync && (
         <div style={{ marginBottom: 16 }}>
           <Switch
             checked={syncToPlatform}

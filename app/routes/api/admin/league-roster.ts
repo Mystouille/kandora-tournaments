@@ -266,6 +266,7 @@ export async function loader({ request }: { request: Request }) {
   return Response.json({
     leagueId: league._id.toString(),
     leagueName: league.name,
+    leagueSlug: league.slug,
     platform,
     isTeamMode,
     hasTournamentId: !!league.platformConfig.tournamentId,
