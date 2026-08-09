@@ -1,6 +1,7 @@
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { LiveGameModel, type LiveGame } from "~/db/LiveGame";
 import { TeamModel, type Team } from "~/db/Team";
+import { UserModel } from "~/db/User";
 import { isGameEnabled } from "~/game/feature-gate";
 
 /**
@@ -37,16 +38,34 @@ export async function loader({ request }: { request: Request }) {
     string,
     { teamName: string; teamLogoUrl: string | null }
   >();
+  const rosterUserIds = new Set<string>();
   for (const team of teams) {
     const roster = team.roster ?? { members: [], substitutes: [] };
-    for (const memberId of [
+    const teamUserIds = [
       ...(roster.members ?? []),
       ...(roster.substitutes ?? []),
-    ]) {
-      userTeam.set(memberId.toString(), {
+    ];
+    if (roster.captain) {
+      teamUserIds.push(roster.captain);
+    }
+    for (const memberId of teamUserIds) {
+      const userId = memberId.toString();
+      rosterUserIds.add(userId);
+      userTeam.set(userId, {
         teamName: team.displayName,
         teamLogoUrl: team.pictures?.croppedPicture ?? null,
       });
+    }
+  }
+
+  const rosterUsers = await UserModel.find({ _id: { $in: [...rosterUserIds] } })
+    .select("_id tenhouIdentity.name")
+    .lean<Array<{ _id: { toString(): string }; tenhouIdentity?: { name?: string } }>>();
+  const tenhouNameToUserId = new Map<string, string>();
+  for (const user of rosterUsers) {
+    const tenhouName = user.tenhouIdentity?.name?.trim().toLocaleLowerCase();
+    if (tenhouName) {
+      tenhouNameToUserId.set(tenhouName, user._id.toString());
     }
   }
 
@@ -54,7 +73,10 @@ export async function loader({ request }: { request: Request }) {
     .slice()
     .sort((a, b) => a.seat - b.seat)
     .map((p) => {
-      const pid = p.userId ? p.userId.toString() : null;
+      const pid = p.userId
+        ? p.userId.toString()
+        : (tenhouNameToUserId.get(p.nickname.trim().toLocaleLowerCase()) ??
+          null);
       const team = pid ? userTeam.get(pid) : undefined;
       return {
         seat: p.seat,
