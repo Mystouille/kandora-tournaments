@@ -7,8 +7,6 @@ import { basePath } from "../../utils/basePath";
 
 interface WatchLiveButtonProps {
   watchId: string;
-  /** Set when a relay is already running — skips the start round-trip. */
-  matchId?: string | null;
   size?: "small" | "middle" | "large";
 }
 
@@ -42,7 +40,6 @@ function liveErrorMessage(error?: string): string {
  */
 export function WatchLiveButton({
   watchId,
-  matchId,
   size = "small",
 }: WatchLiveButtonProps) {
   const navigate = useNavigate();
@@ -54,10 +51,6 @@ export function WatchLiveButton({
       return;
     }
     track("spectate_watch_click", { watchId });
-    if (matchId) {
-      void navigate(`/spectate/${matchId}`);
-      return;
-    }
     setLoading(true);
     const formData = new FormData();
     formData.set("watchId", watchId);

@@ -506,7 +506,7 @@ function OngoingGameCard({
         </div>
         {liveSpectatingEnabled && game.platform === "tenhou" && game.watchId && (
           <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-            <WatchLiveButton watchId={game.watchId} matchId={game.matchId} />
+            <WatchLiveButton watchId={game.watchId} />
           </div>
         )}
       </div>
