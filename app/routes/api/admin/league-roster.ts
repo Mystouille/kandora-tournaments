@@ -5,6 +5,7 @@ import { TeamModel } from "../../../db/Team";
 import { UserModel } from "../../../db/User";
 import { connectToDatabase } from "../../../utils/dbConnection.server";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
+import { slugify } from "../../../utils/slugify";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type { TeamEntry } from "../../../services/connectors/ILeagueTournamentConnector.server";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
@@ -266,7 +267,7 @@ export async function loader({ request }: { request: Request }) {
   return Response.json({
     leagueId: league._id.toString(),
     leagueName: league.name,
-    leagueSlug: league.slug,
+    leagueSlug: slugify(league.name),
     platform,
     isTeamMode,
     hasTournamentId: !!league.platformConfig.tournamentId,
