@@ -1,7 +1,7 @@
 import { isGameEnabled } from "~/game/feature-gate";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { LiveGameModel } from "~/db/LiveGame";
-import { startRelay } from "~/services/gameServer.server";
+import { RelayError, startRelay } from "~/services/gameServer.server";
 
 /**
  * POST /api/game/watch  (form field `watchId`)
@@ -43,6 +43,12 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ ok: true, matchId });
   } catch (error) {
     console.error("Failed to start live relay:", error);
-    return Response.json({ ok: false, error: "relay_failed" }, { status: 502 });
+    return Response.json(
+      {
+        ok: false,
+        error: error instanceof RelayError ? error.code : "relay_failed",
+      },
+      { status: 502 }
+    );
   }
 }

@@ -12,6 +12,29 @@ interface WatchLiveButtonProps {
   size?: "small" | "middle" | "large";
 }
 
+function liveErrorMessage(error?: string): string {
+  switch (error) {
+    case "game_disabled":
+      return "Live viewing is disabled";
+    case "relay_not_configured":
+      return "Live viewing is not configured";
+    case "relay_unauthorized":
+      return "The live-view server rejected its credentials";
+    case "relay_endpoint_not_found":
+      return "The live-view server does not support relays";
+    case "relay_unreachable":
+      return "The live-view server is unreachable";
+    case "game_server_disabled":
+      return "Live viewing is disabled on the game server";
+    case "relay_capacity":
+      return "The live-view server is at capacity";
+    case "relay_invalid_request":
+      return "The live-view server rejected this game identifier";
+    default:
+      return "Live viewing is currently unavailable";
+  }
+}
+
 /**
  * Starts (or reuses) a live spectator relay for an ongoing game via
  * `/api/game/watch`, then navigates to `/spectate/:matchId`. Sibling of
@@ -52,11 +75,7 @@ export function WatchLiveButton({
         void navigate(`/spectate/${data.matchId}`);
         return;
       }
-      message.error(
-        data.error === "game_disabled"
-          ? "Live viewing is disabled"
-          : "Live viewing is currently unavailable"
-      );
+      message.error(liveErrorMessage(data.error));
     } catch {
       message.error("Live viewing is currently unavailable");
     } finally {
