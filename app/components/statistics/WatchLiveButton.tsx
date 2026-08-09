@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button, Tooltip, message } from "antd";
 import { EyeOutlined, LoadingOutlined } from "@ant-design/icons";
-import { useFetcher, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { useTelemetry } from "../../contexts/TelemetryContext";
+import { basePath } from "../../utils/basePath";
 
 interface WatchLiveButtonProps {
   watchId: string;
@@ -21,29 +22,47 @@ export function WatchLiveButton({
   matchId,
   size = "small",
 }: WatchLiveButtonProps) {
-  const fetcher = useFetcher<{
-    ok: boolean;
-    matchId?: string;
-    error?: string;
-  }>();
   const navigate = useNavigate();
   const { track } = useTelemetry();
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (fetcher.state !== "idle" || !fetcher.data) {
+  const startWatching = async (): Promise<void> => {
+    if (loading) {
       return;
     }
-    const data = fetcher.data;
-    if (data.ok && data.matchId) {
-      void navigate(`/spectate/${data.matchId}`);
-    } else {
+    track("spectate_watch_click", { watchId });
+    if (matchId) {
+      void navigate(`/spectate/${matchId}`);
+      return;
+    }
+    setLoading(true);
+    const formData = new FormData();
+    formData.set("watchId", watchId);
+    try {
+      const response = await fetch(`${basePath}/api/game/watch`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await response.json()) as {
+        ok: boolean;
+        matchId?: string;
+        error?: string;
+      };
+      if (response.ok && data.ok && data.matchId) {
+        void navigate(`/spectate/${data.matchId}`);
+        return;
+      }
       message.error(
-        data.error ? `Live unavailable (${data.error})` : "Live unavailable"
+        data.error === "game_disabled"
+          ? "Live viewing is disabled"
+          : "Live viewing is currently unavailable"
       );
+    } catch {
+      message.error("Live viewing is currently unavailable");
+    } finally {
       setLoading(false);
     }
-  }, [fetcher.state, fetcher.data, navigate]);
+  };
 
   return (
     <Tooltip title="Watch live">
@@ -52,20 +71,7 @@ export function WatchLiveButton({
         size={size}
         icon={loading ? <LoadingOutlined /> : <EyeOutlined />}
         disabled={loading}
-        onClick={() => {
-          if (loading) {
-            return;
-          }
-          track("spectate_watch_click", { watchId });
-          if (matchId) {
-            void navigate(`/spectate/${matchId}`);
-            return;
-          }
-          setLoading(true);
-          const fd = new FormData();
-          fd.set("watchId", watchId);
-          fetcher.submit(fd, { method: "post", action: "/api/game/watch" });
-        }}
+        onClick={() => void startWatching()}
       >
         Live
       </Button>

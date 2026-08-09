@@ -5,6 +5,7 @@ import { UserModel, type User } from "~/db/User";
 import { TeamModel, type Team } from "~/db/Team";
 import { getLeagueUserPictureMapForLeagues } from "~/services/leagueUserPictures.server";
 import type { PicturePair } from "~/types/pictures";
+import { isGameEnabled } from "~/game/feature-gate";
 
 /**
  * GET /api/ongoing-games?leagueIds=a,b,c
@@ -16,6 +17,7 @@ import type { PicturePair } from "~/types/pictures";
  * "Ongoing" section with the same card. Score/place are absent (game in play).
  */
 export async function loader({ request }: { request: Request }) {
+  const liveSpectatingEnabled = isGameEnabled();
   const url = new URL(request.url);
   const leagueIdsParam = url.searchParams.get("leagueIds");
   if (!leagueIdsParam) {
@@ -26,7 +28,7 @@ export async function loader({ request }: { request: Request }) {
     .map((s) => s.trim())
     .filter(Boolean);
   if (leagueIds.length === 0) {
-    return Response.json({ games: [] });
+    return Response.json({ games: [], liveSpectatingEnabled });
   }
 
   try {
@@ -42,7 +44,7 @@ export async function loader({ request }: { request: Request }) {
       .lean<LiveGame[]>();
 
     if (liveGames.length === 0) {
-      return Response.json({ games: [] });
+      return Response.json({ games: [], liveSpectatingEnabled });
     }
 
     // Resolve player identities at read time (team + logo from `userId`),
@@ -122,7 +124,7 @@ export async function loader({ request }: { request: Request }) {
       };
     });
 
-    return Response.json({ games });
+    return Response.json({ games, liveSpectatingEnabled });
   } catch (error) {
     console.error("Error fetching ongoing games:", error);
     return Response.json(

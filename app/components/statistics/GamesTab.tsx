@@ -187,12 +187,17 @@ export default function GamesTab({
         throw new Error("Failed to fetch ongoing games");
       }
       const json = await res.json();
-      return (json.games ?? []) as OngoingGameEntry[];
+      return {
+        games: (json.games ?? []) as OngoingGameEntry[],
+        liveSpectatingEnabled: json.liveSpectatingEnabled === true,
+      };
     },
     enabled: leagueIds.length > 0,
     refetchInterval: 30_000,
   });
-  const ongoingGames = ongoingData ?? [];
+  const ongoingGames = ongoingData?.games ?? [];
+  const liveSpectatingEnabled =
+    ongoingData?.liveSpectatingEnabled === true;
 
   // Apply intersection filtering client-side
   const filteredGames = useMemo(() => {
@@ -317,6 +322,7 @@ export default function GamesTab({
                 isDark={isDark}
                 locale={locale}
                 highlightedPlayerIds={highlightedPlayerIds}
+                liveSpectatingEnabled={liveSpectatingEnabled}
               />
             ))}
           </div>
@@ -447,11 +453,13 @@ function OngoingGameCard({
   isDark,
   locale,
   highlightedPlayerIds,
+  liveSpectatingEnabled,
 }: {
   game: OngoingGameEntry;
   isDark: boolean;
   locale: string;
   highlightedPlayerIds: Set<string>;
+  liveSpectatingEnabled: boolean;
 }) {
   const cardBg = isDark
     ? "linear-gradient(135deg, #2a1a1a 0%, #3e1616 100%)"
@@ -496,7 +504,7 @@ function OngoingGameCard({
             </Text>
           )}
         </div>
-        {game.platform === "tenhou" && game.watchId && (
+        {liveSpectatingEnabled && game.platform === "tenhou" && game.watchId && (
           <div style={{ marginLeft: "auto", flexShrink: 0 }}>
             <WatchLiveButton watchId={game.watchId} matchId={game.matchId} />
           </div>
