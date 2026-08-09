@@ -654,6 +654,7 @@ export default function Statistics({
                   children: (
                     <GamesTab
                       leagueIds={leagueIds}
+                      leagueSlug={leagueSlug}
                       entityType={chartEntityType}
                       entityIds={chartEntityIds}
                       startDate={rankingStartDate}

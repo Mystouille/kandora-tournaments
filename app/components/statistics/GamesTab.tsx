@@ -69,6 +69,7 @@ interface OngoingGameEntry {
 
 interface GamesTabProps {
   leagueIds: string[];
+  leagueSlug?: string;
   entityType: "player" | "team";
   entityIds: string[];
   startDate: string | null;
@@ -105,6 +106,7 @@ function formatDelta(delta: number): string {
 
 export default function GamesTab({
   leagueIds,
+  leagueSlug,
   entityType,
   entityIds,
   startDate,
@@ -319,6 +321,7 @@ export default function GamesTab({
               <OngoingGameCard
                 key={game.gameId}
                 game={game}
+                leagueSlug={leagueSlug}
                 isDark={isDark}
                 locale={locale}
                 highlightedPlayerIds={highlightedPlayerIds}
@@ -450,12 +453,14 @@ function GameCard({
 
 function OngoingGameCard({
   game,
+  leagueSlug,
   isDark,
   locale,
   highlightedPlayerIds,
   liveSpectatingEnabled,
 }: {
   game: OngoingGameEntry;
+  leagueSlug?: string;
   isDark: boolean;
   locale: string;
   highlightedPlayerIds: Set<string>;
@@ -506,7 +511,10 @@ function OngoingGameCard({
         </div>
         {liveSpectatingEnabled && game.platform === "tenhou" && game.watchId && (
           <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-            <WatchLiveButton watchId={game.watchId} />
+            <WatchLiveButton
+              watchId={game.watchId}
+              leagueSlug={leagueSlug}
+            />
           </div>
         )}
       </div>

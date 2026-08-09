@@ -7,6 +7,7 @@ import { basePath } from "../../utils/basePath";
 
 interface WatchLiveButtonProps {
   watchId: string;
+  leagueSlug?: string;
   size?: "small" | "middle" | "large";
 }
 
@@ -40,6 +41,7 @@ function liveErrorMessage(error?: string): string {
  */
 export function WatchLiveButton({
   watchId,
+  leagueSlug,
   size = "small",
 }: WatchLiveButtonProps) {
   const navigate = useNavigate();
@@ -65,7 +67,12 @@ export function WatchLiveButton({
         error?: string;
       };
       if (response.ok && data.ok && data.matchId) {
-        void navigate(`/spectate/${data.matchId}`);
+        const returnTo = leagueSlug
+          ? `/online-tournaments/${encodeURIComponent(leagueSlug)}/statistics`
+          : "/online-tournaments";
+        void navigate(
+          `/spectate/${data.matchId}?returnTo=${encodeURIComponent(returnTo)}`
+        );
         return;
       }
       message.error(liveErrorMessage(data.error));
