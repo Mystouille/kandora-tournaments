@@ -1,9 +1,16 @@
-# Railway config for the tournaments-owned kandora game-server service.
+# REFERENCE ONLY — not read by Railway in this project.
 #
-# Point the Railway service at this file via Settings → Build →
-# "Config Path": game-server/railway.toml. The repository's
-# top-level `railway.toml` continues to govern the tournaments web
-# service.
+# This Railway UI has no per-service "Config Path" field, so a service only
+# reads a `railway.toml` at its root — and the root one was removed (see
+# deploy/railway.web.reference.toml). Both the web and game-server services are
+# now configured directly in their Railway dashboards. The values below are the
+# source of truth to copy into the GAME-SERVER service's dashboard:
+#   Builder          = Dockerfile
+#   Dockerfile Path  = game-server/Dockerfile
+#   Root Directory   = /            (build context must be the repo root)
+#   Start Command    = (blank → Dockerfile CMD: `tsx game-server/index.ts`)
+#   Healthcheck Path = /health
+#   Watch Paths      = the list below
 
 [build]
 builder = "DOCKERFILE"
