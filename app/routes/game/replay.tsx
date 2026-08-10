@@ -80,7 +80,7 @@ interface SerializedReviewEdit {
   author: string;
   /** Author display name (JWT username at contribution time). */
   authorName: string;
-  /** Reviewer order index ΓÇö drives the color slot. */
+  /** Reviewer order index — drives the color slot. */
   colorIndex: number;
   text: string;
   drawingBase64: string | null;
@@ -96,15 +96,15 @@ interface SerializedReview {
   sourceGameId: string;
   createdBy: string;
   /**
-   * The seat (0ΓÇô3) this review is bound to. `null` while the
-   * review has no edits yet ΓÇö the author can still freely change
+   * The seat (0–3) this review is bound to. `null` while the
+   * review has no edits yet — the author can still freely change
    * their focused seat. Once the first edit is persisted the seat
    * is locked server-side.
    */
   seat: number | null;
   /**
    * Reviewers in first-contribution order. A reviewer's index here
-   * is their color slot (1st = orange, 2nd = blue, ΓÇª).
+   * is their color slot (1st = orange, 2nd = blue, …).
    */
   reviewers: SerializedReviewer[];
   edits: SerializedReviewEdit[];
@@ -113,7 +113,7 @@ interface SerializedReview {
  * Convert whatever Mongoose hands us for a Buffer schema field into
  * a plain `Uint8Array`. With `.lean()` the value is typically a
  * `mongoose.mongo.Binary` (BSON), not a Node `Buffer`, and
- * `new Uint8Array(binary)` does NOT extract the underlying bytes ΓÇö
+ * `new Uint8Array(binary)` does NOT extract the underlying bytes —
  * it yields an empty array. We have to reach into `.buffer` (Node
  * `Buffer`) first.
  */
@@ -217,7 +217,7 @@ function serializeReview(
 }
 
 /**
- * `/replays/:gameId` ΓÇö Phase 4.5 replay viewer.
+ * `/replays/:gameId` — Phase 4.5 replay viewer.
  *
  * The platform is inferred from the `:gameId` shape via
  * `inferReplaySource`; when inference returns `null` we fall back to
@@ -231,7 +231,7 @@ function serializeReview(
  *      which talks to the right `*LeagueConnector` to fetch + parse
  *      the platform log and upserts it as an orphan row (no
  *      `Game.replayLogRef` link). This makes replays viewable even
- *      when no `Game` doc exists yet ΓÇö useful for ad-hoc URLs and
+ *      when no `Game` doc exists yet — useful for ad-hoc URLs and
  *      for closing the gap between play-time and the next
  *      hydration cycle.
  *   3. On miss with no inferable source (e.g. hand-crafted id we
@@ -242,7 +242,7 @@ function serializeReview(
  * `TableRenderer` with prev / next / first / last / round picker
  * controls.
  *
- * Not gated by `requireGameEnabled()` ΓÇö replays are a viewer over
+ * Not gated by `requireGameEnabled()` — replays are a viewer over
  * already-recorded games (Majsoul / Tenhou / Riichi City logs) and
  * don't touch the live game-server. They remain reachable in
  * environments where the in-app game subsystem is disabled.
@@ -258,14 +258,14 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   //
   //   - Majsoul appends `_a<accountId>` to its share URLs to mark
   //     which player generated the link. We strip the suffix from
-  //     the id and ΓÇö if the cached replay knows that accountId ΓÇö
+  //     the id and — if the cached replay knows that accountId —
   //     surface the matching seat through the `?seat=` deeplink
   //     param so the viewer opens with that player at the bottom.
   //     Majsoul stashes the per-seat `accountId` (as a string) on
   //     the `match_start` event's `seats[].userId`.
-  //   - Riichi City appends `@<n>` (0ΓÇô3) to a log id to mark which
+  //   - Riichi City appends `@<n>` (0–3) to a log id to mark which
   //     seat that share link is from. The index is NOT the absolute
-  //     seat in the data ΓÇö it's the round-1 dealer-relative wind
+  //     seat in the data — it's the round-1 dealer-relative wind
   //     position (0=E, 1=S, 2=W, 3=N). RC's `position` field is
   //     shaped by player-join order, so the same `@n` maps to a
   //     different absolute seat per replay; we translate using the
@@ -277,7 +277,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   // collapse onto a single canonical id.
   // React Router's `redirect()` prepends the configured
   // `basename` (e.g. `/kandora/` in REMOTE dev) to whatever path
-  // we hand it, so we must hand it a basename-RELATIVE path ΓÇö
+  // we hand it, so we must hand it a basename-RELATIVE path —
   // never the raw `url.pathname`, which already includes the
   // basename and would otherwise produce `/kandora/kandora/...`.
   const url = new URL(request.url);
@@ -288,7 +288,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     // through Majsoul's private web-client encoding (it's NOT the
     // raw `account_id`, NOT a friend-id `searchAccountByPattern`
     // can decode, and in general not one of the seats in the
-    // replay anyway ΓÇö the sharer can be a spectator). So we
+    // replay anyway — the sharer can be a spectator). So we
     // just strip it for a clean canonical URL and leave the
     // viewer to default to seat 0; the user can pick a seat from
     // the dropdown or pass `?seat=N` explicitly.
@@ -303,8 +303,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   // Helper: translate the RC `@<n>` round-1 wind index to an
   // absolute seat using the first `hand_start` event's dealer.
   // Wind rotation around the table follows the absolute seat order
-  // (`(dealer + wind) % 4`) ΓÇö verified empirically by tracing the
-  // first four `Draw` events of round 1, which always go EΓåÆSΓåÆWΓåÆN
+  // (`(dealer + wind) % 4`) — verified empirically by tracing the
+  // first four `Draw` events of round 1, which always go E→S→W→N
   // starting from `dealer_pos`.
   const redirectToCanonicalRcUrl = (events: GameEvent[]): never => {
     const search = new URLSearchParams(url.searchParams);
@@ -398,7 +398,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   }
 
   // Cache miss: try to fetch + parse from the platform on-demand
-  // (Phase 4.5 follow-up ΓÇö orphan logs are fine for now, no
+  // (Phase 4.5 follow-up — orphan logs are fine for now, no
   // `Game.replayLogRef` link is created). We need a source to know
   // which connector to talk to; inference returning `null` means
   // we can only 404.
@@ -452,7 +452,7 @@ const SOURCE_LABEL: Record<ReplaySource, string> = {
 
 export function meta({ data }: Route.MetaArgs) {
   if (!data?.log) {
-    return [{ title: "Replay ΓÇö TNT Paris Mahjong" }];
+    return [{ title: "Replay — TNT Paris Mahjong" }];
   }
   const { log, review } = data;
   const sourceLabel = SOURCE_LABEL[log.source] ?? "Replay";
@@ -460,7 +460,7 @@ export function meta({ data }: Route.MetaArgs) {
   const standings = [...log.seats]
     .sort((a, b) => a.place - b.place)
     .map((s) => `${s.place}. ${s.displayName} (${s.finalScore})`)
-    .join(" ┬╖ ");
+    .join(" · ");
   // The reviewed player is the seat the review is locked to (the
   // player it focuses on, not the reviewer). `seat` stays null until
   // the first edit locks it.
@@ -473,15 +473,15 @@ export function meta({ data }: Route.MetaArgs) {
     : 0;
   const titleBase =
     review && reviewedName
-      ? `Game review of ${reviewedName} ΓÇö ${dateLabel}`
+      ? `Game review of ${reviewedName} — ${dateLabel}`
       : review
-        ? `${sourceLabel} replay review ΓÇö ${dateLabel}`
-        : `${sourceLabel} replay ΓÇö ${dateLabel}`;
+        ? `${sourceLabel} replay review — ${dateLabel}`
+        : `${sourceLabel} replay — ${dateLabel}`;
   const description = review
     ? `${sourceLabel}, ${commentCount} comment${commentCount === 1 ? "" : "s"}, ${standings}`
     : standings;
   return [
-    { title: `${titleBase} ΓÇö TNT Paris Mahjong` },
+    { title: `${titleBase} — TNT Paris Mahjong` },
     { name: "description", content: description },
     { property: "og:title", content: titleBase },
     { property: "og:description", content: description },
@@ -531,7 +531,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
   // URL deeplink state. Three optional search params, all
   // independently set so a partial URL still makes sense:
-  //   ?seat=N      focused player (0ΓÇô3)
+  //   ?seat=N      focused player (0–3)
   //   ?round=N     1-based round ordinal (matches the round
   //                picker). When `event` is absent we jump to
   //                that round's `hand_start`.
@@ -626,7 +626,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     // so the viewer doesn't greet the user with an empty table.
     return { seat, index: rounds[0] ?? bounds.min };
     // Snapshot-only: deliberately ignore later searchParams /
-    // bounds / rounds changes here ΓÇö the playhead is driven by
+    // bounds / rounds changes here — the playhead is driven by
     // component state from this point on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -664,13 +664,13 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     playSoundForEvent(ev, focusSeat);
   }, [index, soundEnabled, log.events, focusSeat]);
 
-  // ΓöÇΓöÇ Review state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Review state ────────────────────────────────────────────────
   // `review` mirrors what the server returned at load time and is
   // updated when we successfully publish edits. `localEdits` holds
   // *unpublished* per-event changes:
-  //   * `{ text, drawingBase64 }` ΓÇö replaces the server edit at
+  //   * `{ text, drawingBase64 }` — replaces the server edit at
   //     this index when published.
-  //   * `null`                    ΓÇö pending delete of an existing
+  //   * `null`                    — pending delete of an existing
   //                                 server-side edit at this index.
   // Per-event Save buttons only mutate `localEdits`; nothing hits
   // the network until the user clicks "Publish" in the cartridge.
@@ -701,10 +701,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     () => Object.keys(localEdits).length,
     [localEdits]
   );
-  // ΓöÇΓöÇ Unsaved-work navigation guard ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Unsaved-work navigation guard ───────────────────────
   // Locally-saved annotations live only in React state until the
   // reviewer clicks "Publish". An accidental Back (browser button,
-  // swipe-back gesture, or the Γ£ò close button ΓÇö all of which
+  // swipe-back gesture, or the ✕ close button — all of which
   // navigate) would silently discard them. Block the navigation and
   // surface a confirmation modal whenever there are unpublished
   // edits. `useBlocker` covers client-side navigations (including
@@ -714,7 +714,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       pendingCount > 0 && currentLocation.pathname !== nextLocation.pathname
   );
   // Full-page unloads (tab close, refresh, hard navigation) can't be
-  // intercepted by the router blocker ΓÇö fall back to the browser's
+  // intercepted by the router blocker — fall back to the browser's
   // native "leave site?" prompt while edits are pending.
   useEffect(() => {
     if (pendingCount === 0) {
@@ -746,7 +746,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   const myColor = reviewerColor(myColorIndex);
   const myName = currentUserName ?? "";
 
-  // ΓöÇΓöÇ Seat lock ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Seat lock ──────────────────────────────────────────────
   // A review is bound to a single seat: every annotation in it
   // is "about" the same player. We derive the effective lock
   // from two sources:
@@ -1041,7 +1041,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
   /**
    * Stage an edit at the current event in local state. Nothing is
-   * sent over the network ΓÇö call `publish()` to push everything.
+   * sent over the network — call `publish()` to push everything.
    */
   const commitEditLocally = (patch: {
     text?: string;
@@ -1070,7 +1070,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       const existingLocal = Object.prototype.hasOwnProperty.call(prev, index)
         ? prev[index]
         : undefined;
-      // Only the CURRENT user's own edit is a valid base ΓÇö otherwise a
+      // Only the CURRENT user's own edit is a valid base — otherwise a
       // partial patch (e.g. adding text) would absorb another
       // reviewer's drawing/text at this event and re-attribute it to
       // us (rendered in our color, and saved under our author).
@@ -1091,10 +1091,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
       if (patch.delete) {
         if (serverEdit) {
-          // Server has something to remove ΓåÆ mark as pending delete.
+          // Server has something to remove → mark as pending delete.
           next[index] = null;
         } else {
-          // No server edit ΓÇö just drop any local override.
+          // No server edit — just drop any local override.
           delete next[index];
         }
         return next;
@@ -1152,7 +1152,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     // Pin the share link to the current playhead so the viewer
     // lands on the same frame the author was looking at when they
     // hit Publish. Drawings/text are attached to a specific event
-    // index ΓÇö without this the viewer would have to scrub to find
+    // index — without this the viewer would have to scrub to find
     // them.
     params.set("event", String(index));
     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
@@ -1163,14 +1163,14 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
    * success, returns the share URL for the published review. On
    * failure, returns `null`. The share URL is built from the
    * freshly-resolved `shortId` so callers don't need to wait for
-   * the parent to re-render with the new `review` state ΓÇö a wait
+   * the parent to re-render with the new `review` state — a wait
    * that previously caused the publish modal to require two
    * confirmations on first publish.
    */
   const publish = async (): Promise<string | null> => {
     const entries = Object.entries(localEdits);
     if (entries.length === 0) {
-      // Nothing staged ΓÇö either the review is already published
+      // Nothing staged — either the review is already published
       // and up to date, or there is no review at all. Build a URL
       // from whatever the parent currently knows so the cartridge
       // can still surface a copyable link.
@@ -1191,7 +1191,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       // The server echoes back the locked seat on every response;
       // hold the latest so we can persist it into `review.seat`.
       let lockedSeat: number | null = null;
-      // ΓÇª and the reviewer roster (with color order), refreshed so a
+      // … and the reviewer roster (with color order), refreshed so a
       // brand-new contributor immediately shows in their color.
       let latestReviewers: SerializedReviewer[] | null = null;
       for (const [idxStr, patch] of entries) {
@@ -1336,7 +1336,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       viewCacheRef.current = { builtTo: index, view: next };
       return next;
     }
-    // Cache miss / backward jump / arbitrary seek ΓÇö re-fold.
+    // Cache miss / backward jump / arbitrary seek — re-fold.
     let v = initialView();
     for (let i = 0; i <= index && i < log.events.length; i++) {
       v = applyReplayEvent(v, log.events[i]);
@@ -1366,7 +1366,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         // `mount()` can dispatch its first events into a live
         // callback. Previously this was set after `mount()`
         // resolved, which meant any layout shift happening while
-        // tile textures were loading was dropped on the floor ΓÇö
+        // tile textures were loading was dropped on the floor —
         // contributing to the first-paint dark-canvas race on
         // client-side navigation.
         renderer.setOnRenderRequest(() => {
@@ -1380,7 +1380,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           setBottomHandBounds(rect);
         });
         // Replay playback should show the win-info panel fully
-        // revealed on every seek ΓÇö the staged per-yaku reveal is
+        // revealed on every seek — the staged per-yaku reveal is
         // only meaningful in live play, where the panel appears
         // exactly once per hand.
         renderer.setStagedRevealEnabled(false);
@@ -1410,7 +1410,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           // the moment Pixi's `Application` materializes (the
           // surrounding flex/grid hasn't fully laid out yet),
           // which leaves the first `render` drawing into an
-          // empty viewport ΓÇö the user sees a dark canvas until
+          // empty viewport — the user sees a dark canvas until
           // they reload. Schedule one more render on the next
           // animation frame so we redraw against the post-layout
           // screen dims; cheap and idempotent.
@@ -1495,8 +1495,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     setIndex(clamp(n));
   };
 
-  // Mouse-wheel scrubbing on the canvas container: scroll down ΓåÆ
-  // advance one event, scroll up ΓåÆ rewind one event. Each wheel
+  // Mouse-wheel scrubbing on the canvas container: scroll down →
+  // advance one event, scroll up → rewind one event. Each wheel
   // tick is a single step; we throttle to avoid blasting through
   // a round on a high-resolution trackpad.
   const wheelAccumRef = useRef(0);
@@ -1560,7 +1560,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       };
       if (wheelAccumRef.current >= threshold) {
         wheelAccumRef.current = 0;
-        // Wheel scrubs are discrete jumps to the next stop ΓÇö we
+        // Wheel scrubs are discrete jumps to the next stop — we
         // suppress the discard slide animation for that frame so
         // the pond reads as a static board state rather than a
         // tile sliding in from a hand that didn't visibly exist
@@ -1579,8 +1579,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     };
   }, [bounds.min, bounds.max, log]);
 
-  // Click scrubbing on the canvas container: left-click ΓåÆ advance
-  // one event, right-click ΓåÆ rewind one event. `contextmenu` is
+  // Click scrubbing on the canvas container: left-click → advance
+  // one event, right-click → rewind one event. `contextmenu` is
   // suppressed so the right-click step doesn't pop the browser
   // menu. Listeners filter out clicks on overlay panel controls
   // (`button`, `input`, `label`, `select`) so the overlay HUD
@@ -1633,7 +1633,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   // For the round picker label.
   const currentRound = (() => {
     if (index < 0) {
-      return "ΓÇö";
+      return "—";
     }
     return `${currentView.roundWind}${currentView.roundNumber}`;
   })();
@@ -1668,7 +1668,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       >
         {/* Top-left: replay metadata label. */}
         <div className="pointer-events-none absolute top-2 left-2 z-30 font-mono text-xs text-emerald-100/80 px-2 py-1 rounded bg-black/40">
-          replay ┬╖ {log.source} ┬╖ {log.sourceGameId} ┬╖ {currentRound}
+          replay · {log.source} · {log.sourceGameId} · {currentRound}
         </div>
         {/* Bottom-right: tile-art attribution. */}
         <div className="absolute bottom-2 right-2 z-30 font-mono text-[10px] text-emerald-100/70 px-2 py-1 rounded bg-black/40">
@@ -1759,7 +1759,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             // surfacing the author's annotations. Without this
             // the share button strips them and the recipient
             // sees a clean replay even though the URL bar still
-            // shows `?review=ΓÇª`.
+            // shows `?review=…`.
             if (review?.shortId) {
               params.set("review", review.shortId);
             }
@@ -1798,7 +1798,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           className="absolute top-2 right-2 z-30 h-11 min-w-[5.5rem] px-4 inline-flex items-center justify-center gap-1 rounded bg-black/70 hover:bg-emerald-800 text-emerald-100 hover:text-white text-base font-medium no-underline transition-colors"
           style={{ backgroundColor: "rgba(0, 0, 0, 0.7)", color: "#d1fae5" }}
         >
-          Γ£ò
+          ✕
         </button>
         {/* Right-side: seat / round selectors + nav buttons. */}
         <div className="absolute top-1/2 right-2 -translate-y-1/2 z-30 flex flex-col items-stretch gap-3 text-emerald-100 text-base">
@@ -1894,7 +1894,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Previous round"
                   title="Previous round"
                 >
-                  ΓÅ«
+                  ⏮
                 </button>
                 <button
                   type="button"
@@ -1906,7 +1906,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Previous event"
                   title="Previous event"
                 >
-                  ΓùÇ
+                  ◀
                 </button>
                 <button
                   type="button"
@@ -1918,7 +1918,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Next event"
                   title="Next event"
                 >
-                  Γû╢
+                  ▶
                 </button>
                 <button
                   type="button"
@@ -1932,7 +1932,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Next round"
                   title="Next round"
                 >
-                  ΓÅ¡
+                  ⏭
                 </button>
               </div>
             );
@@ -1970,7 +1970,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                     aria-label="Previous comment"
                     title="Previous comment"
                   >
-                    ΓùÇ≡ƒÆ¼
+                    ◀💬
                   </button>
                   <button
                     type="button"
@@ -1984,7 +1984,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                     aria-label="Next comment"
                     title="Next comment"
                   >
-                    ≡ƒÆ¼Γû╢
+                    💬▶
                   </button>
                 </div>
               );
