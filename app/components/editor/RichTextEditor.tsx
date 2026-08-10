@@ -37,6 +37,12 @@ import {
   uploadVideo,
 } from "../../utils/uploadImage";
 import { useLocale } from "../../contexts/LocaleContext";
+import {
+  DEFAULT_RICH_TEXT_CONFIG,
+  INLINE_TILE_TO_FONT_RATIO,
+  richTextFontSize,
+  type RichTextConfig,
+} from "./richTextConfig";
 
 interface RichTextEditorProps {
   content: string;
@@ -50,12 +56,14 @@ interface RichTextEditorProps {
    * occlude the modals).
    */
   modalZIndex?: number;
+  config?: RichTextConfig;
 }
 
 export function RichTextEditor({
   content,
   onChange,
   modalZIndex,
+  config = DEFAULT_RICH_TEXT_CONFIG,
 }: RichTextEditorProps) {
   const { t } = useLocale();
   const te = t.news.admin.editor;
@@ -93,8 +101,13 @@ export function RichTextEditor({
         },
       }),
       Image,
-      MahjongTileExtension,
-      MahjongHandExtension,
+      MahjongTileExtension.configure({
+        sizeFactor: INLINE_TILE_TO_FONT_RATIO,
+      }),
+      MahjongHandExtension.configure({
+        tileHeight: config.handTileHeight,
+        margin: config.handMargin,
+      }),
       VideoExtension,
       EmbedExtension,
     ],
@@ -428,7 +441,10 @@ export function RichTextEditor({
         </Space.Compact>
       </div>
 
-      <div ref={editorWrapperRef}>
+      <div
+        ref={editorWrapperRef}
+        style={{ fontSize: richTextFontSize(config) }}
+      >
         <EditorContent editor={editor} className="rich-text-editor-content" />
       </div>
 

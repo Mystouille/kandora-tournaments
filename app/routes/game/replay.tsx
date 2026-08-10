@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   redirect,
+  useBlocker,
   useLocation,
   useNavigate,
   useSearchParams,
@@ -18,16 +19,18 @@ import type { ReplayView } from "~/game/replay/player";
 import type { GameEvent, Seat } from "~/game/protocol/messages";
 import { ReplayLogModel, type DbReplayLog } from "~/db/models/ReplayLog";
 import { ReplayReviewModel } from "~/db/models/ReplayReview";
+import { UserModel } from "~/db/User";
 import { inferReplaySource } from "~/game/replay/inferSource";
 import { fetchOrphanReplayLog } from "~/services/fetchOrphanReplayLog.server";
+import { resolveSeatEnrichmentForReplay } from "~/services/replayEnrichment.server";
 import { annotateWallSchedule } from "~/game/replay/annotateWallSchedule";
 import { annotateWaits } from "~/services/annotateWaits";
-import { resolveSeatEnrichmentForReplay } from "~/services/replayEnrichment.server";
 import {
   bytesToBase64,
   base64ToBytes,
   decodeDrawing,
   encodeDrawing,
+  reviewerColor,
   smoothDrawingForDisplay,
   type Drawing,
   type Stroke,
@@ -51,7 +54,8 @@ import { useTelemetry } from "~/contexts/TelemetryContext";
 import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
 import { ArticleContent } from "~/components/ArticleContent";
-import { Tooltip, message } from "antd";
+import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConfig";
+import { Modal, Tooltip, message } from "antd";
 import {
   QuestionOutlined,
   EyeOutlined,
@@ -72,9 +76,19 @@ import {
  */
 interface SerializedReviewEdit {
   eventIndex: number;
+  /** Author user id. Legacy authorless edits report the creator. */
+  author: string;
+  /** Author display name (JWT username at contribution time). */
+  authorName: string;
+  /** Reviewer order index ΓÇö drives the color slot. */
+  colorIndex: number;
   text: string;
   drawingBase64: string | null;
   updatedAt: string;
+}
+interface SerializedReviewer {
+  user: string;
+  name: string;
 }
 interface SerializedReview {
   shortId: string;
@@ -82,19 +96,24 @@ interface SerializedReview {
   sourceGameId: string;
   createdBy: string;
   /**
-   * The seat (0–3) this review is bound to. `null` while the
-   * review has no edits yet — the author can still freely change
+   * The seat (0ΓÇô3) this review is bound to. `null` while the
+   * review has no edits yet ΓÇö the author can still freely change
    * their focused seat. Once the first edit is persisted the seat
    * is locked server-side.
    */
   seat: number | null;
+  /**
+   * Reviewers in first-contribution order. A reviewer's index here
+   * is their color slot (1st = orange, 2nd = blue, ΓÇª).
+   */
+  reviewers: SerializedReviewer[];
   edits: SerializedReviewEdit[];
 }
 /**
  * Convert whatever Mongoose hands us for a Buffer schema field into
  * a plain `Uint8Array`. With `.lean()` the value is typically a
  * `mongoose.mongo.Binary` (BSON), not a Node `Buffer`, and
- * `new Uint8Array(binary)` does NOT extract the underlying bytes —
+ * `new Uint8Array(binary)` does NOT extract the underlying bytes ΓÇö
  * it yields an empty array. We have to reach into `.buffer` (Node
  * `Buffer`) first.
  */
@@ -115,29 +134,80 @@ function unwrapDrawing(raw: unknown): Uint8Array | null {
   return null;
 }
 
-function serializeReview(doc: {
-  shortId: string;
-  source: string;
-  sourceGameId: string;
+/**
+ * Resolve a review document's reviewer roster (first-contribution
+ * order). Legacy single-owner reviews carry no `reviewers` array; when
+ * they still have edits we synthesize the creator as reviewer 0 so the
+ * color assignment stays stable. Runs one best-effort `User` lookup
+ * only for those legacy docs.
+ */
+async function resolveReviewersForDoc(doc: {
   createdBy: unknown;
-  seat?: number | null;
-  edits?: Array<{
-    eventIndex: number;
-    text?: string;
-    drawing?: Buffer | null;
-    updatedAt?: Date;
-  }>;
-}): SerializedReview {
+  reviewers?: Array<{ user: unknown; name?: string }>;
+  edits?: unknown[];
+}): Promise<SerializedReviewer[]> {
+  const existing = (doc.reviewers ?? []).map((r) => ({
+    user: String(r.user),
+    name: r.name ?? "",
+  }));
+  if (existing.length > 0) {
+    return existing;
+  }
+  if ((doc.edits ?? []).length > 0) {
+    const createdBy = String(doc.createdBy);
+    let name = "";
+    try {
+      const u = await UserModel.findById(createdBy).select("name").lean();
+      name = (u as { name?: string } | null)?.name ?? "";
+    } catch {
+      /* name is best-effort */
+    }
+    return [{ user: createdBy, name }];
+  }
+  return [];
+}
+
+function serializeReview(
+  doc: {
+    shortId: string;
+    source: string;
+    sourceGameId: string;
+    createdBy: unknown;
+    seat?: number | null;
+    reviewers?: Array<{ user: unknown; name?: string }>;
+    edits?: Array<{
+      eventIndex: number;
+      author?: unknown;
+      text?: string;
+      drawing?: Buffer | null;
+      updatedAt?: Date;
+    }>;
+  },
+  reviewers: SerializedReviewer[]
+): SerializedReview {
+  const createdBy = String(doc.createdBy);
   return {
     shortId: doc.shortId,
     source: doc.source as ReplaySource,
     sourceGameId: doc.sourceGameId,
-    createdBy: String(doc.createdBy),
+    createdBy,
     seat: typeof doc.seat === "number" ? doc.seat : null,
+    reviewers,
     edits: (doc.edits ?? []).map((e) => {
       const bytes = unwrapDrawing(e.drawing);
+      const author =
+        e.author !== undefined && e.author !== null
+          ? String(e.author)
+          : createdBy;
+      const colorIndex = Math.max(
+        0,
+        reviewers.findIndex((r) => r.user === author)
+      );
       return {
         eventIndex: e.eventIndex,
+        author,
+        authorName: reviewers[colorIndex]?.name ?? "",
+        colorIndex,
         text: e.text ?? "",
         drawingBase64: bytes && bytes.length > 0 ? bytesToBase64(bytes) : null,
         updatedAt: (e.updatedAt ?? new Date()).toISOString(),
@@ -147,7 +217,7 @@ function serializeReview(doc: {
 }
 
 /**
- * `/replays/:gameId` — Phase 4.5 replay viewer.
+ * `/replays/:gameId` ΓÇö Phase 4.5 replay viewer.
  *
  * The platform is inferred from the `:gameId` shape via
  * `inferReplaySource`; when inference returns `null` we fall back to
@@ -161,7 +231,7 @@ function serializeReview(doc: {
  *      which talks to the right `*LeagueConnector` to fetch + parse
  *      the platform log and upserts it as an orphan row (no
  *      `Game.replayLogRef` link). This makes replays viewable even
- *      when no `Game` doc exists yet — useful for ad-hoc URLs and
+ *      when no `Game` doc exists yet ΓÇö useful for ad-hoc URLs and
  *      for closing the gap between play-time and the next
  *      hydration cycle.
  *   3. On miss with no inferable source (e.g. hand-crafted id we
@@ -172,7 +242,7 @@ function serializeReview(doc: {
  * `TableRenderer` with prev / next / first / last / round picker
  * controls.
  *
- * Not gated by `requireGameEnabled()` — replays are a viewer over
+ * Not gated by `requireGameEnabled()` ΓÇö replays are a viewer over
  * already-recorded games (Majsoul / Tenhou / Riichi City logs) and
  * don't touch the live game-server. They remain reachable in
  * environments where the in-app game subsystem is disabled.
@@ -188,14 +258,14 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   //
   //   - Majsoul appends `_a<accountId>` to its share URLs to mark
   //     which player generated the link. We strip the suffix from
-  //     the id and — if the cached replay knows that accountId —
+  //     the id and ΓÇö if the cached replay knows that accountId ΓÇö
   //     surface the matching seat through the `?seat=` deeplink
   //     param so the viewer opens with that player at the bottom.
   //     Majsoul stashes the per-seat `accountId` (as a string) on
   //     the `match_start` event's `seats[].userId`.
-  //   - Riichi City appends `@<n>` (0–3) to a log id to mark which
+  //   - Riichi City appends `@<n>` (0ΓÇô3) to a log id to mark which
   //     seat that share link is from. The index is NOT the absolute
-  //     seat in the data — it's the round-1 dealer-relative wind
+  //     seat in the data ΓÇö it's the round-1 dealer-relative wind
   //     position (0=E, 1=S, 2=W, 3=N). RC's `position` field is
   //     shaped by player-join order, so the same `@n` maps to a
   //     different absolute seat per replay; we translate using the
@@ -207,7 +277,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   // collapse onto a single canonical id.
   // React Router's `redirect()` prepends the configured
   // `basename` (e.g. `/kandora/` in REMOTE dev) to whatever path
-  // we hand it, so we must hand it a basename-RELATIVE path —
+  // we hand it, so we must hand it a basename-RELATIVE path ΓÇö
   // never the raw `url.pathname`, which already includes the
   // basename and would otherwise produce `/kandora/kandora/...`.
   const url = new URL(request.url);
@@ -218,7 +288,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     // through Majsoul's private web-client encoding (it's NOT the
     // raw `account_id`, NOT a friend-id `searchAccountByPattern`
     // can decode, and in general not one of the seats in the
-    // replay anyway — the sharer can be a spectator). So we
+    // replay anyway ΓÇö the sharer can be a spectator). So we
     // just strip it for a clean canonical URL and leave the
     // viewer to default to seat 0; the user can pick a seat from
     // the dropdown or pass `?seat=N` explicitly.
@@ -233,8 +303,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   // Helper: translate the RC `@<n>` round-1 wind index to an
   // absolute seat using the first `hand_start` event's dealer.
   // Wind rotation around the table follows the absolute seat order
-  // (`(dealer + wind) % 4`) — verified empirically by tracing the
-  // first four `Draw` events of round 1, which always go E→S→W→N
+  // (`(dealer + wind) % 4`) ΓÇö verified empirically by tracing the
+  // first four `Draw` events of round 1, which always go EΓåÆSΓåÆWΓåÆN
   // starting from `dealer_pos`.
   const redirectToCanonicalRcUrl = (events: GameEvent[]): never => {
     const search = new URLSearchParams(url.searchParams);
@@ -265,7 +335,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       shortId: reviewShortId,
     }).lean();
     if (reviewDoc && reviewDoc.sourceGameId === cleanGameId) {
-      loadedReview = serializeReview(reviewDoc);
+      const reviewers = await resolveReviewersForDoc(reviewDoc);
+      loadedReview = serializeReview(reviewDoc, reviewers);
     }
   }
 
@@ -273,10 +344,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   // enable the editing cartridge for the review owner. The
   // replay route itself does not require auth.
   let currentUserId: string | null = null;
+  let currentUserName: string | null = null;
   try {
     const payload = await getAuthenticatedUser(request);
     if (payload?.sub) {
       currentUserId = String(payload.sub);
+      currentUserName =
+        typeof payload.username === "string" ? payload.username : null;
     }
   } catch {
     /* anonymous viewer */
@@ -318,12 +392,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       waitsByIndex,
       review: loadedReview,
       currentUserId,
+      currentUserName,
       seatEnrichment,
     };
   }
 
   // Cache miss: try to fetch + parse from the platform on-demand
-  // (Phase 4.5 follow-up — orphan logs are fine for now, no
+  // (Phase 4.5 follow-up ΓÇö orphan logs are fine for now, no
   // `Game.replayLogRef` link is created). We need a source to know
   // which connector to talk to; inference returning `null` means
   // we can only 404.
@@ -360,6 +435,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     waitsByIndex: annotateWaits(annotatedLog.events),
     review: loadedReview,
     currentUserId,
+    currentUserName,
     seatEnrichment: await resolveSeatEnrichmentForReplay(
       cleanGameId,
       annotatedLog.seats
@@ -376,7 +452,7 @@ const SOURCE_LABEL: Record<ReplaySource, string> = {
 
 export function meta({ data }: Route.MetaArgs) {
   if (!data?.log) {
-    return [{ title: "Replay — TNT Paris Mahjong" }];
+    return [{ title: "Replay ΓÇö TNT Paris Mahjong" }];
   }
   const { log, review } = data;
   const sourceLabel = SOURCE_LABEL[log.source] ?? "Replay";
@@ -384,18 +460,28 @@ export function meta({ data }: Route.MetaArgs) {
   const standings = [...log.seats]
     .sort((a, b) => a.place - b.place)
     .map((s) => `${s.place}. ${s.displayName} (${s.finalScore})`)
-    .join(" · ");
-  const titleBase = review
-    ? `${sourceLabel} replay review — ${dateLabel}`
-    : `${sourceLabel} replay — ${dateLabel}`;
+    .join(" ┬╖ ");
+  // The reviewed player is the seat the review is locked to (the
+  // player it focuses on, not the reviewer). `seat` stays null until
+  // the first edit locks it.
+  const reviewedName =
+    review && typeof review.seat === "number"
+      ? log.seats[review.seat]?.displayName
+      : undefined;
   const commentCount = review
     ? review.edits.filter((e) => e.text.length > 0 || e.drawingBase64).length
     : 0;
+  const titleBase =
+    review && reviewedName
+      ? `Game review of ${reviewedName} ΓÇö ${dateLabel}`
+      : review
+        ? `${sourceLabel} replay review ΓÇö ${dateLabel}`
+        : `${sourceLabel} replay ΓÇö ${dateLabel}`;
   const description = review
-    ? `${commentCount} comment${commentCount === 1 ? "" : "s"} · ${standings}`
+    ? `${sourceLabel}, ${commentCount} comment${commentCount === 1 ? "" : "s"}, ${standings}`
     : standings;
   return [
-    { title: `${titleBase} — TNT Paris Mahjong` },
+    { title: `${titleBase} ΓÇö TNT Paris Mahjong` },
     { name: "description", content: description },
     { property: "og:title", content: titleBase },
     { property: "og:description", content: description },
@@ -413,6 +499,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     waitsByIndex,
     review: initialReview,
     currentUserId,
+    currentUserName,
     seatEnrichment,
   } = loaderData;
   const { t } = useLocale();
@@ -444,7 +531,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
   // URL deeplink state. Three optional search params, all
   // independently set so a partial URL still makes sense:
-  //   ?seat=N      focused player (0–3)
+  //   ?seat=N      focused player (0ΓÇô3)
   //   ?round=N     1-based round ordinal (matches the round
   //                picker). When `event` is absent we jump to
   //                that round's `hand_start`.
@@ -539,7 +626,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     // so the viewer doesn't greet the user with an empty table.
     return { seat, index: rounds[0] ?? bounds.min };
     // Snapshot-only: deliberately ignore later searchParams /
-    // bounds / rounds changes here — the playhead is driven by
+    // bounds / rounds changes here ΓÇö the playhead is driven by
     // component state from this point on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -577,13 +664,13 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     playSoundForEvent(ev, focusSeat);
   }, [index, soundEnabled, log.events, focusSeat]);
 
-  // ── Review state ────────────────────────────────────────────────
+  // ΓöÇΓöÇ Review state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   // `review` mirrors what the server returned at load time and is
   // updated when we successfully publish edits. `localEdits` holds
   // *unpublished* per-event changes:
-  //   * `{ text, drawingBase64 }` — replaces the server edit at
+  //   * `{ text, drawingBase64 }` ΓÇö replaces the server edit at
   //     this index when published.
-  //   * `null`                    — pending delete of an existing
+  //   * `null`                    ΓÇö pending delete of an existing
   //                                 server-side edit at this index.
   // Per-event Save buttons only mutate `localEdits`; nothing hits
   // the network until the user clicks "Publish" in the cartridge.
@@ -609,15 +696,57 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     setDraft({ mode: null, text: "", strokes: [] });
   }, [index]);
-  const canEditReview =
-    currentUserId !== null &&
-    (review === null || review.createdBy === currentUserId);
+  const canEditReview = currentUserId !== null;
   const pendingCount = useMemo(
     () => Object.keys(localEdits).length,
     [localEdits]
   );
+  // ΓöÇΓöÇ Unsaved-work navigation guard ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // Locally-saved annotations live only in React state until the
+  // reviewer clicks "Publish". An accidental Back (browser button,
+  // swipe-back gesture, or the Γ£ò close button ΓÇö all of which
+  // navigate) would silently discard them. Block the navigation and
+  // surface a confirmation modal whenever there are unpublished
+  // edits. `useBlocker` covers client-side navigations (including
+  // browser Back/Forward within the app).
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      pendingCount > 0 && currentLocation.pathname !== nextLocation.pathname
+  );
+  // Full-page unloads (tab close, refresh, hard navigation) can't be
+  // intercepted by the router blocker ΓÇö fall back to the browser's
+  // native "leave site?" prompt while edits are pending.
+  useEffect(() => {
+    if (pendingCount === 0) {
+      return;
+    }
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      e.preventDefault();
+      // Legacy browsers require a returnValue to trigger the prompt.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [pendingCount]);
+  // The current user's stable color slot in this review. Reviewers are
+  // colored by first-contribution order; someone who hasn't
+  // contributed yet takes the next free slot so their live draft
+  // already renders in the color they'll eventually own.
+  const myColorIndex = useMemo<number>(() => {
+    if (currentUserId === null) {
+      return 0;
+    }
+    const existing = review
+      ? review.reviewers.findIndex((r) => r.user === currentUserId)
+      : -1;
+    return existing >= 0 ? existing : (review?.reviewers.length ?? 0);
+  }, [review, currentUserId]);
+  const myColor = reviewerColor(myColorIndex);
+  const myName = currentUserName ?? "";
 
-  // ── Seat lock ──────────────────────────────────────────────
+  // ΓöÇΓöÇ Seat lock ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   // A review is bound to a single seat: every annotation in it
   // is "about" the same player. We derive the effective lock
   // from two sources:
@@ -635,6 +764,17 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   // readers can hide a long note that's covering the board
   // without losing it permanently.
   const [savedTextVisible, setSavedTextVisible] = useState<boolean>(true);
+  const [textEditorHeight, setTextEditorHeight] = useState(0);
+  // Canvas-pixel bounds of the focused seat's (bottom) hand strip,
+  // reported by `TableRenderer.setBottomHandBoundsListener`. Used to
+  // lift the saved-text annotation bubble so its bottom edge sits
+  // just above the player's tiles instead of overlapping them.
+  const [bottomHandBounds, setBottomHandBounds] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   // Global mouseup/touchend listener: while the user presses the
   // eye button the annotation is hidden, but the moment they
   // release the mouse *anywhere* on the page we show it again.
@@ -680,9 +820,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     review !== null && !canEditReview && effectiveReviewSeat !== null;
   const seatMismatch =
     effectiveReviewSeat !== null && focusSeat !== effectiveReviewSeat;
-  const currentEdit = useMemo<SerializedReviewEdit | null>(() => {
-    // Local override wins over the server-side edit so the user
-    // sees their unpublished changes immediately.
+  // The current user's OWN effective edit at this event (their local
+  // unpublished override wins over their server-side edit). Drives the
+  // cartridge's saved text/drawing and the user's editable overlay.
+  const currentUserEdit = useMemo<SerializedReviewEdit | null>(() => {
+    const own =
+      review && currentUserId !== null
+        ? (review.edits.find(
+            (e) => e.eventIndex === index && e.author === currentUserId
+          ) ?? null)
+        : null;
     if (Object.prototype.hasOwnProperty.call(localEdits, index)) {
       const local = localEdits[index];
       if (local === null) {
@@ -690,66 +837,107 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       }
       return {
         eventIndex: index,
+        author: currentUserId ?? "",
+        authorName: myName,
+        colorIndex: myColorIndex,
         text: local.text,
         drawingBase64: local.drawingBase64,
         updatedAt: new Date().toISOString(),
       };
     }
-    if (!review) {
-      return null;
+    return own;
+  }, [review, index, localEdits, currentUserId, myName, myColorIndex]);
+  // Every reviewer's edit at this event (the current user's own
+  // reflects their local override), ordered by color slot. Drives the
+  // read-only drawings of other reviewers and the stacked bubbles.
+  const editsAtIndex = useMemo<SerializedReviewEdit[]>(() => {
+    const list: SerializedReviewEdit[] = [];
+    if (review) {
+      for (const e of review.edits) {
+        if (e.eventIndex !== index) {
+          continue;
+        }
+        // The current user's own edit is represented by
+        // `currentUserEdit` (which folds in unpublished changes).
+        if (currentUserId !== null && e.author === currentUserId) {
+          continue;
+        }
+        list.push(e);
+      }
     }
-    return review.edits.find((e) => e.eventIndex === index) ?? null;
-  }, [review, index, localEdits]);
+    if (currentUserEdit) {
+      list.push(currentUserEdit);
+    }
+    list.sort((a, b) => a.colorIndex - b.colorIndex);
+    return list;
+  }, [review, index, currentUserId, currentUserEdit]);
   // Sorted list of event indices that carry an effective comment
   // (text or drawing) after applying local overrides over the
   // server-side review. Drives the "previous/next comment"
   // navigation buttons; empty when no comment exists yet, in which
   // case the buttons hide entirely.
   const commentIndices = useMemo<number[]>(() => {
-    const map = new Map<number, { text: string; drawingBase64: string | null }>(
-      []
-    );
+    // Track which authors have content at each index so a local
+    // delete of the current user's own edit doesn't hide an index
+    // another reviewer still annotates.
+    const authorsByIdx = new Map<number, Set<string>>();
+    const add = (idx: number, author: string) => {
+      let set = authorsByIdx.get(idx);
+      if (!set) {
+        set = new Set<string>();
+        authorsByIdx.set(idx, set);
+      }
+      set.add(author);
+    };
+    const remove = (idx: number, author: string) => {
+      const set = authorsByIdx.get(idx);
+      if (set) {
+        set.delete(author);
+        if (set.size === 0) {
+          authorsByIdx.delete(idx);
+        }
+      }
+    };
     if (review) {
       for (const e of review.edits) {
-        map.set(e.eventIndex, {
-          text: e.text,
-          drawingBase64: e.drawingBase64,
-        });
+        if (e.text.length > 0 || e.drawingBase64) {
+          add(e.eventIndex, e.author);
+        }
       }
     }
-    for (const key of Object.keys(localEdits)) {
-      const idx = Number(key);
-      const patch = localEdits[idx];
-      if (patch === null) {
-        map.delete(idx);
-      } else {
-        map.set(idx, patch);
+    if (currentUserId !== null) {
+      for (const key of Object.keys(localEdits)) {
+        const idx = Number(key);
+        const patch = localEdits[idx];
+        if (
+          patch === null ||
+          (patch.text.length === 0 && !patch.drawingBase64)
+        ) {
+          remove(idx, currentUserId);
+        } else {
+          add(idx, currentUserId);
+        }
       }
     }
-    const out: number[] = [];
-    for (const [idx, edit] of map) {
-      if (edit.text.length > 0 || edit.drawingBase64) {
-        out.push(idx);
-      }
-    }
-    out.sort((a, b) => a - b);
-    return out;
-  }, [review, localEdits]);
+    return [...authorsByIdx.keys()].sort((a, b) => a - b);
+  }, [review, localEdits, currentUserId]);
   // Decode the saved drawing once per (review,index) pair. Legacy v1
   // drawings are smoothed on the way out to round off their coarse
   // quantization grid; dense high-precision drawings pass through
   // `smoothDrawingForDisplay` untouched.
   const savedDrawing = useMemo<Drawing | null>(() => {
-    if (!currentEdit?.drawingBase64) {
+    if (!currentUserEdit?.drawingBase64) {
       return null;
     }
     try {
-      const decoded = decodeDrawing(base64ToBytes(currentEdit.drawingBase64));
+      const decoded = decodeDrawing(
+        base64ToBytes(currentUserEdit.drawingBase64)
+      );
       return smoothDrawingForDisplay(decoded);
     } catch {
       return null;
     }
-  }, [currentEdit]);
+  }, [currentUserEdit]);
   // Strokes to render in the overlay: while drawing, show the
   // user's in-progress strokes; otherwise show the saved drawing
   // \u2014 but only when the focused seat matches the seat the
@@ -757,7 +945,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   // the drawing is hidden (and a "?" hint is shown next to the
   // text bubble) so the annotation isn't displayed out of
   // context.
-  const overlayStrokes: Stroke[] = useMemo(() => {
+  const myOverlayStrokes: Stroke[] = useMemo(() => {
     if (draft.mode === "pen") {
       return draft.strokes;
     }
@@ -766,6 +954,37 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     }
     return savedDrawing?.strokes ?? [];
   }, [draft.mode, draft.strokes, savedDrawing, seatMismatch]);
+  // Read-only drawings authored by *other* reviewers at this event,
+  // each rendered in that reviewer's color. Hidden (like the user's
+  // own) when the focused seat differs from the review's locked seat.
+  const otherAuthorDrawings = useMemo<
+    Array<{ author: string; color: string; strokes: Stroke[] }>
+  >(() => {
+    if (seatMismatch) {
+      return [];
+    }
+    const out: Array<{ author: string; color: string; strokes: Stroke[] }> = [];
+    for (const e of editsAtIndex) {
+      if (e.author === currentUserId || !e.drawingBase64) {
+        continue;
+      }
+      try {
+        const strokes = smoothDrawingForDisplay(
+          decodeDrawing(base64ToBytes(e.drawingBase64))
+        ).strokes;
+        if (strokes.length > 0) {
+          out.push({
+            author: e.author,
+            color: reviewerColor(e.colorIndex),
+            strokes,
+          });
+        }
+      } catch {
+        /* skip undecodable drawing */
+      }
+    }
+    return out;
+  }, [editsAtIndex, currentUserId, seatMismatch]);
 
   /**
    * Lazily create the review document on the first publish. We do
@@ -810,6 +1029,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       sourceGameId: log.sourceGameId,
       createdBy: currentUserId,
       seat: null,
+      reviewers: [],
       edits: [],
     };
     setReview(created);
@@ -821,7 +1041,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
   /**
    * Stage an edit at the current event in local state. Nothing is
-   * sent over the network — call `publish()` to push everything.
+   * sent over the network ΓÇö call `publish()` to push everything.
    */
   const commitEditLocally = (patch: {
     text?: string;
@@ -850,8 +1070,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       const existingLocal = Object.prototype.hasOwnProperty.call(prev, index)
         ? prev[index]
         : undefined;
+      // Only the CURRENT user's own edit is a valid base ΓÇö otherwise a
+      // partial patch (e.g. adding text) would absorb another
+      // reviewer's drawing/text at this event and re-attribute it to
+      // us (rendered in our color, and saved under our author).
       const serverEdit =
-        review?.edits.find((e) => e.eventIndex === index) ?? null;
+        currentUserId !== null
+          ? (review?.edits.find(
+              (e) => e.eventIndex === index && e.author === currentUserId
+            ) ?? null)
+          : null;
       const baseText =
         existingLocal === null
           ? ""
@@ -863,10 +1091,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
       if (patch.delete) {
         if (serverEdit) {
-          // Server has something to remove → mark as pending delete.
+          // Server has something to remove ΓåÆ mark as pending delete.
           next[index] = null;
         } else {
-          // No server edit — just drop any local override.
+          // No server edit ΓÇö just drop any local override.
           delete next[index];
         }
         return next;
@@ -924,7 +1152,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     // Pin the share link to the current playhead so the viewer
     // lands on the same frame the author was looking at when they
     // hit Publish. Drawings/text are attached to a specific event
-    // index — without this the viewer would have to scrub to find
+    // index ΓÇö without this the viewer would have to scrub to find
     // them.
     params.set("event", String(index));
     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
@@ -935,14 +1163,14 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
    * success, returns the share URL for the published review. On
    * failure, returns `null`. The share URL is built from the
    * freshly-resolved `shortId` so callers don't need to wait for
-   * the parent to re-render with the new `review` state — a wait
+   * the parent to re-render with the new `review` state ΓÇö a wait
    * that previously caused the publish modal to require two
    * confirmations on first publish.
    */
   const publish = async (): Promise<string | null> => {
     const entries = Object.entries(localEdits);
     if (entries.length === 0) {
-      // Nothing staged — either the review is already published
+      // Nothing staged ΓÇö either the review is already published
       // and up to date, or there is no review at all. Build a URL
       // from whatever the parent currently knows so the cartridge
       // can still surface a copyable link.
@@ -963,6 +1191,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       // The server echoes back the locked seat on every response;
       // hold the latest so we can persist it into `review.seat`.
       let lockedSeat: number | null = null;
+      // ΓÇª and the reviewer roster (with color order), refreshed so a
+      // brand-new contributor immediately shows in their color.
+      let latestReviewers: SerializedReviewer[] | null = null;
       for (const [idxStr, patch] of entries) {
         const eventIndex = Number(idxStr);
         const body =
@@ -1007,9 +1238,13 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             const data = (await res.json()) as {
               ok: boolean;
               seat?: number | null;
+              reviewers?: SerializedReviewer[];
             };
             if (typeof data.seat === "number" || data.seat === null) {
               lockedSeat = data.seat;
+            }
+            if (Array.isArray(data.reviewers)) {
+              latestReviewers = data.reviewers;
             }
           } catch {
             /* response had no body */
@@ -1021,10 +1256,14 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
               ok: boolean;
               edit?: SerializedReviewEdit | null;
               seat?: number | null;
+              reviewers?: SerializedReviewer[];
             };
             serverEdit = data.edit ?? null;
             if (typeof data.seat === "number" || data.seat === null) {
               lockedSeat = data.seat;
+            }
+            if (Array.isArray(data.reviewers)) {
+              latestReviewers = data.reviewers;
             }
           } catch {
             /* response had no body */
@@ -1039,21 +1278,30 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         if (!prev) {
           return prev;
         }
-        const editsByIndex = new Map<number, SerializedReviewEdit>();
+        // Edits are keyed by (eventIndex, author) so one reviewer's
+        // publish never clobbers another's annotation on the same
+        // event.
+        const keyOf = (e: { eventIndex: number; author: string }) =>
+          `${e.eventIndex}:${e.author}`;
+        const byKey = new Map<string, SerializedReviewEdit>();
         for (const e of prev.edits) {
-          editsByIndex.set(e.eventIndex, e);
+          byKey.set(keyOf(e), e);
         }
         for (const a of applied) {
           if (a.kind === "delete") {
-            editsByIndex.delete(a.eventIndex);
+            // Publishing only ever deletes the current user's own edit.
+            if (currentUserId !== null) {
+              byKey.delete(`${a.eventIndex}:${currentUserId}`);
+            }
           } else {
-            editsByIndex.set(a.eventIndex, a.edit);
+            byKey.set(keyOf(a.edit), a.edit);
           }
         }
         return {
           ...prev,
           seat: lockedSeat !== null ? lockedSeat : prev.seat,
-          edits: Array.from(editsByIndex.values()),
+          reviewers: latestReviewers ?? prev.reviewers,
+          edits: Array.from(byKey.values()),
         };
       });
       setLocalEdits({});
@@ -1088,7 +1336,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       viewCacheRef.current = { builtTo: index, view: next };
       return next;
     }
-    // Cache miss / backward jump / arbitrary seek — re-fold.
+    // Cache miss / backward jump / arbitrary seek ΓÇö re-fold.
     let v = initialView();
     for (let i = 0; i <= index && i < log.events.length; i++) {
       v = applyReplayEvent(v, log.events[i]);
@@ -1118,7 +1366,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         // `mount()` can dispatch its first events into a live
         // callback. Previously this was set after `mount()`
         // resolved, which meant any layout shift happening while
-        // tile textures were loading was dropped on the floor —
+        // tile textures were loading was dropped on the floor ΓÇö
         // contributing to the first-paint dark-canvas race on
         // client-side navigation.
         renderer.setOnRenderRequest(() => {
@@ -1128,8 +1376,11 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             r.render(args);
           }
         });
+        renderer.setBottomHandBoundsListener((rect) => {
+          setBottomHandBounds(rect);
+        });
         // Replay playback should show the win-info panel fully
-        // revealed on every seek — the staged per-yaku reveal is
+        // revealed on every seek ΓÇö the staged per-yaku reveal is
         // only meaningful in live play, where the panel appears
         // exactly once per hand.
         renderer.setStagedRevealEnabled(false);
@@ -1159,7 +1410,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           // the moment Pixi's `Application` materializes (the
           // surrounding flex/grid hasn't fully laid out yet),
           // which leaves the first `render` drawing into an
-          // empty viewport — the user sees a dark canvas until
+          // empty viewport ΓÇö the user sees a dark canvas until
           // they reload. Schedule one more render on the next
           // animation frame so we redraw against the post-layout
           // screen dims; cheap and idempotent.
@@ -1244,8 +1495,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     setIndex(clamp(n));
   };
 
-  // Mouse-wheel scrubbing on the canvas container: scroll down →
-  // advance one event, scroll up → rewind one event. Each wheel
+  // Mouse-wheel scrubbing on the canvas container: scroll down ΓåÆ
+  // advance one event, scroll up ΓåÆ rewind one event. Each wheel
   // tick is a single step; we throttle to avoid blasting through
   // a round on a high-resolution trackpad.
   const wheelAccumRef = useRef(0);
@@ -1309,7 +1560,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       };
       if (wheelAccumRef.current >= threshold) {
         wheelAccumRef.current = 0;
-        // Wheel scrubs are discrete jumps to the next stop — we
+        // Wheel scrubs are discrete jumps to the next stop ΓÇö we
         // suppress the discard slide animation for that frame so
         // the pond reads as a static board state rather than a
         // tile sliding in from a hand that didn't visibly exist
@@ -1328,8 +1579,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     };
   }, [bounds.min, bounds.max, log]);
 
-  // Click scrubbing on the canvas container: left-click → advance
-  // one event, right-click → rewind one event. `contextmenu` is
+  // Click scrubbing on the canvas container: left-click ΓåÆ advance
+  // one event, right-click ΓåÆ rewind one event. `contextmenu` is
   // suppressed so the right-click step doesn't pop the browser
   // menu. Listeners filter out clicks on overlay panel controls
   // (`button`, `input`, `label`, `select`) so the overlay HUD
@@ -1382,10 +1633,23 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   // For the round picker label.
   const currentRound = (() => {
     if (index < 0) {
-      return "—";
+      return "ΓÇö";
     }
     return `${currentView.roundWind}${currentView.roundNumber}`;
   })();
+
+  // Vertical anchor for the review annotation controls.
+  // Once the renderer reports the focused hand-strip bounds we pin
+  // the bubble's bottom edge ~8px above the player's tiles so it
+  // never overlaps them (it grows upward from there); otherwise fall
+  // back to a fixed inset matching the old `bottom-20`.
+  const annotationBottomCss = bottomHandBounds
+    ? `calc(100% - ${Math.round(bottomHandBounds.y) - 8}px)`
+    : "5rem";
+  const commentListBottomCss =
+    textEditorHeight > 0
+      ? `calc(${annotationBottomCss} + ${Math.ceil(textEditorHeight) + 8}px)`
+      : annotationBottomCss;
 
   return (
     <div
@@ -1404,7 +1668,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       >
         {/* Top-left: replay metadata label. */}
         <div className="pointer-events-none absolute top-2 left-2 z-30 font-mono text-xs text-emerald-100/80 px-2 py-1 rounded bg-black/40">
-          replay · {log.source} · {log.sourceGameId} · {currentRound}
+          replay ┬╖ {log.source} ┬╖ {log.sourceGameId} ┬╖ {currentRound}
         </div>
         {/* Bottom-right: tile-art attribution. */}
         <div className="absolute bottom-2 right-2 z-30 font-mono text-[10px] text-emerald-100/70 px-2 py-1 rounded bg-black/40">
@@ -1495,7 +1759,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             // surfacing the author's annotations. Without this
             // the share button strips them and the recipient
             // sees a clean replay even though the URL bar still
-            // shows `?review=…`.
+            // shows `?review=ΓÇª`.
             if (review?.shortId) {
               params.set("review", review.shortId);
             }
@@ -1534,7 +1798,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           className="absolute top-2 right-2 z-30 h-11 min-w-[5.5rem] px-4 inline-flex items-center justify-center gap-1 rounded bg-black/70 hover:bg-emerald-800 text-emerald-100 hover:text-white text-base font-medium no-underline transition-colors"
           style={{ backgroundColor: "rgba(0, 0, 0, 0.7)", color: "#d1fae5" }}
         >
-          ✕
+          Γ£ò
         </button>
         {/* Right-side: seat / round selectors + nav buttons. */}
         <div className="absolute top-1/2 right-2 -translate-y-1/2 z-30 flex flex-col items-stretch gap-3 text-emerald-100 text-base">
@@ -1630,7 +1894,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Previous round"
                   title="Previous round"
                 >
-                  ⏮
+                  ΓÅ«
                 </button>
                 <button
                   type="button"
@@ -1642,7 +1906,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Previous event"
                   title="Previous event"
                 >
-                  ◀
+                  ΓùÇ
                 </button>
                 <button
                   type="button"
@@ -1654,7 +1918,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Next event"
                   title="Next event"
                 >
-                  ▶
+                  Γû╢
                 </button>
                 <button
                   type="button"
@@ -1668,7 +1932,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   aria-label="Next round"
                   title="Next round"
                 >
-                  ⏭
+                  ΓÅ¡
                 </button>
               </div>
             );
@@ -1706,7 +1970,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                     aria-label="Previous comment"
                     title="Previous comment"
                   >
-                    ◀💬
+                    ΓùÇ≡ƒÆ¼
                   </button>
                   <button
                     type="button"
@@ -1720,7 +1984,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                     aria-label="Next comment"
                     title="Next comment"
                   >
-                    💬▶
+                    ≡ƒÆ¼Γû╢
                   </button>
                 </div>
               );
@@ -1730,55 +1994,94 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           </span>
         </div>
         <ReplayOverlayPanel overlays={overlays} onChange={setOverlays} />
-        {/* Review annotations: a passive drawing overlay (shows the
-            saved drawing, or the in-progress strokes while drawing)
-            plus the cartridge that lets the owner edit text and
-            freehand strokes for the current event. */}
+        {/* Review annotations: one passive drawing overlay per other
+            reviewer (each in that reviewer's color), then the current
+            user's own overlay \u2014 editable while in pen mode, otherwise
+            a passive render of their saved strokes \u2014 plus the cartridge
+            that lets them edit their own text/freehand for this event. */}
+        {otherAuthorDrawings.map((d) => (
+          <ReplayDrawingOverlay
+            key={`draw-${d.author}`}
+            strokes={d.strokes}
+            drawing={false}
+            color={d.color}
+            onStrokesChange={() => {}}
+          />
+        ))}
         <ReplayDrawingOverlay
-          strokes={overlayStrokes}
+          strokes={myOverlayStrokes}
           drawing={draft.mode === "pen"}
+          color={myColor}
           onStrokesChange={(next) => {
             setDraft((d) => ({ ...d, strokes: next }));
           }}
         />
-        {/* Saved-text bubble: visible to all viewers when an edit
-            exists for the current event. Rendered through the
-            same `ArticleContent` pipeline as news articles so
-            inline tiles, hands and links work, and forced into
-            the tenhou tile style for visual consistency across
-            the review system. The eye button is anchored at a
-            fixed offset so it stays put whether the frame is
-            visible or not; press-and-hold on it hides the text
-            until the user releases the mouse anywhere on screen. */}
-        {currentEdit &&
-          currentEdit.text.length > 0 &&
-          draft.mode !== "text" && (
+        {/* Saved-text bubbles: one stacked bubble per reviewer who
+            left a text note at this event, each headed by the
+            reviewer's name in bold in their assigned color. New
+            reviewers stack below existing ones; the whole stack
+            scrolls when it grows too tall. Rendered through the same
+            `ArticleContent` pipeline as news articles so inline tiles,
+            hands and links work, forced into the tenhou tile style for
+            visual consistency. The eye button hides the whole stack. */}
+        {(() => {
+          // Show every reviewer's text note, except the current user's
+          // own while they're actively editing it (their draft shows
+          // in the cartridge instead of a stale bubble).
+          const textEdits = editsAtIndex.filter(
+            (e) =>
+              e.text.length > 0 &&
+              !(e.author === currentUserId && draft.mode === "text")
+          );
+          if (textEdits.length === 0) {
+            return null;
+          }
+          return (
             <>
               {savedTextVisible ? (
-                <div className="absolute bottom-20 left-14 z-[46] max-w-[min(820px,calc(100vw-72px))] rounded-lg shadow-lg overflow-hidden bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700">
-                  <div
-                    className="px-5 py-4 text-base text-neutral-900 dark:text-neutral-100 whitespace-pre-wrap rich-text-content"
-                    style={{
-                      maxHeight: "50vh",
-                      overflowY: "auto",
-                      // Override `prose-sm`'s 0.875rem base so
-                      // review annotations read at a comfortable
-                      // size on top of the replay canvas.
-                      fontSize: "1rem",
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    <FixedTileSetProvider tileSet={TileSetName.Tenhou}>
-                      <ArticleContent html={currentEdit.text} />
-                    </FixedTileSetProvider>
-                  </div>
+                <div
+                  className="absolute left-2 z-[46] flex flex-col gap-2 max-w-[min(820px,calc(100vw-16px))] overflow-y-auto"
+                  style={{ bottom: commentListBottomCss, maxHeight: "60vh" }}
+                >
+                  {textEdits.map((e) => {
+                    const color = reviewerColor(e.colorIndex);
+                    return (
+                      <div
+                        key={`bubble-${e.author}`}
+                        className="rounded-lg shadow-lg overflow-hidden bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700"
+                        style={{ borderLeft: `4px solid ${color}` }}
+                      >
+                        {e.authorName ? (
+                          <div
+                            className="px-5 pt-3 pb-1 font-bold text-sm"
+                            style={{ color }}
+                          >
+                            {e.authorName}
+                          </div>
+                        ) : null}
+                        <div
+                          className="px-5 pb-4 pt-1 text-base text-neutral-900 dark:text-neutral-100 whitespace-pre-wrap rich-text-content"
+                          style={{
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          <FixedTileSetProvider tileSet={TileSetName.Tenhou}>
+                            <ArticleContent
+                              html={e.text}
+                              config={REPLAY_REVIEW_RICH_TEXT_CONFIG}
+                            />
+                          </FixedTileSetProvider>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : null}
               <button
                 type="button"
-                // Press-to-hide: the annotation disappears while
+                // Press-to-hide: the annotations disappear while
                 // the mouse button is held down on the eye, then
-                // reappears on `mouseup` anywhere on screen (see
+                // reappear on `mouseup` anywhere on screen (see
                 // the global listener attached in a useEffect).
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -1789,8 +2092,15 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   e.preventDefault();
                   setSavedTextVisible(false);
                 }}
-                className="absolute bottom-20 left-2 z-[46] flex h-10 w-10 items-center justify-center rounded-full shadow-lg cursor-pointer select-none text-lg"
+                className="absolute left-2 z-[46] flex h-10 w-10 items-center justify-center rounded-full shadow-lg cursor-pointer select-none text-lg"
                 style={{
+                  ...(bottomHandBounds
+                    ? {
+                        top: Math.round(
+                          bottomHandBounds.y + bottomHandBounds.h / 2 - 20
+                        ),
+                      }
+                    : { bottom: "5rem" }),
                   backgroundColor: "rgba(0, 0, 0, 0.8)",
                   color: "#a7f3d0",
                   border: "1px solid rgba(16, 185, 129, 0.5)",
@@ -1800,7 +2110,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 {savedTextVisible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
               </button>
             </>
-          )}
+          );
+        })()}
         {/* Seat-mismatch hint: when the current event has a saved
             drawing but the owner is looking at a different seat,
             the overlay is hidden so the annotation isn't shown
@@ -1810,8 +2121,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             an instant hint instead of the native browser
             tooltip's ~500ms delay. */}
         {seatMismatch &&
-          currentEdit &&
-          currentEdit.drawingBase64 &&
+          editsAtIndex.some((e) => e.drawingBase64) &&
           effectiveReviewSeat !== null && (
             <Tooltip
               title={t.review.cartridge.drawingHiddenTooltip.replace(
@@ -1842,8 +2152,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           )}
         <ReplayReviewCartridge
           canEdit={canEditReview}
-          savedText={currentEdit?.text ?? ""}
-          savedHasDrawing={Boolean(currentEdit?.drawingBase64)}
+          savedText={currentUserEdit?.text ?? ""}
+          savedHasDrawing={Boolean(currentUserEdit?.drawingBase64)}
           savedStrokes={savedDrawing?.strokes ?? []}
           draft={draft}
           onDraftChange={setDraft}
@@ -1868,7 +2178,24 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 `Seat ${effectiveReviewSeat}`)
               : ""
           }
+          annotationBottom={annotationBottomCss}
+          onTextEditorHeightChange={setTextEditorHeight}
         />
+        <Modal
+          open={blocker.state === "blocked"}
+          title={t.review.leaveGuard.title}
+          onOk={() => blocker.proceed?.()}
+          onCancel={() => blocker.reset?.()}
+          okText={t.review.leaveGuard.leave}
+          cancelText={t.review.leaveGuard.stay}
+          okButtonProps={{ danger: true }}
+          centered
+          zIndex={10050}
+        >
+          <p className="m-0">
+            {t.review.leaveGuard.body.replace("{n}", String(pendingCount))}
+          </p>
+        </Modal>
       </div>
     </div>
   );

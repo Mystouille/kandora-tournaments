@@ -11,12 +11,22 @@ import { splitHandTiles } from "../mahjong/TileDisplay";
  */
 const TILE_INPUT_REGEX = /\b((?:[0-9xX]+[mpsz])+)(\s)$/;
 
-export const MahjongTileExtension = Node.create({
+export interface MahjongTileOptions {
+  sizeFactor: number;
+}
+
+export const MahjongTileExtension = Node.create<MahjongTileOptions>({
   name: "mahjongTile",
   group: "inline",
   inline: true,
   atom: true,
   selectable: false,
+
+  addOptions() {
+    return {
+      sizeFactor: 22 / 14,
+    };
+  },
 
   addAttributes() {
     return {

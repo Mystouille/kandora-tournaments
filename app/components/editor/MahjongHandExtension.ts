@@ -2,11 +2,23 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { MahjongHandNodeView } from "./MahjongHandNodeView";
 
-export const MahjongHandExtension = Node.create({
+export interface MahjongHandOptions {
+  tileHeight: number;
+  margin: string;
+}
+
+export const MahjongHandExtension = Node.create<MahjongHandOptions>({
   name: "mahjongHand",
   group: "block",
   atom: true,
   selectable: false,
+
+  addOptions() {
+    return {
+      tileHeight: 48,
+      margin: "16px 0",
+    };
+  },
 
   addAttributes() {
     return {

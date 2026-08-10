@@ -909,6 +909,12 @@ export interface Translations extends CoreTranslations {
       shareCopied: string;
       copyShareLink: string;
     };
+    leaveGuard: {
+      title: string;
+      body: string;
+      stay: string;
+      leave: string;
+    };
   };
   links: {
     title: string;

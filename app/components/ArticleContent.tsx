@@ -9,10 +9,17 @@ import { TileImage } from "./mahjong/HandImage";
 import { useTileSet } from "../contexts/TileSetContext";
 import { useGlossary } from "../contexts/GlossaryContext";
 import { GlossaryTermLink } from "./GlossaryTermLink";
+import {
+  DEFAULT_RICH_TEXT_CONFIG,
+  INLINE_TILE_TO_FONT_RATIO,
+  richTextFontSize,
+  type RichTextConfig,
+} from "./editor/richTextConfig";
 
 interface ArticleContentProps {
   html: string;
   skipTerms?: Set<string>;
+  config?: RichTextConfig;
 }
 
 const TILE_REGEX = /^[0-9][mpsz]$/;
@@ -21,7 +28,11 @@ const TILE_REGEX = /^[0-9][mpsz]$/;
  * Renders article HTML content with custom mahjong-tile and mahjong-hand
  * elements mapped to React components, and links glossary terms.
  */
-export function ArticleContent({ html, skipTerms }: ArticleContentProps) {
+export function ArticleContent({
+  html,
+  skipTerms,
+  config = DEFAULT_RICH_TEXT_CONFIG,
+}: ArticleContentProps) {
   const { tileSet } = useTileSet();
   const { termPattern, openTerm } = useGlossary();
 
@@ -86,7 +97,11 @@ export function ArticleContent({ html, skipTerms }: ArticleContentProps) {
                 lineHeight: 0,
               }}
             >
-              <TileImage tile={tile} height={22} tileSet={tileSet} />
+              <TileImage
+                tile={tile}
+                sizeFactor={INLINE_TILE_TO_FONT_RATIO}
+                tileSet={tileSet}
+              />
             </span>
           );
         }
@@ -98,8 +113,12 @@ export function ArticleContent({ html, skipTerms }: ArticleContentProps) {
         const label = domNode.attribs["data-label"] ?? "";
         if (hand) {
           return (
-            <div style={{ margin: "16px 0", textAlign: "center" }}>
-              <HandDisplay hand={hand} tileHeight={48} tileSet={tileSet} />
+            <div style={{ margin: config.handMargin, textAlign: "center" }}>
+              <HandDisplay
+                hand={hand}
+                tileHeight={config.handTileHeight}
+                tileSet={tileSet}
+              />
               {label && (
                 <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>
                   {label}
@@ -114,7 +133,10 @@ export function ArticleContent({ html, skipTerms }: ArticleContentProps) {
   };
 
   return (
-    <div className="article-content rich-text-content">
+    <div
+      className="article-content rich-text-content"
+      style={{ fontSize: richTextFontSize(config) }}
+    >
       {parse(html, parserOptions)}
     </div>
   );

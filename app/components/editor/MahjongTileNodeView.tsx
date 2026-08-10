@@ -1,8 +1,9 @@
 import { NodeViewWrapper } from "@tiptap/react";
+import type { NodeViewProps } from "@tiptap/react";
 import { TileImage } from "../mahjong/HandImage";
 import { useTileSet } from "../../contexts/TileSetContext";
 
-export function MahjongTileNodeView({ node }: { node: any }) {
+export function MahjongTileNodeView({ node, extension }: NodeViewProps) {
   const { tileSet } = useTileSet();
   return (
     <NodeViewWrapper
@@ -13,7 +14,11 @@ export function MahjongTileNodeView({ node }: { node: any }) {
         lineHeight: 0,
       }}
     >
-      <TileImage tile={node.attrs.tile} height={22} tileSet={tileSet} />
+      <TileImage
+        tile={node.attrs.tile}
+        sizeFactor={extension.options.sizeFactor}
+        tileSet={tileSet}
+      />
     </NodeViewWrapper>
   );
 }

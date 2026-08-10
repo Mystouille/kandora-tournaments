@@ -971,6 +971,12 @@ export const en: Translations = {
       shareCopied: "Copied",
       copyShareLink: "Copy share link",
     },
+    leaveGuard: {
+      title: "Leave without publishing?",
+      body: "You have {n} unsaved annotation(s). If you leave this page now, they will be lost. Publish them first to keep your work.",
+      stay: "Stay on page",
+      leave: "Leave anyway",
+    },
   },
 
   // Resources

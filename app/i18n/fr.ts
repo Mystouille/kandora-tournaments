@@ -992,6 +992,12 @@ export const fr: Translations = {
       shareCopied: "Copié",
       copyShareLink: "Copier le lien de partage",
     },
+    leaveGuard: {
+      title: "Quitter sans publier\u00a0?",
+      body: "Vous avez {n} annotation(s) non enregistrée(s). Si vous quittez cette page maintenant, elles seront perdues. Publiez-les d'abord pour conserver votre travail.",
+      stay: "Rester sur la page",
+      leave: "Quitter quand même",
+    },
   },
 
   // Ressources

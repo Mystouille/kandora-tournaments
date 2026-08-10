@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, ConfigProvider, Tooltip, message, theme } from "antd";
 import {
   ClearOutlined,
@@ -13,6 +13,7 @@ import { useLocale } from "~/contexts/LocaleContext";
 import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
 import { RichTextEditor } from "~/components/editor/RichTextEditor";
+import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConfig";
 
 /**
  * In-progress edits the user has typed/drawn for the current event
@@ -73,6 +74,10 @@ interface ReplayReviewCartridgeProps {
    * Empty string when no seat is locked yet.
    */
   reviewSeatName: string;
+  /** Bottom edge shared with saved comments so the editor clears the hand. */
+  annotationBottom: string;
+  /** Reports the open editor height so saved comments can stack above it. */
+  onTextEditorHeightChange: (height: number) => void;
 }
 
 /**
@@ -100,17 +105,42 @@ export function ReplayReviewCartridge({
   onDiscardAll,
   seatMismatch,
   reviewSeatName,
+  annotationBottom,
+  onTextEditorHeightChange,
 }: ReplayReviewCartridgeProps) {
   const { t } = useLocale();
   const tr = t.review.cartridge;
   const [submitting, setSubmitting] = useState(false);
+  const textEditorRef = useRef<HTMLDivElement>(null);
+  const inText = draft.mode === "text";
+  const inPen = draft.mode === "pen";
+
+  useEffect(() => {
+    if (!canEdit || !inText) {
+      onTextEditorHeightChange(0);
+      return;
+    }
+
+    const element = textEditorRef.current;
+    if (!element) {
+      return;
+    }
+
+    const reportHeight = () => {
+      onTextEditorHeightChange(element.getBoundingClientRect().height);
+    };
+    reportHeight();
+
+    const observer = new ResizeObserver(reportHeight);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [canEdit, inText, onTextEditorHeightChange]);
 
   if (!canEdit) {
     return null;
   }
-
-  const inText = draft.mode === "text";
-  const inPen = draft.mode === "pen";
 
   const startText = () => {
     onDraftChange({
@@ -183,6 +213,45 @@ export function ReplayReviewCartridge({
 
   return (
     <>
+      {inText && (
+        <FixedTileSetProvider tileSet={TileSetName.Tenhou}>
+          <div
+            ref={textEditorRef}
+            className="absolute left-14 z-50 flex flex-col items-stretch gap-3 rounded p-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 pointer-events-auto"
+            style={{
+              bottom: annotationBottom,
+              width: 820,
+              maxWidth: "calc(100vw - 72px)",
+            }}
+          >
+            <div className="rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 overflow-hidden">
+              <RichTextEditor
+                content={draft.text}
+                onChange={(html) => onDraftChange({ ...draft, text: html })}
+                config={REPLAY_REVIEW_RICH_TEXT_CONFIG}
+                // Replay page wrapper sits at z-[9999]; bump the
+                // toolbar pickers above it so they don't get
+                // hidden behind the canvas.
+                modalZIndex={10002}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button size="middle" onClick={cancel}>
+                {tr.cancel}
+              </Button>
+              <Button
+                type="primary"
+                size="middle"
+                icon={<SaveOutlined />}
+                loading={submitting}
+                onClick={submitText}
+              >
+                {tr.save}
+              </Button>
+            </div>
+          </div>
+        </FixedTileSetProvider>
+      )}
       <div
         className="absolute bottom-2 left-2 z-50 flex flex-col items-start gap-2 pointer-events-auto"
         // Use inline backgroundColor for the cartridge body to defeat
@@ -254,52 +323,6 @@ export function ReplayReviewCartridge({
             </Tooltip>
           </div>
         </ConfigProvider>
-
-        {/* Text input drawer: a full rich-text editor (same as
-            the news article admin) so reviewers can drop in tile
-            spans, mahjong hands, images, links, etc. The tile
-            style is forced to Tenhou via `FixedTileSetProvider`
-            so review annotations always render in a consistent
-            style regardless of the viewer's preference. */}
-        {inText && (
-          <FixedTileSetProvider tileSet={TileSetName.Tenhou}>
-            <div
-              className="flex flex-col items-stretch gap-3 rounded p-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700"
-              style={{
-                width: 820,
-                maxWidth: "calc(100vw - 32px)",
-              }}
-            >
-              <div
-                className="rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 overflow-hidden"
-                style={{ fontSize: 16 }}
-              >
-                <RichTextEditor
-                  content={draft.text}
-                  onChange={(html) => onDraftChange({ ...draft, text: html })}
-                  // Replay page wrapper sits at z-[9999]; bump the
-                  // toolbar pickers above it so they don't get
-                  // hidden behind the canvas.
-                  modalZIndex={10002}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button size="middle" onClick={cancel}>
-                  {tr.cancel}
-                </Button>
-                <Button
-                  type="primary"
-                  size="middle"
-                  icon={<SaveOutlined />}
-                  loading={submitting}
-                  onClick={submitText}
-                >
-                  {tr.save}
-                </Button>
-              </div>
-            </div>
-          </FixedTileSetProvider>
-        )}
 
         {/* Drawing hint + submit. Same dark-cartridge background as
             the main button row, so force the antd dark algorithm to
