@@ -16,3 +16,95 @@ body {
     color-scheme: dark;
   }
 }
+
+/* Rich text editor + rendered content (review annotations, articles). */
+.rich-text-editor-content .ProseMirror {
+  padding: 12px;
+  min-height: 300px;
+  outline: none;
+}
+
+.rich-text-editor-content .ProseMirror,
+.rich-text-content {
+  @apply prose prose-sm max-w-none dark:prose-invert;
+}
+
+.rich-text-editor-content .ProseMirror {
+  font-size: inherit;
+}
+
+/* Responsive 16:9 wrapper for YouTube/Vimeo embeds */
+.rich-text-editor-content .ProseMirror .rich-text-embed,
+.rich-text-content .rich-text-embed {
+  position: relative;
+  width: 100%;
+  margin: 1em 0;
+  padding-top: 56.25%;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.rich-text-editor-content .ProseMirror .rich-text-embed > iframe,
+.rich-text-content .rich-text-embed > iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Self-hosted videos */
+.rich-text-editor-content .ProseMirror video,
+.rich-text-content video {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1em 0;
+  border-radius: 8px;
+  background: #000;
+}
+
+/* Light mode link color for rich text content */
+.rich-text-editor-content .ProseMirror a,
+.rich-text-content a {
+  color: #1677ff !important;
+}
+
+/* Ensure rich text content is visible in dark mode */
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror,
+:where(.dark, .dark *) .rich-text-content {
+  color: #d1d5db;
+}
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror h2,
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror h3,
+:where(.dark, .dark *) .rich-text-content h2,
+:where(.dark, .dark *) .rich-text-content h3 {
+  color: #f3f4f6;
+}
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror a,
+:where(.dark, .dark *) .rich-text-content a {
+  color: #60a5fa;
+}
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror strong,
+:where(.dark, .dark *) .rich-text-content strong {
+  color: #f3f4f6;
+}
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror code,
+:where(.dark, .dark *) .rich-text-content code {
+  color: #e5e7eb;
+  background-color: #374151;
+}
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror blockquote,
+:where(.dark, .dark *) .rich-text-content blockquote {
+  color: #9ca3af;
+  border-left-color: #4b5563;
+}
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror li::marker,
+:where(.dark, .dark *) .rich-text-content li::marker {
+  color: #9ca3af;
+}
+:where(.dark, .dark *) .rich-text-editor-content .ProseMirror hr,
+:where(.dark, .dark *) .rich-text-content hr {
+  border-color: #4b5563;
+}
