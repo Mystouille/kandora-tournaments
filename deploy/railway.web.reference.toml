@@ -1,0 +1,42 @@
+# REFERENCE ONLY — not read by Railway.
+#
+# This file used to live at the repo root as `railway.toml`, where Railway
+# auto-detected it and LOCKED the build/deploy fields (builder, dockerfilePath,
+# watchPatterns, startCommand) for BOTH services in the project (web +
+# game-server), since neither service can point at a per-service config file in
+# the current dashboard. It was moved here so Railway ignores it and each
+# service is configured independently via its own dashboard.
+#
+# Set these in the Railway dashboards instead (values below are the source of
+# truth to copy from):
+#
+#   WEB service (kandora-tournaments):
+#     Builder        = Dockerfile
+#     Dockerfile Path = Dockerfile
+#     Start Command  = (leave BLANK so the Dockerfile CMD is used:
+#                       `node scripts/start.cjs ./build/server/index.js`).
+#                       Do NOT set a stale `react-router-serve ...` value — that
+#                       bin isn't linked under `npm ci --omit=dev` and fails at
+#                       container start.
+#     Watch Paths    = **   (and `!game-server/**` if you want to skip web
+#                       rebuilds on game-server-only changes)
+#
+#   GAME-SERVER service (if/when hosted from this repo):
+#     Builder        = Dockerfile
+#     Dockerfile Path = game-server/Dockerfile
+#     Start Command  = (blank → Dockerfile CMD: `tsx game-server/index.ts`)
+#     Watch Paths    = game-server/**, app/game/**, app/db/**, config.ts,
+#                      package.json, package-lock.json, tsconfig.json,
+#                      app/services/gamePortalAdapter.server.ts,
+#                      app/utils/jwt.server.ts, app/utils/dbConnection.server.ts
+#     Root Directory = /   (build context must be the repo root)
+#
+# NOTE: this repo uses git submodules (app/db = kandora-core, app/game =
+# kandora-game). The Dockerfiles clone them at build time.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "node scripts/start.cjs ./build/server/index.js"
