@@ -58,8 +58,6 @@ import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConf
 import { Modal, Tooltip, message } from "antd";
 import {
   QuestionOutlined,
-  EyeOutlined,
-  EyeInvisibleOutlined,
   SoundOutlined,
   AudioMutedOutlined,
 } from "@ant-design/icons";
@@ -759,10 +757,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   const [localFirstEditSeat, setLocalFirstEditSeat] = useState<Seat | null>(
     null
   );
-  // Viewer-side toggle for the saved annotation frame. The eye
-  // button next to the annotation flips this on mouse-down so
-  // readers can hide a long note that's covering the board
-  // without losing it permanently.
+  // Viewer-side toggle for the saved annotation frame. Pressing the
+  // comment stack flips this on mouse-down so readers can peek at the
+  // board behind a long note without losing it permanently; it
+  // restores on mouse-up (see the global listener below).
   const [savedTextVisible, setSavedTextVisible] = useState<boolean>(true);
   const [textEditorHeight, setTextEditorHeight] = useState(0);
   // Canvas-pixel bounds of the focused seat's (bottom) hand strip,
@@ -776,7 +774,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     h: number;
   } | null>(null);
   // Global mouseup/touchend listener: while the user presses the
-  // eye button the annotation is hidden, but the moment they
+  // comment stack the annotation is hidden, but the moment they
   // release the mouse *anywhere* on the page we show it again.
   // Attaching the listener unconditionally is cheap (it does a
   // single `setState` only when the visible flag is already
@@ -1594,9 +1592,12 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       if (!(target instanceof Element)) {
         return false;
       }
+      // `[data-review-comments]` = the saved-comment stack (click-to-
+      // hide); a press there must not also step to the next event.
       return (
-        target.closest("button, input, label, select, a, [role=button]") !==
-        null
+        target.closest(
+          "button, input, label, select, a, [role=button], [data-review-comments]"
+        ) !== null
       );
     };
     const onMouseDown = (e: MouseEvent): void => {
@@ -2023,7 +2024,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             scrolls when it grows too tall. Rendered through the same
             `ArticleContent` pipeline as news articles so inline tiles,
             hands and links work, forced into the tenhou tile style for
-            visual consistency. The eye button hides the whole stack. */}
+            visual consistency. Pressing the stack hides it (press-to-peek). */}
         {(() => {
           // Show every reviewer's text note, except the current user's
           // own while they're actively editing it (their draft shows
@@ -2040,7 +2041,27 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             <>
               {savedTextVisible ? (
                 <div
-                  className="absolute left-2 z-[46] flex flex-col gap-2 max-w-[min(820px,calc(100vw-16px))] overflow-y-auto"
+                  data-review-comments
+                  // Press-to-peek: mousedown hides the stack so the
+                  // reader can see the board behind it (the global
+                  // mouseup listener restores it). Links/buttons inside
+                  // still work; stopPropagation keeps the press from
+                  // reaching the board's "next event" handler.
+                  onMouseDown={(e) => {
+                    if ((e.target as Element).closest("a, button")) {
+                      return;
+                    }
+                    e.stopPropagation();
+                    setSavedTextVisible(false);
+                  }}
+                  onTouchStart={(e) => {
+                    if ((e.target as Element).closest("a, button")) {
+                      return;
+                    }
+                    e.stopPropagation();
+                    setSavedTextVisible(false);
+                  }}
+                  className="absolute left-2 z-[46] flex flex-col gap-2 max-w-[min(820px,calc(100vw-16px))] overflow-y-auto cursor-pointer select-none"
                   style={{ bottom: commentListBottomCss, maxHeight: "60vh" }}
                 >
                   {textEdits.map((e) => {
@@ -2077,38 +2098,6 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   })}
                 </div>
               ) : null}
-              <button
-                type="button"
-                // Press-to-hide: the annotations disappear while
-                // the mouse button is held down on the eye, then
-                // reappear on `mouseup` anywhere on screen (see
-                // the global listener attached in a useEffect).
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setSavedTextVisible(false);
-                }}
-                // Touch-screen parity: hide while finger is down.
-                onTouchStart={(e) => {
-                  e.preventDefault();
-                  setSavedTextVisible(false);
-                }}
-                className="absolute left-2 z-[46] flex h-10 w-10 items-center justify-center rounded-full shadow-lg cursor-pointer select-none text-lg"
-                style={{
-                  ...(bottomHandBounds
-                    ? {
-                        top: Math.round(
-                          bottomHandBounds.y + bottomHandBounds.h / 2 - 20
-                        ),
-                      }
-                    : { bottom: "5rem" }),
-                  backgroundColor: "rgba(0, 0, 0, 0.8)",
-                  color: "#a7f3d0",
-                  border: "1px solid rgba(16, 185, 129, 0.5)",
-                }}
-                aria-label={t.review.cartridge.hideAnnotation}
-              >
-                {savedTextVisible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
-              </button>
             </>
           );
         })()}
