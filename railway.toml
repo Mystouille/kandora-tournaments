@@ -9,6 +9,13 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
+# Skip web redeploys when only game-server-only files change (the game-server
+# service tracks those via game-server/railway.toml). The web app depends on
+# most of `app/`, so a negative pattern is simpler than enumerating everything.
+watchPatterns = [
+    "**",
+    "!game-server/**",
+]
 
 # The real container entrypoint is the Dockerfile CMD
 # (`node scripts/start.cjs ./build/server/index.js`). We ALSO pin it here because

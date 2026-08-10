@@ -13,6 +13,7 @@
     "start": "react-router-serve ./build/server/index.js",
     "worker:league": "tsx app/services/leagueWorker.server.ts",
     "worker:scheduling": "tsx app/services/schedulingWorker.server.ts",
+    "game:server": "tsx game-server/index.ts",
     "typecheck": "react-router typegen && tsc",
     "test": "vitest run",
     "lint": "eslint \"app/**/*.{ts,tsx,js,jsx}\" \"scripts/**/*.{ts,js}\" --no-error-on-unmatched-pattern",

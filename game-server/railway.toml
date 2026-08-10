@@ -1,0 +1,44 @@
+# Railway config for the tournaments-owned kandora game-server service.
+#
+# Point the Railway service at this file via Settings → Build →
+# "Config Path": game-server/railway.toml. The repository's
+# top-level `railway.toml` continues to govern the tournaments web
+# service.
+
+[build]
+builder = "DOCKERFILE"
+# Dockerfile path is resolved from the repository root (the build
+# context must be the repo root so the image can copy `app/` and
+# `config.ts`).
+dockerfilePath = "game-server/Dockerfile"
+# Only redeploy the game-server when a file it actually depends on
+# changes. The build context is still the repo root, but Railway
+# skips redeploys for web-only churn (routes, UI components, admin
+# pages, banner assets, etc.). Keep this in sync with the transitive
+# import closure of `game-server/index.ts`.
+watchPatterns = [
+    # Root files baked into the image.
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "config.ts",
+    "game-server/**",
+    # Rules engine, protocol, replay schema, the game-server, and the
+    # portal-adapter boundary — all of `app/game/**` is game-server relevant.
+    "app/game/**",
+    # Shared persistence layer (UserModel, Match, ReplayLog, yaku maps, etc.
+    # are all transitively reachable from the adapter + game-server).
+    "app/db/**",
+    # Host adapter injected by the bootstrap + the auth/db helpers it uses.
+    "app/services/gamePortalAdapter.server.ts",
+    "app/utils/jwt.server.ts",
+    "app/utils/dbConnection.server.ts",
+]
+
+[deploy]
+# The game-server exposes a cheap liveness endpoint at /health
+# (see app/game/server/src/index.ts) that does not touch Mongo,
+# so transient backing-service blips don't take the WS server out
+# of rotation while existing matches are still serving traffic.
+healthcheckPath = "/health"
+healthcheckTimeout = 60

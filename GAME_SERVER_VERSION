@@ -1,0 +1,8 @@
+# Game-server deploy trigger (tournaments-owned).
+#
+# The tournaments game-server Railway service builds from this repo and clones
+# the kandora-core (app/db) + kandora-game (app/game) submodules from their
+# `main` branch. A gitlink-only submodule bump does NOT change this repo's
+# Docker build context, so Railway may reuse a cached clone. Bump this file
+# (any change) to force a fresh game-server build when only a submodule moved.
+1

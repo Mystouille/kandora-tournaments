@@ -32,6 +32,9 @@ export default [
   // (designed as an OBS browser source).
   route("/live/:slug/:stage", "routes/live.$slug.$stage.tsx"),
 
+  // Replay import + review landing (fetch-on-demand, then open the viewer).
+  route("/review", "routes/review.tsx"),
+
   // Read-only replay viewer (DB-only loader over ReplayLog; no game-server).
   route("/replays/tenhou-har", "routes/game/spectate-har.tsx"),
   route("/replays/:gameId", "routes/game/replay.tsx"),
