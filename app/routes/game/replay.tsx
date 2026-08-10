@@ -461,11 +461,21 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const hasInAppHistory = location.key !== "default";
+  // Opener-supplied close fallback (e.g. the statistics page's
+  // watch-replay button via `?from=`). Only an app-relative path is
+  // honoured so a crafted value can't drive an open redirect.
+  const fromRaw = searchParams.get("from");
+  const fromPath =
+    fromRaw && fromRaw.startsWith("/") && !fromRaw.startsWith("//")
+      ? fromRaw
+      : null;
   const handleClose = () => {
     if (hasInAppHistory) {
       navigate(-1);
+    } else if (fromPath) {
+      navigate(fromPath);
     } else {
-      navigate("/review");
+      navigate("/");
     }
   };
 

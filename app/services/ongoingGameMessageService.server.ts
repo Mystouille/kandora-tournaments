@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { coreConfig } from "config";
 import { LeagueModel, type League, Platform } from "~/db/League";
 import {
   OngoingGameMessageModel,
@@ -24,6 +25,16 @@ import {
   composeOngoingGameMessage,
   type RenderedPlayer,
 } from "./ongoingGameMessageRenderer";
+
+/** One-click `/live/:watchId` spectate URL for a game, when it carries a
+ * (Tenhou) watch-id and a public base URL is configured. */
+function liveSpectateUrlFor(game: OngoingGame): string | undefined {
+  if (!game.watchId || !coreConfig.APP_BASE_URL) {
+    return undefined;
+  }
+  const base = coreConfig.APP_BASE_URL.replace(/\/$/, "");
+  return `${base}/live/${encodeURIComponent(game.watchId)}`;
+}
 
 /**
  * Per-account info resolved from the league's User/Team graph, used to format
@@ -354,6 +365,7 @@ export async function syncOngoingGameMessages(
       isTeamMode: league.rulesConfig.isTeamMode,
       ...caps,
       lastUpdated: new Date(),
+      liveSpectateUrl: liveSpectateUrlFor(game),
     });
     try {
       const msg = await sendChannelMessage(channelId, content, components);
@@ -407,6 +419,7 @@ export async function syncOngoingGameMessages(
       isTeamMode: league.rulesConfig.isTeamMode,
       ...caps,
       lastUpdated: new Date(),
+      liveSpectateUrl: liveSpectateUrlFor(game),
     });
     try {
       await editChannelMessage(
@@ -581,6 +594,7 @@ export async function refreshOngoingGameMessage(
     isTeamMode: league.rulesConfig.isTeamMode,
     ...caps,
     lastUpdated: new Date(),
+    liveSpectateUrl: liveSpectateUrlFor(game),
   });
 
   // No doc yet (button on a freshly-spawned game we haven't synced) — send.

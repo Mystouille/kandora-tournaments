@@ -43,6 +43,9 @@ export default [
   // (see `/api/game/session`). Reuses the shared `kandora-game` spectate
   // route file; tournaments only spectates (no lobby / play routes).
   route("/spectate/:matchId", "game/routes/spectate.tsx"),
+  // One-click live spectate: start/reuse the relay for a watch-id and redirect
+  // to /spectate/:matchId. The GET link a Discord message can point at.
+  route("/live/:watchId", "routes/game/live.$watchId.tsx"),
   route("/api/game/session", "routes/api/game/session.ts"),
   route("/api/game/watch", "routes/api/game/watch.ts"),
   route("/api/game/enrichment", "routes/api/game/enrichment.ts"),

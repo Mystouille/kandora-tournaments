@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { Button, Tooltip, message } from "antd";
+import { useState } from "react";
+import { Button, Tooltip } from "antd";
 import { EyeOutlined, LoadingOutlined } from "@ant-design/icons";
-import { useFetcher, useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { useLocale } from "../../contexts/LocaleContext";
 
 interface WatchReplayButtonProps {
@@ -10,8 +10,8 @@ interface WatchReplayButtonProps {
 }
 
 /**
- * Eye-icon button that imports a replay log on demand via the `/review`
- * action, then navigates to `/replays/:gameId`. Shared between the
+ * Eye-icon button that navigates to `/replays/:gameId`; the replay
+ * loader fetches + persists the log on a cache miss. Shared between the
  * BracketTab stage-details popup and the GamesTab list.
  */
 export function WatchReplayButton({
@@ -19,28 +19,9 @@ export function WatchReplayButton({
   size = "small",
 }: WatchReplayButtonProps) {
   const { t } = useLocale();
-  const fetcher = useFetcher<{
-    ok: boolean;
-    gameId?: string;
-    error?: string;
-  }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (fetcher.state !== "idle" || !fetcher.data) {
-      return;
-    }
-    const data = fetcher.data;
-    if (data.ok && data.gameId) {
-      navigate(`/replays/${data.gameId}`);
-    } else {
-      message.error(
-        data.error ? `Replay unavailable (${data.error})` : "Replay unavailable"
-      );
-      setLoading(false);
-    }
-  }, [fetcher.state, fetcher.data, navigate]);
 
   return (
     <Tooltip title={t.statistics.bracketWatchReplay}>
@@ -53,10 +34,13 @@ export function WatchReplayButton({
           if (loading) {
             return;
           }
+          // No `/review` prefetch route in tournaments — the replay
+          // loader fetches + persists the log on a cache miss, so go
+          // straight to the viewer. `?from=` is the viewer's close
+          // fallback so it returns here on a shared / direct link.
           setLoading(true);
-          const fd = new FormData();
-          fd.set("gameId", gameId);
-          fetcher.submit(fd, { method: "post", action: "/review" });
+          const from = encodeURIComponent(location.pathname + location.search);
+          void navigate(`/replays/${encodeURIComponent(gameId)}?from=${from}`);
         }}
       />
     </Tooltip>

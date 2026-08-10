@@ -38,6 +38,9 @@ export interface ComposeOngoingGameMessageInput {
   supportsTerminate: boolean;
   /** When set, appended as a small Discord relative-timestamp footer. */
   lastUpdated?: Date;
+  /** Full `/live/:watchId` URL for a one-click live spectate link (Tenhou
+   * relay games only). Omitted when unavailable. */
+  liveSpectateUrl?: string;
 }
 
 export interface RenderedOngoingGameMessage {
@@ -135,6 +138,9 @@ export function composeOngoingGameMessage(
 
   const content = [
     `**Game** \`${game.gameId}\``,
+    ...(input.liveSpectateUrl
+      ? [`▶️ [Watch live](${input.liveSpectateUrl})`]
+      : []),
     startLine,
     `Status: ${statusLabel(game.status)}`,
     "",

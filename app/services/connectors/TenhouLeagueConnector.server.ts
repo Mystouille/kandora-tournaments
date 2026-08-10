@@ -132,34 +132,26 @@ export class TenhouLeagueConnector implements ILeagueTournamentConnector {
   }
 
   /**
-   * Tenhou does not expose live game UUIDs (those are only generated when the
-   * log is written), nor a paused state — so each ongoing "game" is reported
-   * with a synthetic id derived from the lobby id and table index. Status is
-   * always reported as `Playing`: if Tenhou lists a table in its `playing`
-   * set, the game is by definition ongoing (Tenhou exposes no pause state and
-   * no admin pause/resume/terminate controls).
+   * Each ongoing game is reported from `cmd_get_wg.cgi`, keyed by its per-game
+   * spectator watch-id — the safe, shareable id — never the lobby C-number,
+   * which doubles as the admin-config password. Status is always `Playing`: a
+   * listed watchable table is by definition ongoing, and Tenhou exposes no
+   * pause state or admin pause/resume/terminate controls.
    */
   async getOngoingGames(tournamentId: string | number): Promise<OngoingGame[]> {
-    const lobbyId = String(tournamentId);
-    const { playing } = await this.service.fetchLobbyPlayers(lobbyId);
-    if (playing.length === 0) {
-      return [];
-    }
-    const games: OngoingGame[] = [];
-    for (let i = 0; i + 3 < playing.length; i += 4) {
-      const tableIdx = Math.floor(i / 4);
-      games.push({
-        gameId: `${lobbyId}:table-${tableIdx}`,
-        tableId: `table-${tableIdx}`,
-        players: playing.slice(i, i + 4).map((name, seat) => ({
-          accountId: name,
-          nickname: name,
-          seat,
-        })),
-        status: OngoingGameStatus.Playing,
-      });
-    }
-    return games;
+    const watchGames = await this.service.fetchLobbyWatchGames(
+      String(tournamentId)
+    );
+    return watchGames.map((g) => ({
+      gameId: g.watchId,
+      watchId: g.watchId,
+      players: g.players.map((name, seat) => ({
+        accountId: name,
+        nickname: name,
+        seat,
+      })),
+      status: OngoingGameStatus.Playing,
+    }));
   }
 
   // ---------------------------------------------------------------------------

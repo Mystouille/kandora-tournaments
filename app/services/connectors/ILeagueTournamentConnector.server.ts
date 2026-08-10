@@ -209,6 +209,9 @@ export interface OngoingGame {
   gameId: string;
   /** Optional table/lobby identifier when distinct from gameId. */
   tableId?: string | number;
+  /** Per-game spectator watch-id for a one-click live relay link (Tenhou
+   * only). Safe to surface — never the lobby/admin id. */
+  watchId?: string;
   players: Array<{
     accountId: number | string;
     nickname?: string;
