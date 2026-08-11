@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import {
   Typography,
   Tabs,
-  Button,
   Spin,
   Collapse,
   Descriptions,
@@ -12,15 +11,9 @@ import {
   Tag,
   Card,
   Result,
-  Modal,
-  message,
 } from "antd";
 import {
-  CameraOutlined,
-  CloudUploadOutlined,
-  EditOutlined,
   FileTextOutlined,
-  ImportOutlined,
   InfoCircleOutlined,
   TrophyOutlined,
   TeamOutlined,
@@ -114,8 +107,6 @@ export default function LeagueDetailPage() {
   const [league, setLeague] = useState<LeagueDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [canEdit, setCanEdit] = useState(false);
-  const [savingRcTables, setSavingRcTables] = useState(false);
 
   useEffect(() => {
     if (!slug) {
@@ -139,37 +130,6 @@ export default function LeagueDetailPage() {
         setLoading(false);
       });
   }, [slug]);
-
-  useEffect(() => {
-    const id = league?._id;
-    if (!id) {
-      setCanEdit(false);
-      return;
-    }
-    let cancelled = false;
-    const checkCanEdit = () => {
-      fetch(
-        `${basePath}/api/online-tournaments/${encodeURIComponent(id)}/can-edit`
-      )
-        .then((res) => (res.ok ? res.json() : null))
-        .then((result) => {
-          if (!cancelled) {
-            setCanEdit(!!result?.canEdit);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setCanEdit(false);
-          }
-        });
-    };
-    checkCanEdit();
-    window.addEventListener("auth-changed", checkCanEdit);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("auth-changed", checkCanEdit);
-    };
-  }, [league?._id]);
 
   if (loading) {
     return (
@@ -198,17 +158,6 @@ export default function LeagueDetailPage() {
 
   const presentationTab = (
     <div>
-      {canEdit && (
-        <div style={{ marginBottom: 16, textAlign: "right" }}>
-          <Link
-            to={`/admin/online-tournaments/${league._id}/edit-presentation`}
-          >
-            <Button type="primary" icon={<EditOutlined />}>
-              {t.onlineTournaments.admin.editPresentation}
-            </Button>
-          </Link>
-        </div>
-      )}
       {presentationHtml ? (
         <ArticleContent html={presentationHtml} />
       ) : (
@@ -281,109 +230,8 @@ export default function LeagueDetailPage() {
     </div>
   );
 
-  const isRiichiCity = league.platformConfig?.platformName === "RIICHICITY";
-
-  const handleSaveRcTables = () => {
-    if (!league._id) {
-      return;
-    }
-    Modal.confirm({
-      title: t.onlineTournaments.admin.saveRcTablesConfirmTitle,
-      content: t.onlineTournaments.admin.saveRcTablesConfirmBody,
-      okText: t.onlineTournaments.admin.saveRcTables,
-      cancelText: t.common.cancel,
-      onOk: async () => {
-        setSavingRcTables(true);
-        try {
-          const res = await fetch(
-            `${basePath}/api/admin/league-save-rc-tables`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ leagueId: league._id }),
-            }
-          );
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            const errMsg =
-              (data && typeof data.error === "string" && data.error) ||
-              t.onlineTournaments.admin.saveRcTablesError;
-            message.error(errMsg);
-            return;
-          }
-          const rounds = Number(data?.totalRoundsSaved ?? 0);
-          const tables = Number(data?.totalTablesSaved ?? 0);
-          const stages = Array.isArray(data?.stagesProcessed)
-            ? data.stagesProcessed.length
-            : 0;
-          if (rounds === 0) {
-            message.info(t.onlineTournaments.admin.saveRcTablesNoStages);
-            return;
-          }
-          message.success(
-            t.onlineTournaments.admin.saveRcTablesSuccess
-              .replace("{rounds}", String(rounds))
-              .replace("{stages}", String(stages))
-              .replace("{tables}", String(tables))
-          );
-        } catch {
-          message.error(t.onlineTournaments.admin.saveRcTablesError);
-        } finally {
-          setSavingRcTables(false);
-        }
-      },
-    });
-  };
-
   const playerListTab = (
     <div>
-      {canEdit && (
-        <div
-          style={{
-            marginBottom: 16,
-            textAlign: "right",
-            display: "flex",
-            gap: 8,
-            justifyContent: "flex-end",
-          }}
-        >
-          <Link to={`/admin/online-tournaments/${league._id}/import-teams`}>
-            <Button type="primary" icon={<ImportOutlined />}>
-              {t.onlineTournaments.admin.importRoster}
-            </Button>
-          </Link>
-          <Link to={`/admin/online-tournaments/${league._id}/edit-roster`}>
-            <Button icon={<EditOutlined />}>
-              {t.onlineTournaments.admin.editRoster}
-            </Button>
-          </Link>
-          {withTeams && (
-            <Link
-              to={`/admin/online-tournaments/${league._id}/edit-team-pictures`}
-            >
-              <Button icon={<CameraOutlined />}>
-                {t.onlineTournaments.admin.editTeamPictures}
-              </Button>
-            </Link>
-          )}
-          <Link
-            to={`/admin/online-tournaments/${league._id}/edit-player-pictures`}
-          >
-            <Button icon={<CameraOutlined />}>
-              {t.onlineTournaments.admin.editPlayerPictures}
-            </Button>
-          </Link>
-          {isRiichiCity && (
-            <Button
-              icon={<CloudUploadOutlined />}
-              loading={savingRcTables}
-              onClick={handleSaveRcTables}
-            >
-              {t.onlineTournaments.admin.saveRcTables}
-            </Button>
-          )}
-        </div>
-      )}
       {withTeams ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {league.teams.map((team) => (
@@ -529,17 +377,6 @@ export default function LeagueDetailPage() {
 
   const finalsRosterTab = hasFinalsRoster ? (
     <div>
-      {canEdit && (
-        <div style={{ marginBottom: 16, textAlign: "right" }}>
-          <Link
-            to={`/admin/online-tournaments/${league._id}/edit-finals-roster`}
-          >
-            <Button type="primary" icon={<EditOutlined />}>
-              {t.onlineTournaments.admin.editFinalsRoster}
-            </Button>
-          </Link>
-        </div>
-      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {league.teams.map((team) => {
           const fr = team.finalsRoster;

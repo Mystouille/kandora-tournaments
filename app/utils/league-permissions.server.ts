@@ -3,6 +3,39 @@ import { connectToDatabase } from "./dbConnection.server";
 import { UserModel } from "../core/models/shared/User";
 import { LeagueModel } from "../core/models/tournament/League";
 import { isDiscordGuildAdmin } from "./discord-guilds.server";
+import { slugify } from "./slugify";
+
+export interface ManageableTournamentSummary {
+  id: string;
+  name: string;
+  slug: string;
+  startTime: string;
+  endTime: string;
+  isDisplayed: boolean;
+  isTeamMode: boolean;
+  platformName: string;
+}
+
+export interface TournamentAdminAccess {
+  isGlobalAdmin: boolean;
+  tournaments: ManageableTournamentSummary[];
+}
+
+export interface TournamentAdminUser {
+  isAdmin?: boolean | null;
+  discordIdentity?: { id?: string | null } | null;
+}
+
+interface AdminLeagueRecord {
+  _id: { toString(): string } | string;
+  name: string;
+  startTime: Date;
+  endTime: Date;
+  isDisplayed?: boolean;
+  rulesConfig?: { isTeamMode?: boolean };
+  platformConfig?: { platformName?: string };
+  discordConfig?: { serverId?: string };
+}
 
 interface AuthResult {
   authorized: true;
@@ -12,6 +45,97 @@ interface AuthResult {
 interface AuthFailure {
   authorized: false;
   response: Response;
+}
+
+function summarizeLeague(
+  league: AdminLeagueRecord
+): ManageableTournamentSummary {
+  return {
+    id: league._id.toString(),
+    name: league.name,
+    slug: slugify(league.name),
+    startTime: league.startTime.toISOString(),
+    endTime: league.endTime.toISOString(),
+    isDisplayed: league.isDisplayed ?? true,
+    isTeamMode: league.rulesConfig?.isTeamMode ?? false,
+    platformName: league.platformConfig?.platformName ?? "",
+  };
+}
+
+/** Return the tournaments the current global or Discord league admin manages. */
+export async function getTournamentAdminAccess(
+  request: Request
+): Promise<TournamentAdminAccess | null> {
+  const jwtPayload = await getAuthenticatedUser(request);
+  if (!jwtPayload) {
+    return null;
+  }
+
+  await connectToDatabase();
+  const user = await UserModel.findById(jwtPayload.sub).select(
+    "isAdmin discordIdentity"
+  );
+  if (!user) {
+    return null;
+  }
+
+  return getTournamentAdminAccessForUser(user);
+}
+
+export async function getTournamentAdminAccessForUser(
+  user: TournamentAdminUser
+): Promise<TournamentAdminAccess> {
+  const isGlobalAdmin = Boolean(user.isAdmin);
+  const discordId = user.discordIdentity?.id;
+  if (!isGlobalAdmin && !discordId) {
+    return { isGlobalAdmin: false, tournaments: [] };
+  }
+
+  const leagues = await LeagueModel.find({ isDisplayed: true })
+    .select(
+      "name startTime endTime isDisplayed rulesConfig.isTeamMode platformConfig.platformName discordConfig.serverId"
+    )
+    .sort({ startTime: -1 })
+    .lean<AdminLeagueRecord[]>();
+
+  if (isGlobalAdmin) {
+    return {
+      isGlobalAdmin: true,
+      tournaments: leagues.map(summarizeLeague),
+    };
+  }
+
+  const serverIds = [
+    ...new Set(
+      leagues
+        .map((league) => league.discordConfig?.serverId)
+        .filter((serverId): serverId is string => Boolean(serverId))
+    ),
+  ];
+  const guildAccess = new Map(
+    await Promise.all(
+      serverIds.map(async (serverId) => {
+        try {
+          return [
+            serverId,
+            await isDiscordGuildAdmin(serverId, discordId!),
+          ] as const;
+        } catch {
+          return [serverId, false] as const;
+        }
+      })
+    )
+  );
+
+  return {
+    isGlobalAdmin: false,
+    tournaments: leagues
+      .filter((league) => {
+        const serverId = league.discordConfig?.serverId;
+        return Boolean(serverId && guildAccess.get(serverId));
+      })
+      .map(summarizeLeague),
+  };
 }
 
 /**

@@ -3,6 +3,7 @@ import { Layout, Menu, Drawer } from "antd";
 import type { MenuProps } from "antd";
 import {
   BarChartOutlined,
+  SettingOutlined,
   TrophyOutlined,
   InfoCircleOutlined,
   ToolOutlined,
@@ -36,6 +37,7 @@ interface SidebarProps {
   onClose?: () => void;
   /** Adds tournament-specific links while the URL is inside a tournament. */
   tournamentSlug?: string | null;
+  currentUser?: { canAccessTournamentAdmin?: boolean } | null;
 }
 
 export function Sidebar({
@@ -43,6 +45,7 @@ export function Sidebar({
   isMobile,
   onClose,
   tournamentSlug,
+  currentUser,
 }: SidebarProps) {
   const location = useLocation();
   const { isDark, customTokens } = useAppTheme();
@@ -55,23 +58,23 @@ export function Sidebar({
     getItem(<Link to="/">{t.nav.tournaments}</Link>, "/", <TrophyOutlined />),
     ...(tournamentSlug
       ? [
-        getItem(
-          <Link to={`/online-tournaments/${tournamentSlug}`}>
-            {t.onlineTournaments.navInfo}
-          </Link>,
-          `/online-tournaments/${tournamentSlug}`,
-          <InfoCircleOutlined />,
-          tournamentChildStyle
-        ),
-        getItem(
-          <Link to={`/online-tournaments/${tournamentSlug}/statistics`}>
-            {t.onlineTournaments.navStatistics}
-          </Link>,
-          `/online-tournaments/${tournamentSlug}/statistics`,
-          <BarChartOutlined />,
-          tournamentChildStyle
-        ),
-      ]
+          getItem(
+            <Link to={`/online-tournaments/${tournamentSlug}`}>
+              {t.onlineTournaments.navInfo}
+            </Link>,
+            `/online-tournaments/${tournamentSlug}`,
+            <InfoCircleOutlined />,
+            tournamentChildStyle
+          ),
+          getItem(
+            <Link to={`/online-tournaments/${tournamentSlug}/statistics`}>
+              {t.onlineTournaments.navStatistics}
+            </Link>,
+            `/online-tournaments/${tournamentSlug}/statistics`,
+            <BarChartOutlined />,
+            tournamentChildStyle
+          ),
+        ]
       : []),
     getItem(
       <Link to="/review">{t.nav.onlineTools}</Link>,
@@ -171,9 +174,35 @@ export function Sidebar({
         style={{
           background: siderBg,
           border: "none",
-          flex: 1,
+          flexShrink: 0,
         }}
       />
+      {currentUser?.canAccessTournamentAdmin && (
+        <Menu
+          theme={isDark ? "dark" : "light"}
+          mode="inline"
+          selectedKeys={[selectedKey]}
+          items={[
+            getItem(
+              <Link to="/admin">{t.admin.title}</Link>,
+              "/admin",
+              <SettingOutlined />
+            ),
+          ]}
+          onClick={() => {
+            if (isMobile) {
+              onClose?.();
+            }
+          }}
+          style={{
+            background: siderBg,
+            border: "none",
+            flexShrink: 0,
+          }}
+          className="admin-sidebar-menu"
+        />
+      )}
+      <div style={{ flex: 1 }} />
     </div>
   );
 

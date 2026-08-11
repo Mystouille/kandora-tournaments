@@ -5,6 +5,10 @@ import {
   createAuthCookie,
 } from "../../../utils/jwt.server";
 import { UserModel } from "~/core/models/shared/User";
+import {
+  getTournamentAdminAccessForUser,
+  type TournamentAdminAccess,
+} from "../../../utils/league-permissions.server";
 
 /**
  * GET /api/auth/me
@@ -33,11 +37,25 @@ export async function loader({ request }: { request: Request }) {
       return Response.json({ authenticated: false });
     }
 
+    let tournamentAdminAccess: TournamentAdminAccess = {
+      isGlobalAdmin: Boolean(user.isAdmin),
+      tournaments: [],
+    };
+    try {
+      tournamentAdminAccess = await getTournamentAdminAccessForUser(user);
+    } catch (error) {
+      console.error("Tournament admin access error:", error);
+    }
+
     const responseBody = {
       authenticated: true,
       user: {
         ...user.toJSON(),
         avatarUrl: jwtPayload.avatarUrl ?? null,
+        canAccessTournamentAdmin:
+          tournamentAdminAccess.isGlobalAdmin ||
+          tournamentAdminAccess.tournaments.length > 0,
+        tournamentAdminAccess,
       },
       loginMethod: jwtPayload.loginMethod,
     };

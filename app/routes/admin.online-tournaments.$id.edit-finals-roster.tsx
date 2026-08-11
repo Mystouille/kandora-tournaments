@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import {
   Button,
   Card,
@@ -72,7 +72,6 @@ export function meta() {
 export default function EditFinalsRosterPage() {
   const { t } = useLocale();
   const tt = t.onlineTournaments.admin;
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,22 +80,6 @@ export default function EditFinalsRosterPage() {
   const [finalsMap, setFinalsMap] = useState<Record<string, TeamFinalsState>>(
     {}
   );
-
-  useEffect(() => {
-    if (!id) {
-      return;
-    }
-    fetch(
-      `${basePath}/api/online-tournaments/${encodeURIComponent(id)}/can-edit`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data?.canEdit) {
-          navigate("/");
-        }
-      })
-      .catch(() => navigate("/"));
-  }, [id, navigate]);
 
   useEffect(() => {
     if (!id) {
@@ -249,13 +232,13 @@ export default function EditFinalsRosterPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/online-tournaments/${league.slug}`}>
+      <Link to={`/admin/online-tournaments/${id}`}>
         <Button
           size="small"
           icon={<ArrowLeftOutlined />}
           style={{ marginBottom: 12 }}
         >
-          {tt.backToLeague}
+          {t.admin.manageTournament}
         </Button>
       </Link>
 

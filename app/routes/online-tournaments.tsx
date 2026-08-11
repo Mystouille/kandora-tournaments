@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { Button, Card, Col, Empty, Row, Spin, Tag, Typography } from "antd";
+import { Card, Col, Empty, Row, Spin, Tag, Typography } from "antd";
 import {
   CalendarOutlined,
-  PlusOutlined,
   TeamOutlined,
   PlayCircleOutlined,
   TrophyOutlined,
@@ -68,7 +67,6 @@ export default function OnlineTournaments() {
   const { t, locale } = useLocale();
   const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetch(`${basePath}/api/online-tournaments`)
@@ -86,15 +84,6 @@ export default function OnlineTournaments() {
         console.error(err);
         setLoading(false);
       });
-
-    fetch(`${basePath}/api/auth/me`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.user?.isAdmin) {
-          setIsAdmin(true);
-        }
-      })
-      .catch(() => {});
   }, []);
 
   const statusMeta: Record<TournamentStatus, { color: string; label: string }> =
@@ -109,15 +98,6 @@ export default function OnlineTournaments() {
       <PageTitle title={t.onlineTournaments.title} />
 
       <div style={{ padding: "0 24px", maxWidth: 1200, margin: "0 auto" }}>
-        {isAdmin && (
-          <div style={{ textAlign: "center", marginBottom: 16 }}>
-            <Link to="/admin/online-tournaments/new">
-              <Button type="primary" icon={<PlusOutlined />}>
-                {t.onlineTournaments.admin.createNew}
-              </Button>
-            </Link>
-          </div>
-        )}
         {loading ? (
           <div style={{ textAlign: "center", padding: 48 }}>
             <Spin size="large" />

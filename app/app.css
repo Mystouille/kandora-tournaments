@@ -17,6 +17,66 @@ body {
   }
 }
 
+/* Admin entry in the regular sidebar */
+.admin-sidebar-menu .ant-menu-item {
+  background: #cf1322 !important;
+  color: #fff !important;
+}
+.admin-sidebar-menu .ant-menu-item .ant-menu-item-icon {
+  color: #fff !important;
+}
+.admin-sidebar-menu .ant-menu-item:hover {
+  background: #f5222d !important;
+  color: #fff !important;
+}
+.admin-sidebar-menu .ant-menu-item-selected {
+  background: #a8071a !important;
+  color: #fff !important;
+}
+.admin-sidebar-menu .ant-menu-item-selected::after {
+  border-inline-end-color: #fff !important;
+}
+
+/* Main navigation while browsing administration routes */
+.admin-navigation-menu.ant-menu {
+  background: #a8071a !important;
+}
+.admin-navigation-menu .ant-menu-item,
+.admin-navigation-menu .ant-menu-item .ant-menu-item-icon {
+  color: #fff !important;
+}
+.admin-navigation-menu .ant-menu-item-group-title {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+.admin-navigation-menu .ant-menu-item:hover {
+  background: #cf1322 !important;
+  color: #fff !important;
+}
+.admin-navigation-menu .ant-menu-item-selected {
+  background: #820014 !important;
+  color: #fff !important;
+}
+.admin-navigation-menu .ant-menu-item-selected::after {
+  border-inline-end-color: #fff !important;
+}
+
+/* Theme-colored exit buttons within the red admin navigation */
+.admin-back-menu.ant-menu {
+  background: #a8071a !important;
+}
+.admin-back-menu .ant-menu-item {
+  background: var(--admin-back-bg) !important;
+  border-radius: 8px !important;
+  color: var(--admin-back-color) !important;
+}
+.admin-back-menu .ant-menu-item .ant-menu-item-icon {
+  color: inherit !important;
+}
+.admin-back-menu .ant-menu-item:hover {
+  background: var(--admin-back-hover-bg) !important;
+  color: var(--admin-back-color) !important;
+}
+
 /* Rich text editor + rendered content (review annotations, articles). */
 .rich-text-editor-content .ProseMirror {
   padding: 12px;

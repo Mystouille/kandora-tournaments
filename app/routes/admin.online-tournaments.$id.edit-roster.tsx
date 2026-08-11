@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import {
   Alert,
   Avatar,
@@ -85,7 +85,6 @@ const tempTeamId = () => `__new_team_${nextTempTeamId++}`;
 export default function EditRosterPage() {
   const { t } = useLocale();
   const tt = t.onlineTournaments.admin;
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
   const [loading, setLoading] = useState(true);
@@ -108,22 +107,6 @@ export default function EditRosterPage() {
   // New team modal state
   const [newTeamModalOpen, setNewTeamModalOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
-
-  useEffect(() => {
-    if (!id) {
-      return;
-    }
-    fetch(
-      `${basePath}/api/online-tournaments/${encodeURIComponent(id)}/can-edit`
-    )
-      .then((res) => res.json())
-      .then((result) => {
-        if (!result?.canEdit) {
-          navigate("/");
-        }
-      })
-      .catch(() => navigate("/"));
-  }, [id, navigate]);
 
   useEffect(() => {
     if (!id) {
@@ -482,13 +465,13 @@ export default function EditRosterPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/online-tournaments/${encodeURIComponent(data.leagueSlug)}`}>
+      <Link to={`/admin/online-tournaments/${id}`}>
         <Button
           size="small"
           icon={<ArrowLeftOutlined />}
           style={{ marginBottom: 12 }}
         >
-          {tt.backToLeague}
+          {t.admin.manageTournament}
         </Button>
       </Link>
 

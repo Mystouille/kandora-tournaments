@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { Button, Card, Spin, Typography, message } from "antd";
 import {
   ArrowLeftOutlined,
@@ -47,7 +47,6 @@ export function meta() {
 export default function EditTeamPicturesPage() {
   const { t } = useLocale();
   const tt = t.onlineTournaments.admin;
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
   const [league, setLeague] = useState<LeagueDetail | null>(null);
@@ -60,22 +59,6 @@ export default function EditTeamPicturesPage() {
     teamId: string;
     file: File;
   } | null>(null);
-
-  useEffect(() => {
-    if (!id) {
-      return;
-    }
-    fetch(
-      `${basePath}/api/online-tournaments/${encodeURIComponent(id)}/can-edit`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data?.canEdit) {
-          navigate("/");
-        }
-      })
-      .catch(() => navigate("/"));
-  }, [id, navigate]);
 
   useEffect(() => {
     if (!id) {
@@ -171,13 +154,13 @@ export default function EditTeamPicturesPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/online-tournaments/${league.slug}`}>
+      <Link to={`/admin/online-tournaments/${id}`}>
         <Button
           size="small"
           icon={<ArrowLeftOutlined />}
           style={{ marginBottom: 12 }}
         >
-          {tt.backToLeague}
+          {t.admin.manageTournament}
         </Button>
       </Link>
 

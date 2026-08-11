@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useLoaderData, useNavigate, useParams } from "react-router";
+import { useRef, useState } from "react";
+import { Link, useLoaderData, useParams } from "react-router";
 import { Button, Card, Result, Typography, theme } from "antd";
-import { ImportOutlined, UploadOutlined } from "@ant-design/icons";
-import { basePath } from "../utils/basePath";
+import {
+  ArrowLeftOutlined,
+  ImportOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
 import { requireLeagueAdminOrRedirect } from "../utils/league-permissions.server";
 import { connectToDatabase } from "../utils/dbConnection.server";
 import { LeagueModel } from "../core/models/tournament/League";
@@ -48,7 +51,6 @@ export function meta() {
 type ImportMode = "choose" | "platform" | "csv";
 
 export default function ImportTeamsPage() {
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { isTeamMode } = useLoaderData<typeof loader>();
   const { t } = useLocale();
@@ -67,22 +69,6 @@ export default function ImportTeamsPage() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [csvText, setCsvText] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!id) {
-      return;
-    }
-    fetch(
-      `${basePath}/api/online-tournaments/${encodeURIComponent(id)}/can-edit`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data?.canEdit) {
-          navigate("/");
-        }
-      })
-      .catch(() => navigate("/"));
-  }, [id, navigate]);
 
   const resetAll = () => {
     setMode("choose");
@@ -114,9 +100,13 @@ export default function ImportTeamsPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/`}>
-        <Button size="small" style={{ marginBottom: 12 }}>
-          ← {tt.importBackToLeagues}
+      <Link to={`/admin/online-tournaments/${id}`}>
+        <Button
+          size="small"
+          icon={<ArrowLeftOutlined />}
+          style={{ marginBottom: 12 }}
+        >
+          {t.admin.manageTournament}
         </Button>
       </Link>
 
@@ -252,8 +242,8 @@ export default function ImportTeamsPage() {
             <Button key="again" onClick={resetAll}>
               {tt.importAgain}
             </Button>,
-            <Link key="back" to="/">
-              <Button type="primary">{tt.importBackToLeagues}</Button>
+            <Link key="back" to={`/admin/online-tournaments/${id}`}>
+              <Button type="primary">{t.admin.manageTournament}</Button>
             </Link>,
           ]}
         />

@@ -10,6 +10,7 @@ import {
   Input,
 } from "antd";
 import {
+  ArrowLeftOutlined,
   SaveOutlined,
   TranslationOutlined,
   UploadOutlined,
@@ -75,11 +76,9 @@ export default function EditLeaguePresentationPage() {
   const { t } = useLocale();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [leagueName, setLeagueName] = useState("");
-  const [leagueSlug, setLeagueSlug] = useState("");
   const [contentFr, setContentFr] = useState("");
   const [contentEn, setContentEn] = useState("");
   const [summaryFr, setSummaryFr] = useState("");
@@ -90,24 +89,6 @@ export default function EditLeaguePresentationPage() {
 
   useEffect(() => {
     if (!id) {
-      return;
-    }
-    fetch(
-      `${basePath}/api/online-tournaments/${encodeURIComponent(id)}/can-edit`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data?.canEdit) {
-          navigate("/");
-        } else {
-          setIsAdmin(true);
-        }
-      })
-      .catch(() => navigate("/"));
-  }, [id]);
-
-  useEffect(() => {
-    if (!isAdmin || !id) {
       return;
     }
 
@@ -123,11 +104,10 @@ export default function EditLeaguePresentationPage() {
         const league = leagues.find((l) => l._id === id);
         if (!league) {
           message.error("League not found");
-          navigate("/");
+          navigate("/admin");
           return;
         }
         setLeagueName(league.name);
-        setLeagueSlug(league.slug);
         // Fetch the full detail to get presentation content
         return fetch(
           `${basePath}/api/online-tournaments/${encodeURIComponent(league.slug)}`
@@ -150,10 +130,10 @@ export default function EditLeaguePresentationPage() {
       })
       .catch(() => {
         message.error("Failed to load league");
-        navigate("/");
+        navigate("/admin");
       })
       .finally(() => setLoading(false));
-  }, [isAdmin, id]);
+  }, [id, navigate]);
 
   const handleSave = async (translate: boolean) => {
     if (translate) {
@@ -199,7 +179,7 @@ export default function EditLeaguePresentationPage() {
         if (typeof data.coverImageUrl === "string") {
           setCoverImageUrl(data.coverImageUrl);
         }
-        navigate(`/online-tournaments/${encodeURIComponent(leagueSlug)}`);
+        navigate(`/admin/online-tournaments/${id}`);
       } else {
         message.error(data.error || t.onlineTournaments.admin.saveError);
       }
@@ -219,7 +199,7 @@ export default function EditLeaguePresentationPage() {
     }
   };
 
-  if (loading || !isAdmin) {
+  if (loading) {
     return (
       <div style={{ textAlign: "center", padding: 48 }}>
         <Spin size="large" />
@@ -237,9 +217,13 @@ export default function EditLeaguePresentationPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
-      <Link to={`/online-tournaments/${encodeURIComponent(leagueSlug)}`}>
-        <Button size="small" style={{ marginBottom: 12 }}>
-          ← {t.onlineTournaments.admin.backToLeague}
+      <Link to={`/admin/online-tournaments/${id}`}>
+        <Button
+          size="small"
+          icon={<ArrowLeftOutlined />}
+          style={{ marginBottom: 12 }}
+        >
+          {t.admin.manageTournament}
         </Button>
       </Link>
 

@@ -50,34 +50,35 @@ export default [
   // ---------------------------------------------------------------------
   // Admin — online tournaments
   // ---------------------------------------------------------------------
-  route(
-    "/admin/online-tournaments/new",
-    "routes/admin.online-tournaments.new.tsx"
-  ),
-  route(
-    "/admin/online-tournaments/:id/edit-presentation",
-    "routes/admin.online-tournaments.$id.edit-presentation.tsx"
-  ),
-  route(
-    "/admin/online-tournaments/:id/import-teams",
-    "routes/admin.online-tournaments.$id.import-teams.tsx"
-  ),
-  route(
-    "/admin/online-tournaments/:id/edit-finals-roster",
-    "routes/admin.online-tournaments.$id.edit-finals-roster.tsx"
-  ),
-  route(
-    "/admin/online-tournaments/:id/edit-roster",
-    "routes/admin.online-tournaments.$id.edit-roster.tsx"
-  ),
-  route(
-    "/admin/online-tournaments/:id/edit-team-pictures",
-    "routes/admin.online-tournaments.$id.edit-team-pictures.tsx"
-  ),
-  route(
-    "/admin/online-tournaments/:id/edit-player-pictures",
-    "routes/admin.online-tournaments.$id.edit-player-pictures.tsx"
-  ),
+  route("/admin", "routes/admin.tsx", [
+    index("routes/admin.index.tsx"),
+    route("online-tournaments/new", "routes/admin.online-tournaments.new.tsx"),
+    route("online-tournaments/:id", "routes/admin.online-tournaments.$id.tsx"),
+    route(
+      "online-tournaments/:id/edit-presentation",
+      "routes/admin.online-tournaments.$id.edit-presentation.tsx"
+    ),
+    route(
+      "online-tournaments/:id/import-teams",
+      "routes/admin.online-tournaments.$id.import-teams.tsx"
+    ),
+    route(
+      "online-tournaments/:id/edit-finals-roster",
+      "routes/admin.online-tournaments.$id.edit-finals-roster.tsx"
+    ),
+    route(
+      "online-tournaments/:id/edit-roster",
+      "routes/admin.online-tournaments.$id.edit-roster.tsx"
+    ),
+    route(
+      "online-tournaments/:id/edit-team-pictures",
+      "routes/admin.online-tournaments.$id.edit-team-pictures.tsx"
+    ),
+    route(
+      "online-tournaments/:id/edit-player-pictures",
+      "routes/admin.online-tournaments.$id.edit-player-pictures.tsx"
+    ),
+  ]),
 
   // ---------------------------------------------------------------------
   // API — tournament data

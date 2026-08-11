@@ -4,6 +4,7 @@ import { useLocation } from "react-router";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { basePath } from "../utils/basePath";
 import { Sidebar } from "./Sidebar";
+import { AdminSidebar } from "./AdminSidebar";
 import { Header } from "./Header";
 import { GlossaryPanel } from "./GlossaryPanel";
 import { useLocale } from "../contexts/LocaleContext";
@@ -12,15 +13,23 @@ import { useSwipeGesture } from "../hooks/useSwipeGesture";
 import { useGlossary } from "../contexts/GlossaryContext";
 import { useTileSet } from "../contexts/TileSetContext";
 import { TileSetName } from "./mahjong/HandImage";
+import type { TournamentAdminAccess } from "../utils/league-permissions.server";
 
 interface NavigationProps {
   children: React.ReactNode;
 }
 
+interface CurrentUser {
+  canAccessTournamentAdmin?: boolean;
+  preferences?: { tileSet?: string };
+  tournamentAdminAccess?: TournamentAdminAccess;
+  [key: string]: unknown;
+}
+
 export function Navigation({ children }: NavigationProps) {
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(() => isMobile);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const { t } = useLocale();
   const { customTokens } = useAppTheme();
@@ -33,6 +42,7 @@ export function Navigation({ children }: NavigationProps) {
   // Tournament-specific links are derived from the URL and disappear as soon
   // as the user leaves that tournament.
   const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
   const tournamentMatch = location.pathname.match(
     /^\/online-tournaments\/([^/]+)/
   );
@@ -190,12 +200,22 @@ export function Navigation({ children }: NavigationProps) {
   return (
     <>
       <Layout hasSider style={{ minHeight: "100vh" }}>
-        <Sidebar
-          collapsed={collapsed}
-          isMobile={isMobile}
-          onClose={() => setCollapsed(true)}
-          tournamentSlug={tournamentSlug}
-        />
+        {isAdminRoute ? (
+          <AdminSidebar
+            collapsed={collapsed}
+            isMobile={isMobile}
+            onClose={() => setCollapsed(true)}
+            access={currentUser?.tournamentAdminAccess}
+          />
+        ) : (
+          <Sidebar
+            collapsed={collapsed}
+            isMobile={isMobile}
+            onClose={() => setCollapsed(true)}
+            tournamentSlug={tournamentSlug}
+            currentUser={currentUser}
+          />
+        )}
         <Layout>
           <Header
             collapsed={collapsed}

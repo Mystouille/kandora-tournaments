@@ -31,6 +31,19 @@ export interface Translations extends CoreTranslations {
     glossary: string;
     waitTypes: string;
   };
+  admin: {
+    title: string;
+    overview: string;
+    managedTournaments: string;
+    manageTournament: string;
+    manage: string;
+    tournament: string;
+    participants: string;
+    platform: string;
+    noManagedTournaments: string;
+    viewTournament: string;
+    backToSite: string;
+  };
   auth: {
     login: string;
     logout: string;

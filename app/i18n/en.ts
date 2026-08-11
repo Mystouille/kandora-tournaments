@@ -38,6 +38,20 @@ export const en: Translations = {
     waitTypes: "Wait types",
   },
 
+  admin: {
+    title: "Administration",
+    overview: "Overview",
+    managedTournaments: "Managed tournaments",
+    manageTournament: "Manage tournament",
+    manage: "Manage",
+    tournament: "Tournament",
+    participants: "Participants",
+    platform: "Platform",
+    noManagedTournaments: "You do not manage any tournaments yet.",
+    viewTournament: "View tournament",
+    backToSite: "Back to site",
+  },
+
   // Auth
   auth: {
     login: "Login",

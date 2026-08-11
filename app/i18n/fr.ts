@@ -38,6 +38,20 @@ export const fr: Translations = {
     waitTypes: "Attentes",
   },
 
+  admin: {
+    title: "Administration",
+    overview: "Vue d'ensemble",
+    managedTournaments: "Tournois administrés",
+    manageTournament: "Gérer le tournoi",
+    manage: "Gérer",
+    tournament: "Tournoi",
+    participants: "Participants",
+    platform: "Plateforme",
+    noManagedTournaments: "Vous n'administrez encore aucun tournoi.",
+    viewTournament: "Voir le tournoi",
+    backToSite: "Retour au site",
+  },
+
   // Authentification
   auth: {
     login: "Connexion",
