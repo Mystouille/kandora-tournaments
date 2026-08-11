@@ -1340,6 +1340,7 @@ export const fr: Translations = {
     searchPlaceholder: "Rechercher un terme…",
     allTags: "Toutes les catégories",
     noResults: "Aucun terme trouvé.",
+    synonyms: "Synonymes",
     relatedNames: "Termes associés",
     tags: {
       action: "Action",

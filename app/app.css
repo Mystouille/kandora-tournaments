@@ -17,14 +17,6 @@ body {
   }
 }
 
-.glossary-term-link {
-  cursor: help;
-  color: inherit;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
-  text-decoration-thickness: 1px;
-}
-
 /* Rich text editor + rendered content (review annotations, articles). */
 .rich-text-editor-content .ProseMirror {
   padding: 12px;

@@ -1313,6 +1313,7 @@ export const en: Translations = {
     searchPlaceholder: "Search for a term…",
     allTags: "All categories",
     noResults: "No terms found.",
+    synonyms: "Synonyms",
     relatedNames: "Related terms",
     tags: {
       action: "Action",

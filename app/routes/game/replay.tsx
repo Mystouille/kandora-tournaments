@@ -1908,9 +1908,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   // reaching the board's "next event" handler.
                   onMouseDown={(e) => {
                     if (
-                      (e.target as Element).closest(
-                        "a, button, [role=button]"
-                      )
+                      (e.target as Element).closest("a, button, [role=button]")
                     ) {
                       return;
                     }
@@ -1919,9 +1917,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   }}
                   onTouchStart={(e) => {
                     if (
-                      (e.target as Element).closest(
-                        "a, button, [role=button]"
-                      )
+                      (e.target as Element).closest("a, button, [role=button]")
                     ) {
                       return;
                     }

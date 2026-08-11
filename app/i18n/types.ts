@@ -1192,6 +1192,7 @@ export interface Translations extends CoreTranslations {
     searchPlaceholder: string;
     allTags: string;
     noResults: string;
+    synonyms: string;
     relatedNames: string;
     tags: {
       action: string;
