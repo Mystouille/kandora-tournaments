@@ -6,8 +6,9 @@ import { RelayError, startRelay } from "~/services/gameServer.server";
 /**
  * POST /api/game/watch  (form field `watchId`)
  *
- * Starts (or reuses) a live spectator relay for an ongoing game and returns its
- * game-server `matchId`, which the client opens at `/spectate/:matchId`.
+ * Starts or reuses a live spectator relay as a preflight for
+ * `/watch/live/:watchId`. The internal `matchId` is returned for diagnostics;
+ * it is not part of the public viewer URL.
  *
  * Guarded: only games we currently track as live (a `LiveGame` row) can be
  * relayed, so arbitrary watch-ids can't spin up upstream connections. The relay

@@ -25,7 +25,7 @@ export const fr: Translations = {
     learnCategory: "Apprendre",
     articles: "Articles",
     exercises: "Exercices",
-    review: "Analyse",
+    onlineTools: "Outils d'analyse",
     resourcesCategory: "Ressources",
     links: "Liens",
     inPersonCategory: "En présentiel",
@@ -522,8 +522,6 @@ export const fr: Translations = {
     tabPlayerList: "Liste des joueurs",
     tabFinalsRoster: "Roster de la finale",
     resultsAndStats: "Résultats & Statistiques",
-    backToLeague: "Retour aux infos de la ligue",
-    backToList: "Retour aux tournois",
     noLeagues: "Aucun tournoi trouvé.",
     leagueNotFound: "Ligue introuvable.",
     substitute: "Remplaçant",
@@ -914,13 +912,13 @@ export const fr: Translations = {
     subtitle: "Améliorez vos compétences en mahjong",
   },
 
-  // Analyse de replay
+  // Outils en ligne
   review: {
-    title: "Analyse",
-    subtitle: "Analysez une partie Tenhou, Mahjong Soul ou Riichi City",
+    title: "Outils d'analyse",
+    subtitle: "Ouvrez des replays et préparez des exports d'analyse",
     description:
-      "Collez un identifiant ou un lien de partage Tenhou, Mahjong Soul ou Riichi City pour importer la partie et y mettre des annotations.",
-    manualReviewTitle: "Analyse manuelle",
+      "Collez un identifiant ou un lien de partage Tenhou, Mahjong Soul ou Riichi City pour ouvrir la partie dans le lecteur. Les utilisateurs connectés peuvent ajouter des commentaires, dessiner sur la table et partager leur analyse.",
+    manualReviewTitle: "Ouvrir un replay",
     placeholder: "Identifiant ou lien de partage",
     openReplay: "Ouvrir la partie",
     recognized: "Log {platform} détecté",

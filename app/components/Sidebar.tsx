@@ -2,21 +2,10 @@ import React from "react";
 import { Layout, Menu, Drawer } from "antd";
 import type { MenuProps } from "antd";
 import {
-  AppstoreOutlined,
-  FlagOutlined,
-  HomeOutlined,
-  CalendarOutlined,
-  GlobalOutlined,
   BarChartOutlined,
-  EditOutlined,
-  EyeOutlined,
-  ReadOutlined,
-  FileTextOutlined,
-  FileSearchOutlined,
-  BookOutlined,
   TrophyOutlined,
-  QuestionCircleOutlined,
   InfoCircleOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
 import { Link, useLocation } from "react-router";
 import { useAppTheme } from "../contexts/ThemeContext";
@@ -31,13 +20,13 @@ function getItem(
   label: React.ReactNode,
   key: React.Key,
   icon?: React.ReactNode,
-  children?: MenuItem[]
+  style?: React.CSSProperties
 ): MenuItem {
   return {
     key,
     icon,
-    children,
     label,
+    style,
   } as MenuItem;
 }
 
@@ -45,11 +34,7 @@ interface SidebarProps {
   collapsed: boolean;
   isMobile?: boolean;
   onClose?: () => void;
-  currentUser?: any;
-  /**
-   * When set, the sidebar shows a tournament-scoped menu (info + statistics)
-   * for the given tournament slug instead of the global navigation.
-   */
+  /** Adds tournament-specific links while the URL is inside a tournament. */
   tournamentSlug?: string | null;
 }
 
@@ -57,7 +42,6 @@ export function Sidebar({
   collapsed,
   isMobile,
   onClose,
-  currentUser,
   tournamentSlug,
 }: SidebarProps) {
   const location = useLocation();
@@ -65,33 +49,36 @@ export function Sidebar({
   const { t } = useLocale();
   const { siderBg, logoPathMobileLight, logoPathMobileDark } = customTokens;
 
-  const resolveSelectedKey = (pathname: string, keys: string[]) => {
-    if (pathname === "/") {
-      return "/";
-    }
-    return keys.find(
-      (key) => pathname === key || pathname.startsWith(`${key}/`)
-    );
-  };
-
-  const items: MenuItem[] = tournamentSlug
-    ? [
+  const tournamentChildStyle: React.CSSProperties | undefined =
+    collapsed && !isMobile ? undefined : { paddingInlineStart: 40 };
+  const items: MenuItem[] = [
+    getItem(<Link to="/">{t.nav.tournaments}</Link>, "/", <TrophyOutlined />),
+    ...(tournamentSlug
+      ? [
         getItem(
           <Link to={`/online-tournaments/${tournamentSlug}`}>
             {t.onlineTournaments.navInfo}
           </Link>,
           `/online-tournaments/${tournamentSlug}`,
-          <InfoCircleOutlined />
+          <InfoCircleOutlined />,
+          tournamentChildStyle
         ),
         getItem(
           <Link to={`/online-tournaments/${tournamentSlug}/statistics`}>
             {t.onlineTournaments.navStatistics}
           </Link>,
           `/online-tournaments/${tournamentSlug}/statistics`,
-          <BarChartOutlined />
+          <BarChartOutlined />,
+          tournamentChildStyle
         ),
       ]
-    : [getItem(<Link to="/">{t.nav.home}</Link>, "/", <HomeOutlined />)];
+      : []),
+    getItem(
+      <Link to="/review">{t.nav.onlineTools}</Link>,
+      "/review",
+      <ToolOutlined />
+    ),
+  ];
 
   const selectedKey = tournamentSlug
     ? location.pathname.startsWith(
@@ -99,43 +86,11 @@ export function Sidebar({
       )
       ? `/online-tournaments/${tournamentSlug}/statistics`
       : `/online-tournaments/${tournamentSlug}`
-    : resolveSelectedKey(location.pathname, [
-        "/posts",
-        "/club-sessions",
-        "/online-events",
-        "/links",
-        "/resources/glossary",
-        "/resources/wait-types",
-        "/exercices",
-        "/review",
-        "/tournaments",
-        "/palmares",
-        "/admin/articles",
-        "/admin/tournaments",
-      ]) || location.pathname;
-
-  // Determine which submenu groups should be open based on current path
-  const openKeys: string[] = [];
-  if (
-    ["/posts", "/exercices", "/review", "/resources", "/links"].some((p) =>
-      location.pathname.startsWith(p)
-    )
-  ) {
-    openKeys.push("learn-group");
-  }
-  if (
-    location.pathname.startsWith("/resources") ||
-    location.pathname.startsWith("/links")
-  ) {
-    openKeys.push("resources-group");
-  }
-  if (
-    ["/club-sessions", "/tournaments"].some((p) =>
-      location.pathname.startsWith(p)
-    )
-  ) {
-    openKeys.push("in-person-group");
-  }
+    : location.pathname === "/" || location.pathname === "/online-tournaments"
+      ? "/"
+      : location.pathname === "/review"
+        ? "/review"
+        : "";
 
   const showCollapsedLogo = Boolean(collapsed && !isMobile);
 
@@ -148,7 +103,6 @@ export function Sidebar({
         minHeight: "calc(100vh - 0px)",
       }}
     >
-      {" "}
       <div
         className="demo-logo-vertical"
         style={{
@@ -212,7 +166,6 @@ export function Sidebar({
         theme={isDark ? "dark" : "light"}
         mode="inline"
         selectedKeys={[selectedKey]}
-        defaultOpenKeys={openKeys}
         items={items}
         onClick={() => isMobile && onClose?.()}
         style={{
@@ -221,41 +174,6 @@ export function Sidebar({
           flex: 1,
         }}
       />
-      {(currentUser?.isAdmin || currentUser?.isEditor) && (
-        <Menu
-          theme={isDark ? "dark" : "light"}
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={[
-            getItem(
-              <Link to="/admin/articles">{t.news.admin.title}</Link>,
-              "/admin/articles",
-              <FileTextOutlined />
-            ),
-            // Tournament management stays admin-only; editors only get
-            // the article/news/glossary management entry above.
-            ...(currentUser?.isAdmin
-              ? [
-                  getItem(
-                    <Link to="/admin/tournaments">
-                      {t.tournaments.admin.manageTitle}
-                    </Link>,
-                    "/admin/tournaments",
-                    <AppstoreOutlined />
-                  ),
-                ]
-              : []),
-          ]}
-          onClick={() => isMobile && onClose?.()}
-          style={{
-            background: siderBg,
-            border: "none",
-            borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)"}`,
-            color: isDark ? "#faad14" : "#d48806",
-          }}
-          className="admin-sidebar-menu"
-        />
-      )}
     </div>
   );
 

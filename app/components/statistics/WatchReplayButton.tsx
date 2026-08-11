@@ -10,7 +10,7 @@ interface WatchReplayButtonProps {
 }
 
 /**
- * Eye-icon button that navigates to `/replays/:gameId`; the replay
+ * Eye-icon button that navigates to `/watch/replay/:gameId`; the replay
  * loader fetches + persists the log on a cache miss. Shared between the
  * BracketTab stage-details popup and the GamesTab list.
  */
@@ -40,7 +40,9 @@ export function WatchReplayButton({
           // fallback so it returns here on a shared / direct link.
           setLoading(true);
           const from = encodeURIComponent(location.pathname + location.search);
-          void navigate(`/replays/${encodeURIComponent(gameId)}?from=${from}`);
+          void navigate(
+            `/watch/replay/${encodeURIComponent(gameId)}?from=${from}`
+          );
         }}
       />
     </Tooltip>

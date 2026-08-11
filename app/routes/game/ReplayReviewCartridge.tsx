@@ -27,7 +27,7 @@ export interface ReviewDraft {
 }
 
 interface ReplayReviewCartridgeProps {
-  /** Whether the current user can edit this review (owner check). */
+  /** Whether the current signed-in user may contribute to this review. */
   canEdit: boolean;
   /** Saved edit for the current event (from the server). */
   savedText: string;
@@ -82,7 +82,7 @@ interface ReplayReviewCartridgeProps {
 
 /**
  * Floating "comment cartridge" anchored to the bottom-left of the
- * replay viewport. Lets the owner add a text note and/or a freehand
+ * replay viewport. Lets a contributor add a text note and/or a freehand
  * drawing on top of the current event, and produces a shareable URL
  * via the export modal.
  *

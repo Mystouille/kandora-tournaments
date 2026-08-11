@@ -19,7 +19,7 @@ export interface Translations extends CoreTranslations {
     learnCategory: string;
     articles: string;
     exercises: string;
-    review: string;
+    onlineTools: string;
     resourcesCategory: string;
     links: string;
     inPersonCategory: string;
@@ -432,8 +432,6 @@ export interface Translations extends CoreTranslations {
     tabPlayerList: string;
     tabFinalsRoster: string;
     resultsAndStats: string;
-    backToLeague: string;
-    backToList: string;
     noLeagues: string;
     leagueNotFound: string;
     substitute: string;

@@ -35,20 +35,14 @@ export default [
   // Replay import + review landing (fetch-on-demand, then open the viewer).
   route("/review", "routes/review.tsx"),
 
-  // Read-only replay viewer (DB-only loader over ReplayLog; no game-server).
-  route("/replays/tenhou-har", "routes/game/spectate-har.tsx"),
-  route("/replays/:gameId", "routes/game/replay.tsx"),
-
   // ---------------------------------------------------------------------
-  // Live spectator viewer — gated by `GAME_ENABLED`
+  // Replay and live viewers
   // ---------------------------------------------------------------------
-  // Connects to the SHARED game-server as a public, read-only spectator
-  // (see `/api/game/session`). Reuses the shared `kandora-game` spectate
-  // route file; tournaments only spectates (no lobby / play routes).
-  route("/spectate/:matchId", "game/routes/spectate.tsx"),
-  // One-click live spectate: start/reuse the relay for a watch-id and redirect
-  // to /spectate/:matchId. The GET link a Discord message can point at.
-  route("/live/:watchId", "routes/game/live.$watchId.tsx"),
+  // Archived replays load from ReplayLog; live viewing starts/reuses a relay
+  // and renders the shared spectator while retaining the public watch-id URL.
+  route("/watch/replay/tenhou-har", "routes/game/spectate-har.tsx"),
+  route("/watch/replay/:gameId", "routes/game/replay.tsx"),
+  route("/watch/live/:watchId", "routes/game/live.$watchId.tsx"),
   route("/api/game/session", "routes/api/game/session.ts"),
   route("/api/game/watch", "routes/api/game/watch.ts"),
   route("/api/game/enrichment", "routes/api/game/enrichment.ts"),

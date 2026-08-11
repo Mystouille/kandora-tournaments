@@ -19,10 +19,13 @@ import type { ReplayView } from "~/game/replay/player";
 import type { GameEvent, Seat } from "~/game/protocol/messages";
 import { ReplayLogModel, type DbReplayLog } from "~/db/models/ReplayLog";
 import { ReplayReviewModel } from "~/db/models/ReplayReview";
-import { UserModel } from "~/db/User";
 import { inferReplaySource } from "~/game/replay/inferSource";
 import { fetchOrphanReplayLog } from "~/services/fetchOrphanReplayLog.server";
 import { resolveSeatEnrichmentForReplay } from "~/services/replayEnrichment.server";
+import {
+  resolveReviewersForDoc,
+  serializeReview,
+} from "~/services/replayReview.server";
 import { annotateWallSchedule } from "~/game/replay/annotateWallSchedule";
 import { annotateWaits } from "~/services/annotateWaits";
 import {
@@ -36,6 +39,11 @@ import {
   type Stroke,
 } from "~/game/replay/reviewDrawing";
 import type { ReplayLog, ReplaySource } from "~/game/replay/types";
+import type {
+  SerializedReview,
+  SerializedReviewEdit,
+  SerializedReviewer,
+} from "~/types/replayReview";
 import { getAuthenticatedUser } from "~/utils/jwt.server";
 import { basePath } from "~/utils/basePath";
 import type { Route } from "./+types/replay";
@@ -68,154 +76,7 @@ import {
 } from "~/game/client/sound";
 
 /**
- * Loader-serialized shape of a `ReplayReview`. Drawing blobs are
- * shipped as base64 so they survive the JSON wire format; the
- * client decodes them lazily per event.
- */
-interface SerializedReviewEdit {
-  eventIndex: number;
-  /** Author user id. Legacy authorless edits report the creator. */
-  author: string;
-  /** Author display name (JWT username at contribution time). */
-  authorName: string;
-  /** Reviewer order index — drives the color slot. */
-  colorIndex: number;
-  text: string;
-  drawingBase64: string | null;
-  updatedAt: string;
-}
-interface SerializedReviewer {
-  user: string;
-  name: string;
-}
-interface SerializedReview {
-  shortId: string;
-  source: ReplaySource;
-  sourceGameId: string;
-  createdBy: string;
-  /**
-   * The seat (0–3) this review is bound to. `null` while the
-   * review has no edits yet — the author can still freely change
-   * their focused seat. Once the first edit is persisted the seat
-   * is locked server-side.
-   */
-  seat: number | null;
-  /**
-   * Reviewers in first-contribution order. A reviewer's index here
-   * is their color slot (1st = orange, 2nd = blue, …).
-   */
-  reviewers: SerializedReviewer[];
-  edits: SerializedReviewEdit[];
-}
-/**
- * Convert whatever Mongoose hands us for a Buffer schema field into
- * a plain `Uint8Array`. With `.lean()` the value is typically a
- * `mongoose.mongo.Binary` (BSON), not a Node `Buffer`, and
- * `new Uint8Array(binary)` does NOT extract the underlying bytes —
- * it yields an empty array. We have to reach into `.buffer` (Node
- * `Buffer`) first.
- */
-function unwrapDrawing(raw: unknown): Uint8Array | null {
-  if (raw === null || raw === undefined) {
-    return null;
-  }
-  // BSON Binary (what `.lean()` returns for a `Buffer` field).
-  if (typeof raw === "object" && raw !== null && "buffer" in raw) {
-    const inner = (raw as { buffer: unknown }).buffer;
-    if (inner instanceof Uint8Array) {
-      return new Uint8Array(inner.buffer, inner.byteOffset, inner.byteLength);
-    }
-  }
-  if (raw instanceof Uint8Array) {
-    return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-  }
-  return null;
-}
-
-/**
- * Resolve a review document's reviewer roster (first-contribution
- * order). Legacy single-owner reviews carry no `reviewers` array; when
- * they still have edits we synthesize the creator as reviewer 0 so the
- * color assignment stays stable. Runs one best-effort `User` lookup
- * only for those legacy docs.
- */
-async function resolveReviewersForDoc(doc: {
-  createdBy: unknown;
-  reviewers?: Array<{ user: unknown; name?: string }>;
-  edits?: unknown[];
-}): Promise<SerializedReviewer[]> {
-  const existing = (doc.reviewers ?? []).map((r) => ({
-    user: String(r.user),
-    name: r.name ?? "",
-  }));
-  if (existing.length > 0) {
-    return existing;
-  }
-  if ((doc.edits ?? []).length > 0) {
-    const createdBy = String(doc.createdBy);
-    let name = "";
-    try {
-      const u = await UserModel.findById(createdBy).select("name").lean();
-      name = (u as { name?: string } | null)?.name ?? "";
-    } catch {
-      /* name is best-effort */
-    }
-    return [{ user: createdBy, name }];
-  }
-  return [];
-}
-
-function serializeReview(
-  doc: {
-    shortId: string;
-    source: string;
-    sourceGameId: string;
-    createdBy: unknown;
-    seat?: number | null;
-    reviewers?: Array<{ user: unknown; name?: string }>;
-    edits?: Array<{
-      eventIndex: number;
-      author?: unknown;
-      text?: string;
-      drawing?: Buffer | null;
-      updatedAt?: Date;
-    }>;
-  },
-  reviewers: SerializedReviewer[]
-): SerializedReview {
-  const createdBy = String(doc.createdBy);
-  return {
-    shortId: doc.shortId,
-    source: doc.source as ReplaySource,
-    sourceGameId: doc.sourceGameId,
-    createdBy,
-    seat: typeof doc.seat === "number" ? doc.seat : null,
-    reviewers,
-    edits: (doc.edits ?? []).map((e) => {
-      const bytes = unwrapDrawing(e.drawing);
-      const author =
-        e.author !== undefined && e.author !== null
-          ? String(e.author)
-          : createdBy;
-      const colorIndex = Math.max(
-        0,
-        reviewers.findIndex((r) => r.user === author)
-      );
-      return {
-        eventIndex: e.eventIndex,
-        author,
-        authorName: reviewers[colorIndex]?.name ?? "",
-        colorIndex,
-        text: e.text ?? "",
-        drawingBase64: bytes && bytes.length > 0 ? bytesToBase64(bytes) : null,
-        updatedAt: (e.updatedAt ?? new Date()).toISOString(),
-      };
-    }),
-  };
-}
-
-/**
- * `/replays/:gameId` — Phase 4.5 replay viewer.
+ * `/watch/replay/:gameId` — archived replay viewer.
  *
  * The platform is inferred from the `:gameId` shape via
  * `inferReplaySource`; when inference returns `null` we fall back to
@@ -292,7 +153,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     // the dropdown or pass `?seat=N` explicitly.
     const cleanId = gameId.slice(0, majsoulSuffix.index);
     const qs = url.searchParams.toString();
-    throw redirect(`/replays/${cleanId}${qs ? `?${qs}` : ""}`);
+    throw redirect(`/watch/replay/${cleanId}${qs ? `?${qs}` : ""}`);
   }
   const rcSuffix = /@([0-3])$/.exec(gameId);
   const rcWind = rcSuffix ? Number(rcSuffix[1]) : null;
@@ -315,7 +176,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       search.set("seat", String(seat));
     }
     const qs = search.toString();
-    throw redirect(`/replays/${cleanGameId}${qs ? `?${qs}` : ""}`);
+    throw redirect(`/watch/replay/${cleanGameId}${qs ? `?${qs}` : ""}`);
   };
 
   const source = inferReplaySource(cleanGameId);
@@ -694,7 +555,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     setDraft({ mode: null, text: "", strokes: [] });
   }, [index]);
-  const canEditReview = currentUserId !== null;
+  const canContributeToReview = currentUserId !== null;
   const pendingCount = useMemo(
     () => Object.keys(localEdits).length,
     [localEdits]
@@ -809,13 +670,11 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     }
     return localFirstEditSeat;
   })();
-  // Viewers (non-owners) are locked to the review's seat \u2014 the
-  // seat dropdown is disabled and the URL `?seat=` param is
-  // ignored. The owner is free to switch seats (e.g. to peek at
-  // a different perspective) but the cartridge edit buttons go
+  // Anonymous viewers are locked to the review's seat. Signed-in
+  // contributors may inspect another perspective, but edit controls go
   // disabled whenever `focusSeat !== effectiveReviewSeat`.
   const seatLockedForViewer =
-    review !== null && !canEditReview && effectiveReviewSeat !== null;
+    review !== null && !canContributeToReview && effectiveReviewSeat !== null;
   const seatMismatch =
     effectiveReviewSeat !== null && focusSeat !== effectiveReviewSeat;
   // The current user's OWN effective edit at this event (their local
@@ -1188,7 +1047,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       > = [];
       // The server echoes back the locked seat on every response;
       // hold the latest so we can persist it into `review.seat`.
-      let lockedSeat: number | null = null;
+      let lockedSeat: number | null | undefined;
       // … and the reviewer roster (with color order), refreshed so a
       // brand-new contributor immediately shows in their color.
       let latestReviewers: SerializedReviewer[] | null = null;
@@ -1297,7 +1156,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         }
         return {
           ...prev,
-          seat: lockedSeat !== null ? lockedSeat : prev.seat,
+          seat: lockedSeat !== undefined ? lockedSeat : prev.seat,
           reviewers: latestReviewers ?? prev.reviewers,
           edits: Array.from(byKey.values()),
         };
@@ -1732,7 +1591,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             };
             // Publish path: stage exists. Push edits, then copy
             // the freshly-built share URL.
-            if (canEditReview && pendingCount > 0) {
+            if (canContributeToReview && pendingCount > 0) {
               void publish().then((url) => {
                 if (!url) {
                   message.error(t.review.cartridge.publishFailed);
@@ -1773,12 +1632,12 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           }}
           disabled={publishing}
           aria-label={
-            canEditReview && pendingCount > 0
+            canContributeToReview && pendingCount > 0
               ? t.review.cartridge.publishTooltip
               : t.review.cartridge.copyShareLink
           }
           title={
-            canEditReview && pendingCount > 0
+            canContributeToReview && pendingCount > 0
               ? t.review.cartridge.publishTooltip
               : copied
                 ? t.review.cartridge.shareCopied
@@ -1786,7 +1645,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           }
           className="absolute top-2 right-[7rem] z-30 h-11 min-w-[5.5rem] px-4 flex items-center justify-center gap-1 rounded bg-black/70 hover:bg-emerald-800 text-emerald-100 hover:text-white text-base font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {canEditReview && pendingCount > 0
+          {canContributeToReview && pendingCount > 0
             ? `${t.review.cartridge.publish} (${pendingCount})`
             : copied
               ? t.review.cartridge.shareCopied
@@ -2140,7 +1999,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             </Tooltip>
           )}
         <ReplayReviewCartridge
-          canEdit={canEditReview}
+          canEdit={canContributeToReview}
           savedText={currentUserEdit?.text ?? ""}
           savedHasDrawing={Boolean(currentUserEdit?.drawingBase64)}
           savedStrokes={savedDrawing?.strokes ?? []}

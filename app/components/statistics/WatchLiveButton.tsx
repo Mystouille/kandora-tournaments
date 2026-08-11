@@ -35,9 +35,8 @@ function liveErrorMessage(error?: string): string {
 }
 
 /**
- * Starts (or reuses) a live spectator relay for an ongoing game via
- * `/api/game/watch`, then navigates to `/spectate/:matchId`. Sibling of
- * `WatchReplayButton` (which opens finished-game replays).
+ * Verifies that a live spectator relay can start, then opens the canonical
+ * watch-id URL. Sibling of `WatchReplayButton` for finished games.
  */
 export function WatchLiveButton({
   watchId,
@@ -66,12 +65,12 @@ export function WatchLiveButton({
         matchId?: string;
         error?: string;
       };
-      if (response.ok && data.ok && data.matchId) {
+      if (response.ok && data.ok) {
         const returnTo = leagueSlug
           ? `/online-tournaments/${encodeURIComponent(leagueSlug)}/statistics`
-          : "/online-tournaments";
+          : "/";
         void navigate(
-          `/spectate/${data.matchId}?returnTo=${encodeURIComponent(returnTo)}`
+          `/watch/live/${encodeURIComponent(watchId)}?returnTo=${encodeURIComponent(returnTo)}`
         );
         return;
       }

@@ -25,7 +25,7 @@ export const en: Translations = {
     learnCategory: "Learn",
     articles: "Articles",
     exercises: "Exercises",
-    review: "Review",
+    onlineTools: "Analysis tools",
     resourcesCategory: "Resources",
     links: "Links",
     inPersonCategory: "In Person",
@@ -513,8 +513,6 @@ export const en: Translations = {
     tabPlayerList: "Player List",
     tabFinalsRoster: "Finals Roster",
     resultsAndStats: "Results & Statistics",
-    backToLeague: "Back to league info",
-    backToList: "Back to tournaments",
     noLeagues: "No tournaments found.",
     leagueNotFound: "League not found.",
     substitute: "Sub",
@@ -895,13 +893,13 @@ export const en: Translations = {
     subtitle: "Improve your mahjong skills",
   },
 
-  // Review (replay import)
+  // Online tools
   review: {
-    title: "Review",
-    subtitle: "Review a game from Tenhou, Mahjong Soul, or Riichi City",
+    title: "Analysis tools",
+    subtitle: "Open replays and prepare external analysis exports",
     description:
-      "Paste a replay id or share link from Tenhou, Mahjong Soul, or Riichi City to import it and review the game. You can add comments, draw on the table, and share your review with others.",
-    manualReviewTitle: "Manual review",
+      "Paste a replay id or share link from Tenhou, Mahjong Soul, or Riichi City to open it in the replay viewer. Signed-in users can add comments, draw on the table, and share their review.",
+    manualReviewTitle: "Open a replay",
     placeholder: "Replay id or share link",
     openReplay: "Open replay",
     recognized: "{platform} log detected",

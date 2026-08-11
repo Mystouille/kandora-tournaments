@@ -38,7 +38,7 @@ export interface ComposeOngoingGameMessageInput {
   supportsTerminate: boolean;
   /** When set, appended as a small Discord relative-timestamp footer. */
   lastUpdated?: Date;
-  /** Full `/live/:watchId` URL for a one-click live spectate link (Tenhou
+  /** Full `/watch/live/:watchId` URL for a one-click live link (Tenhou
    * relay games only). Omitted when unavailable. */
   liveSpectateUrl?: string;
 }

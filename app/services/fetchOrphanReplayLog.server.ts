@@ -1,5 +1,5 @@
 /**
- * On-demand replay-log fetcher for the `/replays/:gameId` route.
+ * On-demand replay-log fetcher for the `/watch/replay/:gameId` route.
  *
  * Background: the Phase 4.5 hydration cycle is what normally fills
  * the `replaylogs` collection — it walks the `games` collection and

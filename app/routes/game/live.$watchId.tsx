@@ -1,18 +1,16 @@
-import { redirect } from "react-router";
-import { isGameEnabled } from "~/game/feature-gate";
+import { getClientGameFlag, isGameEnabled } from "~/game/feature-gate";
+import GameSpectateRoute from "~/game/routes/spectate";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { LiveGameModel } from "~/db/LiveGame";
 import { RelayError, startRelay } from "~/services/gameServer.server";
 import type { Route } from "./+types/live.$watchId";
 
 /**
- * `GET /live/:watchId` — one-click live spectate for an ongoing game.
+ * `GET /watch/live/:watchId` — watch an ongoing game.
  *
- * Starts (or reuses) the game-server relay for `watchId` and redirects to the
- * canonical `/spectate/:matchId`, which shows a "connecting" state until the
- * relay's first events arrive — so a viewer who arrives before the relay is
- * ready simply waits on that screen. A shareable GET link (Discord, etc.):
- * `watchId` is the per-game spectator id, never the lobby admin password.
+ * Starts or reuses the game-server relay, then supplies its internal match id
+ * to the shared spectator component. The public URL stays keyed by `watchId`,
+ * which is safe to share; the lobby id remains private.
  */
 export async function loader({ params }: Route.LoaderArgs) {
   if (!isGameEnabled()) {
@@ -45,5 +43,10 @@ export async function loader({ params }: Route.LoaderArgs) {
     { _id: live._id },
     { $set: { relayMatchId: matchId } }
   ).exec();
-  throw redirect(`/spectate/${matchId}`);
+  return {
+    matchId,
+    flag: getClientGameFlag(),
+  };
 }
+
+export default GameSpectateRoute;

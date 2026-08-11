@@ -1,14 +1,23 @@
+import mongoose from "mongoose";
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import { getAuthenticatedUser } from "../../utils/jwt.server";
 import { ReplayReviewModel } from "../../db/models/ReplayReview";
-import { base64ToBytes, bytesToBase64 } from "../../game/replay/reviewDrawing";
+import { base64ToBytes } from "../../game/replay/reviewDrawing";
+import {
+  effectiveReviewAuthor,
+  resolveReviewersForDoc,
+  serializeReview,
+  serializeReviewEdit,
+} from "../../services/replayReview.server";
+import type { SerializedReviewer } from "../../types/replayReview";
 
 /**
  * `GET /api/replay-reviews/:shortId` — fetch a review by its public
  * handle. No auth required; anyone with the link can read.
  *
- * `PUT /api/replay-reviews/:shortId` — upsert / delete the edit at
- * a given `eventIndex`. Owner-only (`createdBy === current user`).
+ * `PUT /api/replay-reviews/:shortId` — upsert or delete the authenticated
+ * user's edit at a given `eventIndex`. Any signed-in user with the review link
+ * may contribute; authors can modify only their own annotations.
  *
  * Body shapes:
  *   - `{ eventIndex, text?, drawingBase64? }` — upsert the edit.
@@ -17,52 +26,6 @@ import { base64ToBytes, bytesToBase64 } from "../../game/replay/reviewDrawing";
  *     to leave it unchanged.
  *   - `{ eventIndex, delete: true }` — drop the entire edit row.
  */
-
-interface SerializedEdit {
-  eventIndex: number;
-  text: string;
-  drawingBase64: string | null;
-  updatedAt: string;
-}
-
-/**
- * Mongoose `.lean()` returns BSON `Binary` for `Buffer` schema
- * fields, not Node `Buffer`. `new Uint8Array(binary)` yields an
- * empty array because `Binary` isn't an `ArrayLike<number>`. Reach
- * into `.buffer` first.
- */
-function unwrapDrawing(raw: unknown): Uint8Array | null {
-  if (raw === null || raw === undefined) {
-    return null;
-  }
-  if (typeof raw === "object" && raw !== null && "buffer" in raw) {
-    const inner = (raw as { buffer: unknown }).buffer;
-    if (inner instanceof Uint8Array) {
-      return new Uint8Array(inner.buffer, inner.byteOffset, inner.byteLength);
-    }
-  }
-  if (raw instanceof Uint8Array) {
-    return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-  }
-  return null;
-}
-
-function serializeEdit(edit: {
-  eventIndex: number;
-  text?: string;
-  drawing?: Buffer | null;
-  updatedAt?: Date;
-}): SerializedEdit {
-  const bytes = unwrapDrawing(edit.drawing);
-  const drawingBase64: string | null =
-    bytes && bytes.length > 0 ? bytesToBase64(bytes) : null;
-  return {
-    eventIndex: edit.eventIndex,
-    text: edit.text ?? "",
-    drawingBase64,
-    updatedAt: (edit.updatedAt ?? new Date()).toISOString(),
-  };
-}
 
 export async function loader({ params }: { params: { shortId?: string } }) {
   const shortId = params.shortId;
@@ -74,19 +37,10 @@ export async function loader({ params }: { params: { shortId?: string } }) {
   if (!doc) {
     return Response.json({ ok: false, error: "not-found" }, { status: 404 });
   }
+  const reviewers = await resolveReviewersForDoc(doc);
   return Response.json({
     ok: true,
-    review: {
-      shortId: doc.shortId,
-      source: doc.source,
-      sourceGameId: doc.sourceGameId,
-      createdBy: String(doc.createdBy),
-      seat:
-        typeof (doc as { seat?: unknown }).seat === "number"
-          ? (doc as { seat: number }).seat
-          : null,
-      edits: (doc.edits ?? []).map(serializeEdit),
-    },
+    review: serializeReview(doc, reviewers),
   });
 }
 
@@ -135,12 +89,15 @@ export async function action({
   if (!doc) {
     return Response.json({ ok: false, error: "not-found" }, { status: 404 });
   }
-  if (String(doc.createdBy) !== String(jwtPayload.sub)) {
-    return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
 
+  const authorId = String(jwtPayload.sub);
+  const authorObjectId = new mongoose.Types.ObjectId(authorId);
+  const createdBy = String(doc.createdBy);
+  const existingReviewers = await resolveReviewersForDoc(doc);
   const existingIdx = doc.edits.findIndex(
-    (e: { eventIndex: number }) => e.eventIndex === eventIndex
+    (edit: { eventIndex: number; author?: unknown }) =>
+      edit.eventIndex === eventIndex &&
+      effectiveReviewAuthor(edit, createdBy) === authorId
   );
 
   // Bind the review to a single seat. The seat is locked the
@@ -159,21 +116,39 @@ export async function action({
       ? body.seat
       : null;
 
+  const setSeat = (seat: number | null): void => {
+    doc.set("seat", seat);
+    doc.markModified("seat");
+  };
+
+  const responseReviewers = async (): Promise<SerializedReviewer[]> =>
+    resolveReviewersForDoc(doc);
+
   if (body.delete) {
     if (existingIdx >= 0) {
       doc.edits.splice(existingIdx, 1);
-      // Clearing the last edit also clears the locked seat so
-      // the author can re-target the review at a different seat
-      // afterwards.
       if (doc.edits.length === 0) {
-        (doc as unknown as { set: (k: string, v: unknown) => void }).set(
-          "seat",
-          null
-        );
+        setSeat(null);
       }
       await doc.save();
     }
-    return Response.json({ ok: true, seat: docSeat });
+    return Response.json({
+      ok: true,
+      seat: doc.edits.length === 0 ? null : docSeat,
+      edit: null,
+      reviewers: await responseReviewers(),
+    });
+  }
+
+  if (
+    docSeat !== null &&
+    requestedSeat !== null &&
+    requestedSeat !== docSeat
+  ) {
+    return Response.json(
+      { ok: false, error: "seat-locked", seat: docSeat },
+      { status: 409 }
+    );
   }
 
   // Sanity-cap text length to prevent abuse; ~2 KB is plenty for a
@@ -208,8 +183,12 @@ export async function action({
     }
   }
 
+  let contributed = false;
   if (existingIdx >= 0) {
     const edit = doc.edits[existingIdx];
+    if (edit.author === undefined || edit.author === null) {
+      edit.author = authorObjectId;
+    }
     if (text !== undefined) {
       edit.text = text;
     }
@@ -223,12 +202,19 @@ export async function action({
       (!edit.drawing || edit.drawing.length === 0);
     if (isEmpty) {
       doc.edits.splice(existingIdx, 1);
+    } else {
+      contributed = true;
     }
   } else {
     const hasText = typeof text === "string" && text.length > 0;
     const hasDrawing = !!drawingBuffer && drawingBuffer.length > 0;
     if (!hasText && !hasDrawing) {
-      return Response.json({ ok: true, seat: docSeat });
+      return Response.json({
+        ok: true,
+        seat: docSeat,
+        edit: null,
+        reviewers: existingReviewers,
+      });
     }
     // First edit lands → lock the seat to the requested one if
     // we don't already have one. Reject when the caller asks for
@@ -240,45 +226,52 @@ export async function action({
           { status: 400 }
         );
       }
-      // Use `doc.set(...)` instead of direct assignment so we
-      // survive a stale Mongoose model cache: in dev, HMR can
-      // keep a previously-registered schema in `mongoose.models`
-      // that doesn't know about new fields, in which case plain
-      // property assignment silently no-ops. `set` goes through
-      // the schema's strict-mode check and `markModified` makes
-      // sure the field is flushed regardless.
-      (doc as unknown as { set: (k: string, v: unknown) => void }).set(
-        "seat",
-        requestedSeat
-      );
-      (doc as unknown as { markModified: (k: string) => void }).markModified(
-        "seat"
-      );
-    } else if (requestedSeat !== null && requestedSeat !== docSeat) {
-      return Response.json(
-        { ok: false, error: "seat-locked", seat: docSeat },
-        { status: 409 }
-      );
+      setSeat(requestedSeat);
     }
     doc.edits.push({
       eventIndex,
+      author: authorObjectId,
       text: text ?? "",
       drawing: drawingBuffer ?? undefined,
       updatedAt: new Date(),
     });
+    contributed = true;
   }
-  // If the last edit was just removed (empty upsert above), drop
-  // the locked seat too so the review can be re-targeted.
+
   if (doc.edits.length === 0) {
-    (doc as unknown as { set: (k: string, v: unknown) => void }).set(
-      "seat",
-      null
-    );
+    setSeat(null);
   }
+
+  if (contributed) {
+    const persistedReviewerIds = new Set(
+      doc.reviewers.map((reviewer: { user: unknown }) => String(reviewer.user))
+    );
+    const desiredReviewers = existingReviewers.some(
+      (reviewer) => reviewer.user === authorId
+    )
+      ? existingReviewers
+      : [
+          ...existingReviewers,
+          { user: authorId, name: jwtPayload.username ?? "" },
+        ];
+    for (const reviewer of desiredReviewers) {
+      if (!persistedReviewerIds.has(reviewer.user)) {
+        doc.reviewers.push({
+          user: new mongoose.Types.ObjectId(reviewer.user),
+          name: reviewer.name,
+        });
+        persistedReviewerIds.add(reviewer.user);
+      }
+    }
+  }
+
   await doc.save();
 
+  const reviewers = await responseReviewers();
   const stored = doc.edits.find(
-    (e: { eventIndex: number }) => e.eventIndex === eventIndex
+    (edit: { eventIndex: number; author?: unknown }) =>
+      edit.eventIndex === eventIndex &&
+      effectiveReviewAuthor(edit, createdBy) === authorId
   );
   const finalSeat =
     typeof (doc as unknown as { seat?: number | null }).seat === "number"
@@ -287,6 +280,9 @@ export async function action({
   return Response.json({
     ok: true,
     seat: finalSeat,
-    edit: stored ? serializeEdit(stored) : null,
+    edit: stored
+      ? serializeReviewEdit(stored, doc.createdBy, reviewers)
+      : null,
+    reviewers,
   });
 }

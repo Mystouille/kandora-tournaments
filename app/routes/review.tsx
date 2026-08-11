@@ -14,11 +14,11 @@ import type { ReplaySource } from "~/game/replay/types";
 
 export function meta() {
   return [
-    { title: "Review - TNT Mahjong" },
+    { title: "Online tools - TNT Mahjong" },
     {
       name: "description",
       content:
-        "Import and review a Tenhou, Mahjong Soul, or Riichi City replay",
+        "Open replays and use online analysis tools for riichi mahjong",
     },
   ];
 }
@@ -27,13 +27,13 @@ export function meta() {
  * `POST /review` — fetch + persist a replay log on demand.
  *
  * Mirrors the `cache-miss → fetchOrphanReplayLog` branch of the
- * `/replays/:gameId` loader, but exposed as an explicit user action
+ * `/watch/replay/:gameId` loader, but exposed as an explicit user action
  * from the Review page so the user gets a clear loading state and
  * error feedback before being routed into the viewer.
  *
  * Returns:
  *   - `{ ok: true, gameId, source }` — the replay is in the DB and
- *     `/replays/:gameId` will resolve.
+ *     `/watch/replay/:gameId` will resolve.
  *   - `{ ok: false, error }` — invalid id shape or platform fetch
  *     failure.
  */
@@ -184,18 +184,18 @@ export default function ReviewRoute() {
   // revalidation settles. If we fire `navigate()` mid-revalidation
   // the navigation can race with the in-flight revalidation: the new
   // route's loader fetch is silently dropped and React renders an
-  // empty body. The symptom is a black screen on `/replays/:gameId`
+  // empty body. The symptom is a black screen on `/watch/replay/:gameId`
   // that only goes away with a hard refresh.
   //
   // We re-attach the Riichi City `@<n>` suffix instead of forwarding
   // the value directly as `?seat=`: the index is a round-1 wind
   // position (0=E, 1=S, 2=W, 3=N), not an absolute seat, and the
-  // `/replays/:gameId` loader has the parsed log on hand to do the
+  // `/watch/replay/:gameId` loader has the parsed log on hand to do the
   // wind→seat translation.
   useEffect(() => {
     if (result?.ok && fetcher.state === "idle") {
       const suffix = rcWind !== null ? `@${rcWind}` : "";
-      navigate(`/replays/${result.gameId}${suffix}`);
+      navigate(`/watch/replay/${result.gameId}${suffix}`);
     }
   }, [result, fetcher.state, navigate, rcWind]);
 

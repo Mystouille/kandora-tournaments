@@ -185,11 +185,6 @@ export default function LeagueDetailPage() {
         status="404"
         title="404"
         subTitle={t.onlineTournaments.leagueNotFound}
-        extra={
-          <Link to="/">
-            <Button type="primary">{t.onlineTournaments.backToList}</Button>
-          </Link>
-        }
       />
     );
   }
@@ -645,12 +640,6 @@ export default function LeagueDetailPage() {
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
-      <Link to="/">
-        <Button size="small" style={{ marginBottom: 12 }}>
-          ← {t.onlineTournaments.backToList}
-        </Button>
-      </Link>
-
       <div
         style={{
           display: "flex",
