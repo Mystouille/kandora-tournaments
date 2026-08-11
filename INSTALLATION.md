@@ -124,11 +124,16 @@ Generate a strong `JWT_SECRET`:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-> **Optional SSO — `AUTH_COOKIE_DOMAIN`.** Set to a parent domain (e.g.
-> `.example.com`) to share the login session across sub-domains. Only useful if
-> you also run the Kandora portal under the same domain **with the same
-> `JWT_SECRET`**. Leave unset for a normal host-only cookie (the default). See
-> [`jwt.server.ts`](app/utils/jwt.server.ts).
+> **Optional cross-subdomain state — `AUTH_COOKIE_DOMAIN`.** Set to a trusted
+> parent domain (e.g. `.example.com`) to share the login session, locale, and
+> theme across sibling hosts. Every participating Kandora service must use the
+> same value and the same `JWT_SECRET`. Leave unset for normal host-only state.
+> The auth token remains in its separate `HttpOnly` cookie; locale and theme
+> use versioned, JavaScript-readable preference cookies.
+>
+> Both the portal and tournaments app also accept publishable `/en/...` and
+> `/fr/...` entry URLs. They set the requested locale and redirect to the
+> corresponding unprefixed canonical route while preserving its query string.
 
 ### Redis — queues / scheduling
 

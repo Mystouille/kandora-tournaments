@@ -168,4 +168,6 @@ export default [
     "/api/admin/league-save-rc-tables",
     "routes/api/admin/league-save-rc-tables.ts"
   ),
+  route("/en/*", "routes/_locale-redirect.tsx", { id: "locale-en" }),
+  route("/fr/*", "routes/_locale-redirect.tsx", { id: "locale-fr" }),
 ] satisfies RouteConfig;

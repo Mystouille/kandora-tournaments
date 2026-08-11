@@ -12,6 +12,7 @@ const dictionaries: Record<Locale, Translations> = { en, fr };
 interface LocaleProviderProps {
   children: ReactNode;
   initialLocale?: Locale;
+  sharedCookieDomain?: string | null;
 }
 
 /**
@@ -22,11 +23,13 @@ interface LocaleProviderProps {
 export function LocaleProvider({
   children,
   initialLocale = "fr",
+  sharedCookieDomain,
 }: LocaleProviderProps) {
   return (
     <BaseLocaleProvider
       dictionaries={dictionaries}
       initialLocale={initialLocale}
+      sharedCookieDomain={sharedCookieDomain}
     >
       {children}
     </BaseLocaleProvider>

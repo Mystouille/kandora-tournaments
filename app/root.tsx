@@ -19,6 +19,10 @@ import { GlossaryProvider } from "./contexts/GlossaryContext";
 import { FormFactorProvider } from "./contexts/FormFactorContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { basePath } from "./utils/basePath";
+import {
+  createThemeBootstrapScript,
+  resolveUiPreferences,
+} from "~/core/ui/uiPreferences";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,19 +48,24 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
-function parseCookie(cookieHeader: string, name: string): string | null {
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 export async function loader({ request }: Route.LoaderArgs) {
   const cookieHeader = request.headers.get("Cookie") || "";
   const userAgent = request.headers.get("User-Agent") || "";
   const isProbablyMobile =
     /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(userAgent);
-  const theme = parseCookie(cookieHeader, "theme") || "dark";
-  const locale = parseCookie(cookieHeader, "locale") || "fr";
-  return { theme, locale, isProbablyMobile };
+  const uiPreferenceCookieDomain =
+    process.env.AUTH_COOKIE_DOMAIN?.trim() || null;
+  const preferences = resolveUiPreferences(
+    cookieHeader,
+    Boolean(uiPreferenceCookieDomain)
+  );
+  return {
+    theme: preferences.theme,
+    locale: preferences.locale,
+    hasSharedTheme: preferences.hasSharedTheme,
+    uiPreferenceCookieDomain,
+    isProbablyMobile,
+  };
 }
 
 // Inline script to expose viewport width before React hydrates
@@ -65,19 +74,6 @@ const viewportBootstrapScript = `
   try {
     window.__INITIAL_VIEWPORT_WIDTH__ = window.innerWidth;
   } catch (e) {}
-})()
-`;
-
-// Inline script to apply theme before React hydrates, preventing flash
-const antiFlickerScript = `
-(function() {
-  try {
-    var theme = document.cookie.match(/(?:^|;\\s*)theme=([^;]*)/)?.[1];
-    if (!theme) theme = localStorage.getItem('theme');
-    if (theme !== 'light') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
-  } catch(e) {}
 })()
 `;
 
@@ -91,7 +87,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           content="width=device-width, initial-scale=1, viewport-fit=cover"
         />
         <script dangerouslySetInnerHTML={{ __html: viewportBootstrapScript }} />
-        <script dangerouslySetInnerHTML={{ __html: antiFlickerScript }} />
         <Meta />
         <Links />
       </head>
@@ -106,13 +101,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App({ loaderData }: Route.ComponentProps) {
   const initialTheme = (loaderData?.theme as "light" | "dark") || "dark";
-  const initialLocale = (loaderData?.locale as "en" | "fr") || "en";
+  const initialLocale = (loaderData?.locale as "en" | "fr") || "fr";
   const initialIsMobile = Boolean(loaderData?.isProbablyMobile);
+  const uiPreferenceCookieDomain =
+    loaderData?.uiPreferenceCookieDomain || null;
+  const antiFlickerScript = createThemeBootstrapScript(
+    Boolean(uiPreferenceCookieDomain)
+  );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <LocaleProvider initialLocale={initialLocale}>
-        <ThemeProvider initialTheme={initialTheme}>
+    <>
+      <script dangerouslySetInnerHTML={{ __html: antiFlickerScript }} />
+      <QueryClientProvider client={queryClient}>
+        <LocaleProvider
+          initialLocale={initialLocale}
+          sharedCookieDomain={uiPreferenceCookieDomain}
+        >
+          <ThemeProvider
+            initialTheme={initialTheme}
+            sharedCookieDomain={uiPreferenceCookieDomain}
+            hasSharedTheme={Boolean(loaderData?.hasSharedTheme)}
+          >
           <FormFactorProvider ssrIsMobile={initialIsMobile}>
             <TileSetProvider>
               <GlossaryProvider>
@@ -125,9 +134,10 @@ export default function App({ loaderData }: Route.ComponentProps) {
               </GlossaryProvider>
             </TileSetProvider>
           </FormFactorProvider>
-        </ThemeProvider>
-      </LocaleProvider>
-    </QueryClientProvider>
+          </ThemeProvider>
+        </LocaleProvider>
+      </QueryClientProvider>
+    </>
   );
 }
 
