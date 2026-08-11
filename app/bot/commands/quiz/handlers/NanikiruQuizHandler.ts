@@ -46,7 +46,14 @@ export class NanikiruQuizHandler extends QuizHandler {
   }
 
   async getNewQuestionData() {
-    const problem = NanikiruCollections.instance.getNextProblem(this.series);
+    const collections = NanikiruCollections.instance;
+    await collections.waitUntilReady();
+    const problem = collections.getNextProblem(this.series);
+    if (!problem) {
+      throw new Error(
+        `No nanikiru problems are available for series "${this.series}".`
+      );
+    }
     return this.problemToQuestion(problem);
   }
 

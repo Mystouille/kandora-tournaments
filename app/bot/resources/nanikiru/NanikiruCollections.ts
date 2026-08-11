@@ -61,6 +61,8 @@ export class NanikiruCollections {
   private collections: Collections;
   private currentProblems: NanikiruProblem[];
   private currentType: NanikiruType | undefined;
+  private readonly initialization: Promise<void>;
+  private initializationError: unknown = null;
   private serviceAccountAuth = new JWT({
     email: token.client_email,
     key: token.private_key,
@@ -89,17 +91,26 @@ export class NanikiruCollections {
     if (!sheetsCfg) {
       console.log("NANIKIRU_SHEET_ID not configured — nanikiru data disabled.");
       markSkipped("nanikiru");
+      this.initialization = Promise.resolve();
       return;
     }
-    this.fetchAllProblems()
+    this.initialization = this.fetchAllProblems()
       .then((problems) => {
         this.setCollections(problems);
         markReady("nanikiru", `${problems.length} problems loaded`);
       })
       .catch((err) => {
+        this.initializationError = err;
         markFailed("nanikiru", String(err));
         console.error("Failed to fetch nanikiru problems:", err);
       });
+  }
+
+  public async waitUntilReady(): Promise<void> {
+    await this.initialization;
+    if (this.initializationError) {
+      throw this.initializationError;
+    }
   }
 
   private resetCollections() {
@@ -125,7 +136,12 @@ export class NanikiruCollections {
   }
 
   public static get instance(): NanikiruCollections {
-    if (!(globalThis as any)[NanikiruCollections.GLOBAL_KEY]) {
+    if (
+      !(
+        (globalThis as any)[NanikiruCollections.GLOBAL_KEY] instanceof
+        NanikiruCollections
+      )
+    ) {
       (globalThis as any)[NanikiruCollections.GLOBAL_KEY] =
         new NanikiruCollections();
     }
@@ -163,7 +179,7 @@ export class NanikiruCollections {
     );
   }
 
-  public getNextProblem(type: NanikiruType): NanikiruProblem {
+  public getNextProblem(type: NanikiruType): NanikiruProblem | null {
     let problem = this.currentProblems.pop();
     if (problem === undefined || this.currentType !== type) {
       this.currentType = type;
@@ -171,7 +187,7 @@ export class NanikiruCollections {
       this.currentProblems.reverse();
       problem = this.currentProblems.pop();
     }
-    return problem!;
+    return problem ?? null;
   }
 
   /** Look up a problem by its source string from in-memory data. */
