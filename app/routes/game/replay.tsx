@@ -1907,14 +1907,22 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                   // still work; stopPropagation keeps the press from
                   // reaching the board's "next event" handler.
                   onMouseDown={(e) => {
-                    if ((e.target as Element).closest("a, button")) {
+                    if (
+                      (e.target as Element).closest(
+                        "a, button, [role=button]"
+                      )
+                    ) {
                       return;
                     }
                     e.stopPropagation();
                     setSavedTextVisible(false);
                   }}
                   onTouchStart={(e) => {
-                    if ((e.target as Element).closest("a, button")) {
+                    if (
+                      (e.target as Element).closest(
+                        "a, button, [role=button]"
+                      )
+                    ) {
                       return;
                     }
                     e.stopPropagation();
