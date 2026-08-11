@@ -1,7 +1,7 @@
 import type { Route } from "./+types/live.$slug.$stage";
 import type mongoose from "mongoose";
 import { connectToDatabase } from "../utils/dbConnection.server";
-import { LeagueModel } from "../db/League";
+import { LeagueModel } from "../core/models/tournament/League";
 import { slugify } from "../utils/slugify";
 import { basePath } from "../utils/basePath";
 

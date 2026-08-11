@@ -31,7 +31,7 @@ import { ArticleContent } from "../components/ArticleContent";
 import { TeamLogo } from "../components/TeamLogo";
 import { PlayerAvatar } from "../components/PlayerAvatar";
 import { LeagueConfigDetails } from "../components/LeagueConfigDetails";
-import type { LeagueTypeConfig } from "../db/types/league-config";
+import type { LeagueTypeConfig } from "../core/types/league-config";
 
 const { Title, Text } = Typography;
 

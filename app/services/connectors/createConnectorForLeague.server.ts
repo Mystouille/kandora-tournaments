@@ -1,4 +1,4 @@
-import { Platform, type League } from "~/db/League";
+import { Platform, type League } from "~/core/models/tournament/League";
 import { platformConnectorsDisabled } from "config";
 import type { ILeagueTournamentConnector } from "./ILeagueTournamentConnector.server";
 import { MajsoulLeagueConnector } from "./MajsoulLeagueConnector.server";

@@ -19,7 +19,7 @@
  * don't have a `League` object handy, so we map the
  * `ReplaySource` enum onto the right connector singleton directly.
  */
-import { ReplayLogModel } from "~/db/models/ReplayLog";
+import { ReplayLogModel } from "~/core/models/game/ReplayLog";
 import type { ReplayLog, ReplaySource } from "~/game/replay/types";
 import { MajsoulLeagueConnector } from "~/services/connectors/MajsoulLeagueConnector.server";
 import { TenhouLeagueConnector } from "~/services/connectors/TenhouLeagueConnector.server";

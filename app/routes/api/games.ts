@@ -3,15 +3,15 @@ import { connectToDatabase } from "../../utils/dbConnection.server";
 import { getLeagueUserPictureMapForLeagues } from "../../services/leagueUserPictures.server";
 import type { Route } from "./+types/games";
 import mongoose from "mongoose";
-import { GameModel, type Game, type GameResult } from "../../db/Game";
-import { LeagueModel } from "../../db/League";
-import { TeamModel, type Team } from "../../db/Team";
-import { UserModel, type User } from "../../db/User";
+import { GameModel, type Game, type GameResult } from "../../core/models/tournament/Game";
+import { LeagueModel } from "../../core/models/tournament/League";
+import { TeamModel, type Team } from "../../core/models/tournament/Team";
+import { UserModel, type User } from "../../core/models/shared/User";
 import {
   GameRecordModel,
   type GameRecord,
   type UserGameRecordData,
-} from "../../db/GameRecord";
+} from "../../core/models/tournament/GameRecord";
 
 import { getLeagueApiCache } from "~/services/leagueApiCache.server";
 

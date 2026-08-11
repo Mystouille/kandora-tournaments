@@ -1,11 +1,11 @@
 import type { Route } from "./+types/online-tournaments.$slug";
 import type mongoose from "mongoose";
 import { connectToDatabase } from "../../utils/dbConnection.server";
-import { LeagueModel, type League, Platform } from "../../db/League";
-import { LeagueTypeConfigModel } from "../../db/LeagueTypeConfig";
-import { TeamModel } from "../../db/Team";
-import { UserModel } from "../../db/User";
-import { GameModel } from "../../db/Game";
+import { LeagueModel, type League, Platform } from "../../core/models/tournament/League";
+import { LeagueTypeConfigModel } from "../../core/models/tournament/LeagueTypeConfig";
+import { TeamModel } from "../../core/models/tournament/Team";
+import { UserModel } from "../../core/models/shared/User";
+import { GameModel } from "../../core/models/tournament/Game";
 import { slugify } from "../../utils/slugify";
 import { getLeagueUserPictureMap } from "../../services/leagueUserPictures.server";
 

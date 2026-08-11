@@ -1,1 +1,1 @@
-export * from "~/db/ui/glossary/GlossaryTermLink";
+export * from "~/core/ui/glossary/GlossaryTermLink";

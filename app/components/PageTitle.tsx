@@ -1,1 +1,1 @@
-export * from "~/db/ui/PageTitle";
+export * from "~/core/ui/PageTitle";

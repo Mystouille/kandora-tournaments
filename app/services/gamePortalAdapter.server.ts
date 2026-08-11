@@ -8,10 +8,10 @@
  *   - `verifyToken`    → shared `jose` JWT verifier (`~/utils/jwt.server`),
  *                        which validates portal-issued tokens with the shared
  *                        `JWT_SECRET` / issuer / audience.
- *   - `getUserProfile` → shared Mongoose `UserModel` (`~/db/User`).
+ *   - `getUserProfile` → shared Mongoose `UserModel` (`~/core/models/shared/User`).
  *   - `publishMatchEnded` is intentionally left unimplemented (optional).
  */
-import { computeUserName, UserModel } from "~/db/User";
+import { computeUserName, UserModel } from "~/core/models/shared/User";
 import { verifyToken as verifyJwt } from "~/utils/jwt.server";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import type {

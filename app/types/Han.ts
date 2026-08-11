@@ -1,1 +1,1 @@
-export { Han } from "~/db/types/Han";
+export { Han } from "~/core/types/Han";

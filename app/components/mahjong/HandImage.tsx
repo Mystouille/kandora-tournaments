@@ -1,1 +1,1 @@
-export * from "~/db/ui/mahjong/HandImage";
+export * from "~/core/ui/mahjong/HandImage";

@@ -2,7 +2,7 @@ import { Worker, type Job } from "bullmq";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { getRedisConnection } from "./redisConnection.server";
 import { trackError } from "./telemetry.server";
-import { computeUserName, UserModel, type User } from "~/db/User";
+import { computeUserName, UserModel, type User } from "~/core/models/shared/User";
 import { getAllGuildMembersByServer } from "~/utils/discord-guilds.server";
 
 const env = process.env.NODE_ENV === "production" ? "prod" : "dev";

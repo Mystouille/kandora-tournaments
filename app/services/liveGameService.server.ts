@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
-import { type League, Platform } from "~/db/League";
-import { LiveGameModel } from "~/db/LiveGame";
-import { UserModel } from "~/db/User";
-import { OngoingGameStatus } from "~/db/types/ongoing-game-status";
+import { type League, Platform } from "~/core/models/tournament/League";
+import { LiveGameModel } from "~/core/models/tournament/LiveGame";
+import { UserModel } from "~/core/models/shared/User";
+import { OngoingGameStatus } from "~/core/types/ongoing-game-status";
 import { TenhouService } from "~/api/tenhou/TenhouService.server";
 import { type ILeagueTournamentConnector } from "./connectors/ILeagueTournamentConnector.server";
 

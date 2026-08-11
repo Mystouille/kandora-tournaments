@@ -1,4 +1,4 @@
-import { Platform } from "~/db/League";
+import { Platform } from "~/core/models/tournament/League";
 import { platformConnectorsDisabled } from "config";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import {

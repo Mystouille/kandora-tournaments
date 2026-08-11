@@ -1,7 +1,7 @@
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { LiveGameModel, type LiveGame } from "~/db/LiveGame";
-import { TeamModel, type Team } from "~/db/Team";
-import { UserModel } from "~/db/User";
+import { LiveGameModel, type LiveGame } from "~/core/models/tournament/LiveGame";
+import { TeamModel, type Team } from "~/core/models/tournament/Team";
+import { UserModel } from "~/core/models/shared/User";
 import { isGameEnabled } from "~/game/feature-gate";
 
 /**

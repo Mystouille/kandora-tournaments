@@ -23,7 +23,7 @@
     ],
     "curly": [2, "all"]
   },
-  "ignorePatterns": ["**/liqi.d.ts", "app/db/**", "app/game/**"],
+  "ignorePatterns": ["**/liqi.d.ts", "app/core/**", "app/game/**"],
   "env": {
     "browser": false,
     "node": true,

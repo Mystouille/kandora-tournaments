@@ -2,14 +2,14 @@ import { connectToDatabase } from "../../utils/dbConnection.server";
 import type { Route } from "./+types/yaku-map";
 import mongoose from "mongoose";
 import { Han } from "~/types/Han";
-import { GameModel, type Game } from "../../db/Game";
-import { TeamModel, type Team } from "../../db/Team";
-import { UserModel, type User } from "../../db/User";
+import { GameModel, type Game } from "../../core/models/tournament/Game";
+import { TeamModel, type Team } from "../../core/models/tournament/Team";
+import { UserModel, type User } from "../../core/models/shared/User";
 import {
   GameRecordModel,
   type GameRecord,
   type UserGameRecordData,
-} from "../../db/GameRecord";
+} from "../../core/models/tournament/GameRecord";
 
 const DORA_YAKU = Han.Dora; // 31
 const URA_DORA_YAKU = Han.Ura_Dora; // 33

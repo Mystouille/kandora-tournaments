@@ -6,7 +6,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 
 export async function executeUpdateMyInfo(
   interaction: ChatInputCommandInteraction

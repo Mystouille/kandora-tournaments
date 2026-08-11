@@ -1,6 +1,6 @@
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import type { Route } from "./+types/game-records";
-import { GameRecordModel } from "../../db/GameRecord";
+import { GameRecordModel } from "../../core/models/tournament/GameRecord";
 
 /**
  * GET /api/game-records

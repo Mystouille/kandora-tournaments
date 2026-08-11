@@ -68,7 +68,7 @@ export async function action({ request }: { request: Request }) {
   // Lazy-load server-only modules so the client bundle stays clean.
   const [{ ReplayLogModel }, { connectToDatabase }, { fetchOrphanReplayLog }] =
     await Promise.all([
-      import("~/db/models/ReplayLog"),
+      import("~/core/models/game/ReplayLog"),
       import("~/utils/dbConnection.server"),
       import("~/services/fetchOrphanReplayLog.server"),
     ]);

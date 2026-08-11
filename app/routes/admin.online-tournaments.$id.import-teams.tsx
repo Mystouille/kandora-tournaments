@@ -5,7 +5,7 @@ import { ImportOutlined, UploadOutlined } from "@ant-design/icons";
 import { basePath } from "../utils/basePath";
 import { requireLeagueAdminOrRedirect } from "../utils/league-permissions.server";
 import { connectToDatabase } from "../utils/dbConnection.server";
-import { LeagueModel } from "../db/League";
+import { LeagueModel } from "../core/models/tournament/League";
 import { useLocale } from "../contexts/LocaleContext";
 import {
   type ImportResult,

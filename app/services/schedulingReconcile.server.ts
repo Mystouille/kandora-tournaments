@@ -1,12 +1,12 @@
 import mongoose from "mongoose";
 import type { Job } from "bullmq";
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { LeagueModel, type League } from "~/db/League";
+import { LeagueModel, type League } from "~/core/models/tournament/League";
 import {
   SchedulingMessageModel,
   type SchedulingMessage,
-} from "~/db/SchedulingMessage";
-import { SubstitutionModel } from "~/db/Substitution";
+} from "~/core/models/tournament/SchedulingMessage";
+import { SubstitutionModel } from "~/core/models/tournament/Substitution";
 import {
   getSchedulingQueue,
   type SchedulingPollJob,

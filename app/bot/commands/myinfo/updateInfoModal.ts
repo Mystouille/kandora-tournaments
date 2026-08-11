@@ -1,5 +1,5 @@
 import { MessageFlags, ModalSubmitInteraction } from "discord.js";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 
 export async function execute(itr: ModalSubmitInteraction) {
   let user = await UserModel.findOne({

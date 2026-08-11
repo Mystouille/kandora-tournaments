@@ -3,18 +3,18 @@ import { getLeagueUserPictureMap } from "../../services/leagueUserPictures.serve
 import type { Route } from "./+types/bracket-scores";
 import type { PicturePair } from "../../types/pictures";
 import mongoose from "mongoose";
-import { Ruleset, LeagueModel, type League } from "../../db/League";
-import { GameModel, type Game } from "../../db/Game";
-import { TeamModel, type Team } from "../../db/Team";
-import { UserModel, type User } from "../../db/User";
-import { GameRecordModel, type GameRecord } from "../../db/GameRecord";
+import { Ruleset, LeagueModel, type League } from "../../core/models/tournament/League";
+import { GameModel, type Game } from "../../core/models/tournament/Game";
+import { TeamModel, type Team } from "../../core/models/tournament/Team";
+import { UserModel, type User } from "../../core/models/shared/User";
+import { GameRecordModel, type GameRecord } from "../../core/models/tournament/GameRecord";
 import {
   BracketModel,
   type Bracket,
   getSeedingParticipantId,
-} from "../../db/Bracket";
-import { SubstitutionModel } from "../../db/Substitution";
-import { SchedulingMessageModel } from "../../db/SchedulingMessage";
+} from "../../core/models/tournament/Bracket";
+import { SubstitutionModel } from "../../core/models/tournament/Substitution";
+import { SchedulingMessageModel } from "../../core/models/tournament/SchedulingMessage";
 import {
   computeBracket,
   computeBracketStageMetadata,

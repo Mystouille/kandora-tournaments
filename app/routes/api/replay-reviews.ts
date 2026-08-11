@@ -1,6 +1,6 @@
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import { getAuthenticatedUser } from "../../utils/jwt.server";
-import { ReplayReviewModel } from "../../db/models/ReplayReview";
+import { ReplayReviewModel } from "../../core/models/game/ReplayReview";
 import { inferReplaySource } from "../../game/replay/inferSource";
 import { customAlphabet } from "nanoid";
 import type { ReplaySource } from "../../game/replay/types";

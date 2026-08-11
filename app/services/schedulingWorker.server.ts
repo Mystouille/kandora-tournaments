@@ -9,9 +9,9 @@ import {
 import {
   SchedulingMessageModel,
   type SchedulingStatus,
-} from "~/db/SchedulingMessage";
-import { LeagueModel, type League } from "~/db/League";
-import { BracketModel, type Bracket } from "~/db/Bracket";
+} from "~/core/models/tournament/SchedulingMessage";
+import { LeagueModel, type League } from "~/core/models/tournament/League";
+import { BracketModel, type Bracket } from "~/core/models/tournament/Bracket";
 import { createConnectorForLeague } from "~/services/connectors/createConnectorForLeague.server";
 import type { PlayerReadyMap } from "./schedulingMessageService.server";
 import {
@@ -29,8 +29,8 @@ import {
 import { linkPlayedGamesToTables } from "./schedulingLink.server";
 import { editChannelMessage } from "./discordPublisher.server";
 import { computePlayerDeltas, isGameScored } from "./leagueUtils";
-import { GameModel, type Game } from "~/db/Game";
-import { GameRecordModel, type GameRecord } from "~/db/GameRecord";
+import { GameModel, type Game } from "~/core/models/tournament/Game";
+import { GameRecordModel, type GameRecord } from "~/core/models/tournament/GameRecord";
 import type {
   FinalStageDefinition,
   LeagueTypeConfig,
@@ -39,7 +39,7 @@ import {
   generateTeamBracketSeating,
   generateIndividualScheduling,
 } from "./league-configs/teamBracketSeating";
-import { SubstitutionModel } from "~/db/Substitution";
+import { SubstitutionModel } from "~/core/models/tournament/Substitution";
 import mongoose from "mongoose";
 
 const env = process.env.NODE_ENV === "production" ? "prod" : "dev";

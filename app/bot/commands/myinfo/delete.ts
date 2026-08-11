@@ -7,7 +7,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 import { localize } from "../../localizationUtils";
 import { strings } from "../../localization/strings";
 

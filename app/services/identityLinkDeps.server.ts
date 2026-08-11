@@ -2,7 +2,7 @@ import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "~/services/connectors/RiichiCityLeagueConnector.server";
 import { mergePlaceholderParticipant } from "~/utils/riichiCityParticipantMerge.server";
 import { AuthService } from "~/utils/auth.server";
-import type { IdentityLinkDeps } from "~/db/services/identityLinking";
+import type { IdentityLinkDeps } from "~/core/services/identityLinking";
 
 /**
  * This deployment's platform-identity glue: connector lookups plus user

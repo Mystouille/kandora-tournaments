@@ -1,10 +1,10 @@
-import { GameModel, type Game, type GameResult } from "~/db/Game";
-import { GameRecordModel } from "~/db/GameRecord";
-import { ReplayLogModel } from "~/db/models/ReplayLog";
+import { GameModel, type Game, type GameResult } from "~/core/models/tournament/Game";
+import { GameRecordModel } from "~/core/models/tournament/GameRecord";
+import { ReplayLogModel } from "~/core/models/game/ReplayLog";
 import { REPLAY_LOG_SCHEMA_VERSION } from "~/game/replay/types";
-import { TeamModel } from "~/db/Team";
-import { UserModel } from "~/db/User";
-import type { League } from "~/db/League";
+import { TeamModel } from "~/core/models/tournament/Team";
+import { UserModel } from "~/core/models/shared/User";
+import type { League } from "~/core/models/tournament/League";
 import { computePlayerDeltas } from "~/services/leagueUtils";
 import type { ILeagueTournamentConnector } from "~/services/connectors/ILeagueTournamentConnector.server";
 import { resolveLeagueTypeConfig } from "~/services/league-configs";

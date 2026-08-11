@@ -1,4 +1,4 @@
-import AccountPage from "~/db/ui/AccountPage";
+import AccountPage from "~/core/ui/AccountPage";
 
 export function meta() {
   return [

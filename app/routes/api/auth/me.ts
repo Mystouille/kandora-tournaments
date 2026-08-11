@@ -4,7 +4,7 @@ import {
   signToken,
   createAuthCookie,
 } from "../../../utils/jwt.server";
-import { UserModel } from "~/db/User";
+import { UserModel } from "~/core/models/shared/User";
 
 /**
  * GET /api/auth/me

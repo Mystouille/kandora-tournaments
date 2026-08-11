@@ -1,7 +1,7 @@
 import { getAuthenticatedUser } from "../../utils/jwt.server";
 import { connectToDatabase } from "../../utils/dbConnection.server";
-import { UserModel } from "../../db/User";
-import { TelemetryEventModel } from "../../db/TelemetryEvent";
+import { UserModel } from "../../core/models/shared/User";
+import { TelemetryEventModel } from "../../core/models/shared/TelemetryEvent";
 import {
   trackEvent,
   queryErrors,

@@ -1,4 +1,4 @@
-import { Ruleset } from "~/db/League";
+import { Ruleset } from "~/core/models/tournament/League";
 import { computePlayerDeltas } from "~/services/leagueUtils";
 import type { RegularScoringConfig } from "~/services/league-configs/types";
 

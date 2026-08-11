@@ -1,6 +1,6 @@
 import type { GameSummary } from "~/types/GameSummary";
 import type { GameRecordData } from "~/api/majsoul/types/gameRecordData";
-import type { League } from "~/db/League";
+import type { League } from "~/core/models/tournament/League";
 import type { ReplayLog } from "~/game/replay/types";
 
 export interface TournamentLobbyStatus {
@@ -222,7 +222,7 @@ export interface OngoingGame {
   pausedAt?: Date;
 }
 
-// OngoingGameStatus now lives in the kandora-core schema package (app/db) so the
+// OngoingGameStatus now lives in the kandora-core schema package (app/core) so the
 // OngoingGameMessage model can reference it without depending on this connector.
-import { OngoingGameStatus } from "~/db/types/ongoing-game-status";
+import { OngoingGameStatus } from "~/core/types/ongoing-game-status";
 export { OngoingGameStatus };

@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
-import { UserModel } from "../../../db/User";
-import { TeamModel } from "../../../db/Team";
-import { LeagueModel, Platform, type League } from "../../../db/League";
+import { UserModel } from "../../../core/models/shared/User";
+import { TeamModel } from "../../../core/models/tournament/Team";
+import { LeagueModel, Platform, type League } from "../../../core/models/tournament/League";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type {
   TeamConfig,

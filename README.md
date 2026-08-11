@@ -19,7 +19,7 @@ instance without using the original operator's server.
 - **Discord OAuth** for login; admin/editor permissions come from Discord
   server roles (configured in `SERVERS_JSON`).
 - Two shared **git submodules**:
-  - [`app/db`](app/db) → **kandora-core**: database models + shared mahjong
+  - [`app/core`](app/core) → **kandora-core**: database models + shared mahjong
     types/enums (data-only, no React).
   - [`app/game`](app/game) → **kandora-game**: the game engine, renderer, and
     replay components (powers the in-browser replay viewer).
@@ -63,7 +63,7 @@ npm run dev
 | `npm run typecheck`       | `react-router typegen` + `tsc`.                           |
 | `npm run test`            | Run the Vitest suite.                                     |
 | `npm run submodules:init` | Check out the `kandora-core` + `kandora-game` submodules. |
-| `npm run core:update`     | Update `app/db` to the latest `kandora-core` main.        |
+| `npm run core:update`     | Update `app/core` to the latest `kandora-core` main.        |
 | `npm run game:update`     | Update `app/game` to the latest `kandora-game` main.      |
 
 ## License

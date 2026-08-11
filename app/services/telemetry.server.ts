@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { connectToDatabase } from "../utils/dbConnection.server";
-import { TelemetryEventModel } from "../db/TelemetryEvent";
+import { TelemetryEventModel } from "../core/models/shared/TelemetryEvent";
 
 // ── AsyncLocalStorage context (no prop drilling) ─────────────────────
 interface TelemetryContext {

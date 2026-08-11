@@ -14,10 +14,10 @@ vi.mock("../../utils/dbConnection.server", () => ({
 vi.mock("../../utils/jwt.server", () => ({
   getAuthenticatedUser: mocks.getAuthenticatedUser,
 }));
-vi.mock("../../db/models/ReplayReview", () => ({
+vi.mock("../../core/models/game/ReplayReview", () => ({
   ReplayReviewModel: { findOne: mocks.findReview },
 }));
-vi.mock("../../db/User", () => ({
+vi.mock("../../core/models/shared/User", () => ({
   UserModel: { findById: mocks.findUser },
 }));
 

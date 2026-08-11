@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import { UserModel } from "~/db/User";
-import { TeamModel } from "~/db/Team";
-import { GameModel } from "~/db/Game";
-import { RankingModel } from "~/db/Ranking";
-import { ClubSessionModel } from "~/db/ClubSession";
+import { UserModel } from "~/core/models/shared/User";
+import { TeamModel } from "~/core/models/tournament/Team";
+import { GameModel } from "~/core/models/tournament/Game";
+import { RankingModel } from "~/core/models/tournament/Ranking";
+import { ClubSessionModel } from "~/core/models/portal/ClubSession";
 
 /**
  * Merges a placeholder user (created from CSV with only name) into a confirmed user

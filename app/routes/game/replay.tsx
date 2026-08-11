@@ -17,8 +17,8 @@ import {
 } from "~/game/replay/player";
 import type { ReplayView } from "~/game/replay/player";
 import type { GameEvent, Seat } from "~/game/protocol/messages";
-import { ReplayLogModel, type DbReplayLog } from "~/db/models/ReplayLog";
-import { ReplayReviewModel } from "~/db/models/ReplayReview";
+import { ReplayLogModel, type DbReplayLog } from "~/core/models/game/ReplayLog";
+import { ReplayReviewModel } from "~/core/models/game/ReplayReview";
 import { inferReplaySource } from "~/game/replay/inferSource";
 import { fetchOrphanReplayLog } from "~/services/fetchOrphanReplayLog.server";
 import { resolveSeatEnrichmentForReplay } from "~/services/replayEnrichment.server";

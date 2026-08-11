@@ -4,7 +4,7 @@ import {
   ContextMenuCommandBuilder,
   ApplicationCommandType,
 } from "discord.js";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 
 export const data = new ContextMenuCommandBuilder()
   .setName("[Kandora] Mahjong Info")

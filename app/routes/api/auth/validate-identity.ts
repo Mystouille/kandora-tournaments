@@ -1,7 +1,7 @@
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { getAuthenticatedUser } from "~/utils/jwt.server";
 import { identityLinkDeps } from "~/services/identityLinkDeps.server";
-import { validatePlatformIdentity } from "~/db/services/identityLinking";
+import { validatePlatformIdentity } from "~/core/services/identityLinking";
 
 /**
  * POST /api/auth/validate-identity

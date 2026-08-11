@@ -1,7 +1,7 @@
 import { connectToDatabase } from "../../../utils/dbConnection.server";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 import { getAuthenticatedUser } from "../../../utils/jwt.server";
-import { Platform } from "../../../db/League";
+import { Platform } from "../../../core/models/tournament/League";
 import { RiichiCityLeagueConnector } from "../../../services/connectors/RiichiCityLeagueConnector.server";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { TenhouService } from "../../../api/tenhou/TenhouService.server";

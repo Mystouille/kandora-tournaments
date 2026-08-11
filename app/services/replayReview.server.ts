@@ -1,4 +1,4 @@
-import { UserModel } from "~/db/User";
+import { UserModel } from "~/core/models/shared/User";
 import { bytesToBase64 } from "~/game/replay/reviewDrawing";
 import type { ReplaySource } from "~/game/replay/types";
 import type {

@@ -1,4 +1,4 @@
-import { LeagueUserModel } from "../../../db/LeagueUser";
+import { LeagueUserModel } from "../../../core/models/tournament/LeagueUser";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
 import { connectToDatabase } from "../../../utils/dbConnection.server";
 import { emitLeagueUpdated } from "../../../services/cacheInvalidation.server";

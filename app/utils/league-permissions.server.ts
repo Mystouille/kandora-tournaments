@@ -1,7 +1,7 @@
 import { getAuthenticatedUser, type JwtPayload } from "./jwt.server";
 import { connectToDatabase } from "./dbConnection.server";
-import { UserModel } from "../db/User";
-import { LeagueModel } from "../db/League";
+import { UserModel } from "../core/models/shared/User";
+import { LeagueModel } from "../core/models/tournament/League";
 import { isDiscordGuildAdmin } from "./discord-guilds.server";
 
 interface AuthResult {

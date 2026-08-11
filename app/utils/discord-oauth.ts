@@ -1,1 +1,1 @@
-export * from "~/db/ui/discord-oauth";
+export * from "~/core/ui/discord-oauth";

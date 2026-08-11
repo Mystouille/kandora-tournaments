@@ -6,7 +6,7 @@ import {
   type BracketStageDefinition,
   type ComputedStage,
 } from "./bracketUtils";
-import { Ruleset } from "../db/League";
+import { Ruleset } from "../core/models/tournament/League";
 
 /**
  * A single-game "FINALS" stage seeded with four teams. `gamesToComplete: 1`

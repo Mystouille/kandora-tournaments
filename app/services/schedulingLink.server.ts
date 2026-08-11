@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { LeagueModel, type League } from "~/db/League";
-import { GameModel, type Game } from "~/db/Game";
-import { TeamModel, type Team } from "~/db/Team";
-import { SchedulingMessageModel } from "~/db/SchedulingMessage";
+import { LeagueModel, type League } from "~/core/models/tournament/League";
+import { GameModel, type Game } from "~/core/models/tournament/Game";
+import { TeamModel, type Team } from "~/core/models/tournament/Team";
+import { SchedulingMessageModel } from "~/core/models/tournament/SchedulingMessage";
 import {
   resolveLeagueTypeConfig,
   buildFinalsGameMatch,

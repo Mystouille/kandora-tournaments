@@ -8,7 +8,7 @@ import {
   type ModalActionRowComponentBuilder,
   type ModalSubmitInteraction,
 } from "discord.js";
-import { LeagueModel, type League } from "~/db/League";
+import { LeagueModel, type League } from "~/core/models/tournament/League";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { createConnectorForLeague } from "~/services/connectors/createConnectorForLeague.server";
 import {

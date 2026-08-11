@@ -1,1 +1,1 @@
-export * from "~/db/ui/mahjong/TileDisplay";
+export * from "~/core/ui/mahjong/TileDisplay";

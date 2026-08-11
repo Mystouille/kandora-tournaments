@@ -1,5 +1,5 @@
 import { connectToDatabase } from "../../../utils/dbConnection.server";
-import { LeagueModel } from "../../../db/League";
+import { LeagueModel } from "../../../core/models/tournament/League";
 import {
   translateHtmlField,
   translateText,

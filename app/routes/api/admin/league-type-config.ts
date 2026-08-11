@@ -1,8 +1,8 @@
 import { connectToDatabase } from "../../../utils/dbConnection.server";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 import { getAuthenticatedUser } from "../../../utils/jwt.server";
-import { LeagueModel } from "../../../db/League";
-import { LeagueTypeConfigModel } from "../../../db/LeagueTypeConfig";
+import { LeagueModel } from "../../../core/models/tournament/League";
+import { LeagueTypeConfigModel } from "../../../core/models/tournament/LeagueTypeConfig";
 import { validateLeagueTypeConfig } from "../../../services/league-configs/validation";
 
 async function requireAdmin(request: Request): Promise<Response | null> {

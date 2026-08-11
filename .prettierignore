@@ -2,6 +2,6 @@ build
 .react-router
 node_modules
 package-lock.json
-app/db
+app/core
 app/game
 **/liqi.d.ts

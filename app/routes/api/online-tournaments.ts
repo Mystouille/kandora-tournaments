@@ -1,7 +1,7 @@
 import { connectToDatabase } from "../../utils/dbConnection.server";
-import { LeagueModel, type League } from "../../db/League";
-import { TeamModel } from "../../db/Team";
-import { GameModel } from "../../db/Game";
+import { LeagueModel, type League } from "../../core/models/tournament/League";
+import { TeamModel } from "../../core/models/tournament/Team";
+import { GameModel } from "../../core/models/tournament/Game";
 import { slugify } from "../../utils/slugify";
 
 export async function loader() {

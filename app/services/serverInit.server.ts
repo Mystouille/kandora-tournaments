@@ -176,7 +176,7 @@ async function scheduleDiscordSync(): Promise<void> {
  */
 async function recoverOrphanedSchedulingJobs(): Promise<void> {
   try {
-    const { SchedulingMessageModel } = await import("~/db/SchedulingMessage");
+    const { SchedulingMessageModel } = await import("~/core/models/tournament/SchedulingMessage");
     const { getSchedulingQueue } =
       await import("~/services/schedulingQueue.server");
 

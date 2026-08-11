@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import { GameRecordModel, type GameRecord } from "~/db/GameRecord";
-import { TeamModel } from "~/db/Team";
+import { GameRecordModel, type GameRecord } from "~/core/models/tournament/GameRecord";
+import { TeamModel } from "~/core/models/tournament/Team";
 import type { SeatEnrichment } from "~/game/client/pixi/TableRenderer";
 
 const EMPTY: (SeatEnrichment | null)[] = [null, null, null, null];

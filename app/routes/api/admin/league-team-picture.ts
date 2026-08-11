@@ -1,4 +1,4 @@
-import { TeamModel } from "../../../db/Team";
+import { TeamModel } from "../../../core/models/tournament/Team";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
 import { connectToDatabase } from "../../../utils/dbConnection.server";
 import { storePicturePair } from "../../../services/pictureStorage.server";

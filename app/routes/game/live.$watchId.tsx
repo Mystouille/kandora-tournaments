@@ -1,7 +1,7 @@
 import { getClientGameFlag, isGameEnabled } from "~/game/feature-gate";
 import GameSpectateRoute from "~/game/routes/spectate";
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { LiveGameModel } from "~/db/LiveGame";
+import { LiveGameModel } from "~/core/models/tournament/LiveGame";
 import { RelayError, startRelay } from "~/services/gameServer.server";
 import type { Route } from "./+types/live.$watchId";
 

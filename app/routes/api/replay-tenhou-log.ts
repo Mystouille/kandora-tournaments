@@ -101,7 +101,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         { fetchOrphanReplayLog },
         { replayLogToTenhou5Json },
       ] = await Promise.all([
-        import("~/db/models/ReplayLog"),
+        import("~/core/models/game/ReplayLog"),
         import("~/utils/dbConnection.server"),
         import("~/services/fetchOrphanReplayLog.server"),
         import("~/game/replay/replayLogToTenhou5Json"),

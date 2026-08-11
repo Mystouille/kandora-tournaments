@@ -1,5 +1,5 @@
 import { connectToDatabase } from "../../../utils/dbConnection.server";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 import { getAuthenticatedUser } from "../../../utils/jwt.server";
 import { getServers } from "../../../config/servers";
 import { getGuildMember } from "../../../utils/discord-guilds.server";

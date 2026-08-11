@@ -260,7 +260,7 @@ export interface GameEndData {
   score: number;
 }
 
-// YakuType now lives in the kandora-core schema package (app/db) so the shared yaku maps can
+// YakuType now lives in the kandora-core schema package (app/core) so the shared yaku maps can
 // reference it. Imported + re-exported here for existing `~/services/riichiCityModels` importers.
-import { YakuType } from "~/db/types/yaku-type";
+import { YakuType } from "~/core/types/yaku-type";
 export { YakuType };

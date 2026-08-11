@@ -1,4 +1,4 @@
-import { Ruleset } from "~/db/League";
+import { Ruleset } from "~/core/models/tournament/League";
 import {
   computeTeamBasedRankingData,
   buildUserToTeamMap,

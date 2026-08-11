@@ -8,7 +8,7 @@ import type {
   Rational,
 } from "~/services/league-configs/types";
 import { rationalToNumber } from "~/services/league-configs/types";
-import type { Ruleset } from "~/db/League";
+import type { Ruleset } from "~/core/models/tournament/League";
 import { computePlayerDeltas } from "~/services/leagueUtils";
 
 // ---------------------------------------------------------------------------

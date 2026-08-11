@@ -35,7 +35,7 @@ watchPatterns = [
     "app/game/**",
     # Shared persistence layer (UserModel, Match, ReplayLog, yaku maps, etc.
     # are all transitively reachable from the adapter + game-server).
-    "app/db/**",
+    "app/core/**",
     # Host adapter injected by the bootstrap + the auth/db helpers it uses.
     "app/services/gamePortalAdapter.server.ts",
     "app/utils/jwt.server.ts",

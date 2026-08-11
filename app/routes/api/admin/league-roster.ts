@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
-import type { League } from "../../../db/League";
-import { LeagueModel, Platform } from "../../../db/League";
-import { TeamModel } from "../../../db/Team";
-import { UserModel } from "../../../db/User";
+import type { League } from "../../../core/models/tournament/League";
+import { LeagueModel, Platform } from "../../../core/models/tournament/League";
+import { TeamModel } from "../../../core/models/tournament/Team";
+import { UserModel } from "../../../core/models/shared/User";
 import { connectToDatabase } from "../../../utils/dbConnection.server";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
 import { slugify } from "../../../utils/slugify";

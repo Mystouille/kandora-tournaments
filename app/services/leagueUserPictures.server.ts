@@ -1,5 +1,5 @@
 import type mongoose from "mongoose";
-import { LeagueUserModel } from "../db/LeagueUser";
+import { LeagueUserModel } from "../core/models/tournament/LeagueUser";
 import type { PicturePair } from "../types/pictures";
 
 /**

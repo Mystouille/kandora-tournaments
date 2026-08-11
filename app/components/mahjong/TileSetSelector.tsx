@@ -1,1 +1,1 @@
-export * from "~/db/ui/mahjong/TileSetSelector";
+export * from "~/core/ui/mahjong/TileSetSelector";

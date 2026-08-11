@@ -1,4 +1,4 @@
-import { GlossaryPanel as CoreGlossaryPanel } from "~/db/ui/glossary/GlossaryPanel";
+import { GlossaryPanel as CoreGlossaryPanel } from "~/core/ui/glossary/GlossaryPanel";
 import { useGlossary } from "../contexts/GlossaryContext";
 import { useLocale } from "../contexts/LocaleContext";
 import { ArticleContent } from "./ArticleContent";

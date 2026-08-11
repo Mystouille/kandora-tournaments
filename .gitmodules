@@ -1,5 +1,5 @@
-[submodule "app/db"]
-	path = app/db
+[submodule "app/core"]
+	path = app/core
 	url = https://github.com/Mystouille/kandora-core.git
 	branch = main
 [submodule "app/game"]

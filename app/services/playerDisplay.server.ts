@@ -1,6 +1,6 @@
 import { Platform } from "~/types/league-enums";
-import type { League } from "~/db/League";
-import type { User } from "~/db/User";
+import type { League } from "~/core/models/tournament/League";
+import type { User } from "~/core/models/shared/User";
 
 /**
  * Resolved Discord display data for a single user.

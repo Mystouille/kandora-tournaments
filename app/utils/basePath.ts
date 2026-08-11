@@ -1,1 +1,1 @@
-export * from "~/db/ui/basePath";
+export * from "~/core/ui/basePath";

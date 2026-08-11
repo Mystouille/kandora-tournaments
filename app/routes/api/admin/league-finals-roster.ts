@@ -1,5 +1,5 @@
 import { connectToDatabase } from "../../../utils/dbConnection.server";
-import { TeamModel } from "../../../db/Team";
+import { TeamModel } from "../../../core/models/tournament/Team";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
 
 interface FinalsRosterEntry {

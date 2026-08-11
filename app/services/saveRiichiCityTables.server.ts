@@ -1,15 +1,15 @@
 import mongoose from "mongoose";
-import { LeagueModel, type League } from "~/db/League";
+import { LeagueModel, type League } from "~/core/models/tournament/League";
 import { Platform } from "~/types/league-enums";
 import {
   BracketModel,
   type Bracket,
   getSeedingParticipantId,
-} from "~/db/Bracket";
-import { GameModel, type Game } from "~/db/Game";
-import { SchedulingMessageModel } from "~/db/SchedulingMessage";
-import { TeamModel, type Team } from "~/db/Team";
-import { UserModel, type User } from "~/db/User";
+} from "~/core/models/tournament/Bracket";
+import { GameModel, type Game } from "~/core/models/tournament/Game";
+import { SchedulingMessageModel } from "~/core/models/tournament/SchedulingMessage";
+import { TeamModel, type Team } from "~/core/models/tournament/Team";
+import { UserModel, type User } from "~/core/models/shared/User";
 import {
   resolveLeagueTypeConfig,
   buildFinalsGameMatch,

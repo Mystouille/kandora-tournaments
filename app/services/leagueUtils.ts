@@ -1,4 +1,4 @@
-import { Ruleset } from "../db/League";
+import { Ruleset } from "../core/models/tournament/League";
 
 /**
  * Whether a game's results represent a fully scored (hydrated) game rather than

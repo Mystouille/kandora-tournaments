@@ -1,5 +1,5 @@
 import type { Translations } from "./types";
-import { coreEn } from "~/db/i18n/en";
+import { coreEn } from "~/core/i18n/en";
 
 export const en: Translations = {
   ...coreEn,

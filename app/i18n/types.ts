@@ -1,4 +1,4 @@
-import type { CoreTranslations } from "~/db/i18n/types";
+import type { CoreTranslations } from "~/core/i18n/types";
 
 export interface Translations extends CoreTranslations {
   common: {

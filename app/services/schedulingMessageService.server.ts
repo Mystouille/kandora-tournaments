@@ -1,4 +1,4 @@
-import { type League } from "~/db/League";
+import { type League } from "~/core/models/tournament/League";
 import type {
   FinalStageDefinition,
   LeagueTypeConfig,
@@ -11,15 +11,15 @@ import {
   generateTeamBracketSeating,
   generateIndividualScheduling,
 } from "~/services/league-configs/teamBracketSeating";
-import { TeamModel, type Team } from "~/db/Team";
+import { TeamModel, type Team } from "~/core/models/tournament/Team";
 import {
   SchedulingMessageModel,
   type SchedulingMessage,
   type SchedulingStatus,
-} from "~/db/SchedulingMessage";
-import { SubstitutionModel } from "~/db/Substitution";
-import { GameModel, type Game } from "~/db/Game";
-import { GameRecordModel, type GameRecord } from "~/db/GameRecord";
+} from "~/core/models/tournament/SchedulingMessage";
+import { SubstitutionModel } from "~/core/models/tournament/Substitution";
+import { GameModel, type Game } from "~/core/models/tournament/Game";
+import { GameRecordModel, type GameRecord } from "~/core/models/tournament/GameRecord";
 import { computePlayerDeltas, isGameScored } from "~/services/leagueUtils";
 import {
   sendChannelMessage,
@@ -538,7 +538,7 @@ export async function loadStageParticipantsByIds(
   }
 
   // Individual mode — load User documents
-  const { UserModel } = await import("~/db/User");
+  const { UserModel } = await import("~/core/models/shared/User");
 
   // Load active substitutions for this league (individual mode: no team
   // field), keeping only those that apply to the current stage/round.
@@ -654,7 +654,7 @@ export async function buildUserMapForMemberIds(
   memberIds: mongoose.Types.ObjectId[],
   platform: string
 ): Promise<Map<string, SchedulingUserInfo>> {
-  const { UserModel } = await import("~/db/User");
+  const { UserModel } = await import("~/core/models/shared/User");
 
   const users = await UserModel.find({
     _id: { $in: memberIds },

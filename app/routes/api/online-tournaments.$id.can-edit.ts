@@ -1,6 +1,6 @@
 import { connectToDatabase } from "../../utils/dbConnection.server";
-import { UserModel } from "../../db/User";
-import { LeagueModel, type League } from "../../db/League";
+import { UserModel } from "../../core/models/shared/User";
+import { LeagueModel, type League } from "../../core/models/tournament/League";
 import { getAuthenticatedUser } from "../../utils/jwt.server";
 import { isDiscordGuildAdmin } from "../../utils/discord-guilds.server";
 

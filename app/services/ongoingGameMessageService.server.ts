@@ -1,13 +1,13 @@
 import mongoose from "mongoose";
 import { coreConfig } from "config";
-import { LeagueModel, type League, Platform } from "~/db/League";
+import { LeagueModel, type League, Platform } from "~/core/models/tournament/League";
 import {
   OngoingGameMessageModel,
   type OngoingGameMessage,
   type OngoingGameMessagePlayer,
-} from "~/db/OngoingGameMessage";
-import { TeamModel } from "~/db/Team";
-import { UserModel } from "~/db/User";
+} from "~/core/models/tournament/OngoingGameMessage";
+import { TeamModel } from "~/core/models/tournament/Team";
+import { UserModel } from "~/core/models/shared/User";
 import { compositeDisplayName } from "~/components/import-teams/shared";
 import {
   type ILeagueTournamentConnector,

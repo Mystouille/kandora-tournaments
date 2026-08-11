@@ -7,7 +7,7 @@ import type {
   Rational,
   RegularPhaseDefinition,
   RegularScoringConfig,
-} from "../db/types/league-config";
+} from "../core/types/league-config";
 import { useLocale } from "../contexts/LocaleContext";
 import type { ConfigT } from "./admin/leagueTypeConfig/types";
 

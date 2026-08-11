@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import { getAuthenticatedUser } from "../../utils/jwt.server";
-import { ReplayReviewModel } from "../../db/models/ReplayReview";
+import { ReplayReviewModel } from "../../core/models/game/ReplayReview";
 import { base64ToBytes } from "../../game/replay/reviewDrawing";
 import {
   effectiveReviewAuthor,

@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { LiveGameModel, type LiveGame } from "~/db/LiveGame";
-import { UserModel, type User } from "~/db/User";
-import { TeamModel, type Team } from "~/db/Team";
+import { LiveGameModel, type LiveGame } from "~/core/models/tournament/LiveGame";
+import { UserModel, type User } from "~/core/models/shared/User";
+import { TeamModel, type Team } from "~/core/models/tournament/Team";
 import { getLeagueUserPictureMapForLeagues } from "~/services/leagueUserPictures.server";
 import type { PicturePair } from "~/types/pictures";
 import { isGameEnabled } from "~/game/feature-gate";

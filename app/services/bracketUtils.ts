@@ -1,4 +1,4 @@
-import { Ruleset } from "../db/League";
+import { Ruleset } from "../core/models/tournament/League";
 import { computePlayerDeltas } from "./leagueUtils";
 
 /** Signed, one-decimal score string (e.g. `+22.9`, `-8.9`). */

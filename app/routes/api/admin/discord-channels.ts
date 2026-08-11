@@ -1,5 +1,5 @@
 import { connectToDatabase } from "../../../utils/dbConnection.server";
-import { UserModel } from "../../../db/User";
+import { UserModel } from "../../../core/models/shared/User";
 import { getAuthenticatedUser } from "../../../utils/jwt.server";
 import { config } from "../../../../config";
 

@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { type League, LeagueModel, ongoingLeagueFilter } from "~/db/League";
-import { GameModel, type Game } from "~/db/Game";
-import { TeamModel, type Team } from "~/db/Team";
-import { LeagueUserModel } from "~/db/LeagueUser";
-import { UserModel, type User } from "~/db/User";
+import { type League, LeagueModel, ongoingLeagueFilter } from "~/core/models/tournament/League";
+import { GameModel, type Game } from "~/core/models/tournament/Game";
+import { TeamModel, type Team } from "~/core/models/tournament/Team";
+import { LeagueUserModel } from "~/core/models/tournament/LeagueUser";
+import { UserModel, type User } from "~/core/models/shared/User";
 import {
   BracketModel,
   type Bracket,
   getSeedingParticipantId,
-} from "~/db/Bracket";
-import { LeagueRankingMessageModel } from "~/db/LeagueRankingMessage";
+} from "~/core/models/tournament/Bracket";
+import { LeagueRankingMessageModel } from "~/core/models/tournament/LeagueRankingMessage";
 import { computePlayerDeltas } from "~/services/leagueUtils";
 import { hydrateLeagueGames } from "~/services/GameHydrationService.server";
 import { createConnectorForLeague } from "~/services/connectors/createConnectorForLeague.server";

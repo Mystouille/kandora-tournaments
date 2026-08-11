@@ -1,11 +1,11 @@
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import type { Route } from "./+types/score-evolution";
 import mongoose from "mongoose";
-import { Ruleset, LeagueModel, type League } from "../../db/League";
+import { Ruleset, LeagueModel, type League } from "../../core/models/tournament/League";
 import { computePlayerDeltas } from "../../services/leagueUtils";
-import { GameModel, type Game } from "../../db/Game";
-import { TeamModel, type Team } from "../../db/Team";
-import { UserModel, type User } from "../../db/User";
+import { GameModel, type Game } from "../../core/models/tournament/Game";
+import { TeamModel, type Team } from "../../core/models/tournament/Team";
+import { UserModel, type User } from "../../core/models/shared/User";
 
 /**
  * GET /api/score-evolution

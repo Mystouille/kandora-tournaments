@@ -174,7 +174,7 @@ export async function getAuthenticatedUserWithRefresh(
 export async function requireAdmin(request: Request): Promise<void> {
   const { redirect } = await import("react-router");
   const { connectToDatabase } = await import("./dbConnection.server");
-  const { UserModel } = await import("../db/User");
+  const { UserModel } = await import("../core/models/shared/User");
 
   const jwtPayload = await getAuthenticatedUser(request);
   if (!jwtPayload) {

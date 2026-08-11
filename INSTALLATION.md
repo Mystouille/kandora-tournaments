@@ -48,7 +48,7 @@ install the system libraries first:
 
 The app pulls in two shared submodules:
 
-- [`app/db`](app/db) → **kandora-core** (database models + shared mahjong types)
+- [`app/core`](app/core) → **kandora-core** (database models + shared mahjong types)
 - [`app/game`](app/game) → **kandora-game** (game engine, renderer, replay viewer)
 
 Clone the repo **recursively** so the submodules are checked out at the same time:
@@ -59,7 +59,7 @@ cd kandora-tournaments
 ```
 
 > **Forgot `--recurse-submodules`?** If you already cloned without it (the
-> `app/db` and `app/game` folders are empty), initialise the submodules with:
+> `app/core` and `app/game` folders are empty), initialise the submodules with:
 >
 > ```bash
 > npm run submodules:init
@@ -284,7 +284,7 @@ docker run -p 3000:3000 --env-file .env kandora-tournaments
 | `npm run lint`              | Run ESLint. `npm run lint:fix` to auto-fix.               |
 | `npm run test`              | Run the Vitest suite.                                     |
 | `npm run submodules:init`   | Check out the `kandora-core` + `kandora-game` submodules. |
-| `npm run core:update`       | Update `app/db` to the latest `kandora-core` main.        |
+| `npm run core:update`       | Update `app/core` to the latest `kandora-core` main.        |
 | `npm run game:update`       | Update `app/game` to the latest `kandora-game` main.      |
 | `npm run worker:league`     | Run the league hydration worker.                          |
 | `npm run worker:scheduling` | Run the scheduling worker.                                |
@@ -297,7 +297,7 @@ docker run -p 3000:3000 --env-file .env kandora-tournaments
 To pull the latest models / game engine after they change upstream:
 
 ```bash
-npm run core:update   # app/db  → kandora-core
+npm run core:update   # app/core  → kandora-core
 npm run game:update   # app/game → kandora-game
 ```
 
@@ -308,7 +308,7 @@ revisions.
 
 ## 9. Troubleshooting
 
-- **`app/db` or `app/game` is empty** — the submodules were not checked out. Run
+- **`app/core` or `app/game` is empty** — the submodules were not checked out. Run
   `npm run submodules:init`.
 - **`canvas` fails to compile during `npm install`** — install the native build
   dependencies from [section 1](#native-build-dependencies), then retry.

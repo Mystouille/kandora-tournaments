@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import { UserModel, type User } from "~/db/User";
-import { GameModel } from "~/db/Game";
-import { TeamModel } from "~/db/Team";
-import { RankingModel } from "~/db/Ranking";
-import { ClubSessionModel } from "~/db/ClubSession";
+import { UserModel, type User } from "~/core/models/shared/User";
+import { GameModel } from "~/core/models/tournament/Game";
+import { TeamModel } from "~/core/models/tournament/Team";
+import { RankingModel } from "~/core/models/tournament/Ranking";
+import { ClubSessionModel } from "~/core/models/portal/ClubSession";
 import { connectToDatabase } from "./dbConnection.server";
 
 export class AuthService {

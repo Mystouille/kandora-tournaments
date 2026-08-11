@@ -1,16 +1,16 @@
 import type { ChatInputCommandInteraction } from "discord.js";
 import mongoose from "mongoose";
-import { LeagueModel, type League, Platform } from "~/db/League";
+import { LeagueModel, type League, Platform } from "~/core/models/tournament/League";
 import {
   BracketModel,
   type Bracket,
   getSeedingParticipantId,
-} from "~/db/Bracket";
-import { GameModel, type Game } from "~/db/Game";
-import { SchedulingMessageModel } from "~/db/SchedulingMessage";
-import { SubstitutionModel } from "~/db/Substitution";
-import { TeamModel, type Team } from "~/db/Team";
-import { UserModel, type User } from "~/db/User";
+} from "~/core/models/tournament/Bracket";
+import { GameModel, type Game } from "~/core/models/tournament/Game";
+import { SchedulingMessageModel } from "~/core/models/tournament/SchedulingMessage";
+import { SubstitutionModel } from "~/core/models/tournament/Substitution";
+import { TeamModel, type Team } from "~/core/models/tournament/Team";
+import { UserModel, type User } from "~/core/models/shared/User";
 import { resolveLeagueTypeConfig } from "~/services/league-configs/index";
 import type { LeagueTypeConfig } from "~/services/league-configs/types";
 import { computeBracket, type BracketContext } from "~/services/bracketUtils";

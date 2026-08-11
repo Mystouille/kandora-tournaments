@@ -1,7 +1,7 @@
 import type { ChatInputCommandInteraction } from "discord.js";
 import mongoose from "mongoose";
-import { LeagueModel, type League } from "~/db/League";
-import { SchedulingMessageModel } from "~/db/SchedulingMessage";
+import { LeagueModel, type League } from "~/core/models/tournament/League";
+import { SchedulingMessageModel } from "~/core/models/tournament/SchedulingMessage";
 import { getSchedulingQueue } from "~/services/schedulingQueue.server";
 import { deleteChannelMessages } from "~/services/discordPublisher.server";
 import { strings } from "~/bot/localization/strings";

@@ -1,6 +1,6 @@
 import { isGameEnabled } from "~/game/feature-gate";
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { LiveGameModel } from "~/db/LiveGame";
+import { LiveGameModel } from "~/core/models/tournament/LiveGame";
 import { RelayError, startRelay } from "~/services/gameServer.server";
 
 /**

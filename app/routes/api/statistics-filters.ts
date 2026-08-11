@@ -1,15 +1,15 @@
 import type { Route } from "./+types/statistics-filters";
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import { getAllGuildMembers } from "../../utils/discord-guilds.server";
-import { LeagueModel, type League } from "../../db/League";
-import { TeamModel, type Team } from "../../db/Team";
-import { UserModel, type User } from "../../db/User";
-import { GameModel, type Game } from "../../db/Game";
+import { LeagueModel, type League } from "../../core/models/tournament/League";
+import { TeamModel, type Team } from "../../core/models/tournament/Team";
+import { UserModel, type User } from "../../core/models/shared/User";
+import { GameModel, type Game } from "../../core/models/tournament/Game";
 import {
   BracketModel,
   type Bracket,
   getSeedingParticipantId,
-} from "../../db/Bracket";
+} from "../../core/models/tournament/Bracket";
 import {
   isMultiPhaseLeague,
   resolveLeagueTypeConfig,

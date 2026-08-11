@@ -22,8 +22,8 @@ import {
   type GameData,
   type LogListData,
 } from "~/services/riichiCityModels";
-import { LeagueModel } from "~/db/League";
-import type { League } from "~/db/League";
+import { LeagueModel } from "~/core/models/tournament/League";
+import type { League } from "~/core/models/tournament/League";
 
 export class RiichiCityLeagueConnector implements ILeagueTournamentConnector {
   private static readonly GLOBAL_KEY = "__RiichiCityLeagueConnector__";

@@ -1,8 +1,8 @@
 import type { ChatInputCommandInteraction } from "discord.js";
 import mongoose from "mongoose";
-import { LeagueModel, type League } from "~/db/League";
-import { BracketModel, type Bracket } from "~/db/Bracket";
-import { SchedulingMessageModel } from "~/db/SchedulingMessage";
+import { LeagueModel, type League } from "~/core/models/tournament/League";
+import { BracketModel, type Bracket } from "~/core/models/tournament/Bracket";
+import { SchedulingMessageModel } from "~/core/models/tournament/SchedulingMessage";
 import { resolveLeagueTypeConfig } from "~/services/league-configs/index";
 import type {
   LeagueTypeConfig,

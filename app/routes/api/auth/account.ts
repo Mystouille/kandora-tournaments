@@ -1,6 +1,6 @@
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { getAuthenticatedUser } from "../../../utils/jwt.server";
-import { UserModel } from "~/db/User";
+import { UserModel } from "~/core/models/shared/User";
 
 /**
  * POST /api/auth/account

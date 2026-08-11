@@ -5,7 +5,7 @@ import { fr } from "../i18n/fr";
 import {
   LocaleProvider as BaseLocaleProvider,
   useLocale as useLocaleBase,
-} from "~/db/ui/LocaleContext";
+} from "~/core/ui/LocaleContext";
 
 const dictionaries: Record<Locale, Translations> = { en, fr };
 
