@@ -18,7 +18,7 @@
  */
 import type Redis from "ioredis";
 
-import { createRedisClient } from "./redisConnection.server";
+import { createRedisClient, isRedisConfigured } from "./redisConnection.server";
 
 type Listener = (leagueId: string) => void;
 const listeners: Listener[] = [];
@@ -47,7 +47,7 @@ function fireLocal(leagueId: string): void {
 
 /** Lazily create the dedicated publisher connection (best-effort). */
 function ensurePublisher(): void {
-  if (publisher) {
+  if (publisher || !isRedisConfigured()) {
     return;
   }
   try {
@@ -69,7 +69,7 @@ function ensurePublisher(): void {
  * enters Redis "subscriber mode", so it must not be shared with anything else.
  */
 function ensureSubscriber(): void {
-  if (subscriber) {
+  if (subscriber || !isRedisConfigured()) {
     return;
   }
   try {
