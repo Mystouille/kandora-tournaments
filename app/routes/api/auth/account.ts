@@ -75,7 +75,7 @@ export async function action({ request }: { request: Request }) {
     }
 
     if (preferences && typeof preferences === "object") {
-      const VALID_TILE_SETS = ["default", "tenhou", "trainer"];
+      const VALID_TILE_SETS = ["default", "tenhou", "trainer", "uzaku"];
       if (
         preferences.tileSet &&
         VALID_TILE_SETS.includes(preferences.tileSet)

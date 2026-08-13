@@ -6,6 +6,12 @@ import {
   markSkipped,
   markFailed,
 } from "~/services/readiness.server";
+import {
+  isNanikiruProblemPublic,
+  KIN_PUBLIC_PROBLEM_LIMIT,
+} from "./NanikiruAvailability";
+
+export { isNanikiruProblemPublic, KIN_PUBLIC_PROBLEM_LIMIT };
 
 const sheetsCfg = googleSheetsConfig();
 const token = sheetsCfg
@@ -151,7 +157,7 @@ export class NanikiruCollections {
   private setCollections(collection: NanikiruProblem[]) {
     this.resetCollections();
     collection.forEach((prob) => {
-      if (prob.source === undefined) {
+      if (prob.source === undefined || !isNanikiruProblemPublic(prob.source)) {
         return;
       }
       const type = prob.source.split("-")[0] as NanikiruType;
@@ -192,6 +198,9 @@ export class NanikiruCollections {
 
   /** Look up a problem by its source string from in-memory data. */
   public getProblemBySource(source: string): NanikiruProblem | null {
+    if (!isNanikiruProblemPublic(source)) {
+      return null;
+    }
     const type = source.split("-")[0] as NanikiruType;
     const collection = this.getCollectionFromSource(type);
     return collection.problems.find((p) => p.source === source) ?? null;
@@ -238,7 +247,12 @@ export class NanikiruCollections {
     for (const sheet of Object.values(this.doc.sheetsByTitle)) {
       const rows = await sheet.getRows();
       const row = rows[id - 2];
-      if (row && row.get("hand") && row.get("answer")) {
+      if (
+        row &&
+        row.get("hand") &&
+        row.get("answer") &&
+        isNanikiruProblemPublic(row.get("source"))
+      ) {
         return {
           id: row.rowNumber,
           round: row.get("round"),
@@ -264,6 +278,9 @@ export class NanikiruCollections {
   public async getProblemFromSource(
     source: string
   ): Promise<NanikiruProblem | null> {
+    if (!isNanikiruProblemPublic(source)) {
+      return null;
+    }
     await this.doc.loadInfo();
     for (const sheet of Object.values(this.doc.sheetsByTitle)) {
       const rows = await sheet.getRows();
@@ -323,7 +340,10 @@ export class NanikiruCollections {
       });
     }
     return nanikiruProblems.filter(
-      (p) => p.hand !== undefined && p.answer !== undefined
+      (p) =>
+        p.hand !== undefined &&
+        p.answer !== undefined &&
+        isNanikiruProblemPublic(p.source)
     );
   }
 }

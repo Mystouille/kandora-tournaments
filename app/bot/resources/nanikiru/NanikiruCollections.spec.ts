@@ -29,7 +29,12 @@ vi.mock("google-spreadsheet", () => ({
   },
 }));
 
-import { NanikiruCollections, NanikiruType } from "./NanikiruCollections";
+import {
+  isNanikiruProblemPublic,
+  KIN_PUBLIC_PROBLEM_LIMIT,
+  NanikiruCollections,
+  NanikiruType,
+} from "./NanikiruCollections";
 
 const globalKey = "__NanikiruCollections__";
 
@@ -93,5 +98,39 @@ describe("NanikiruCollections", () => {
     expect(collections.getNextProblem(NanikiruType.Uzaku300)?.source).toBe(
       "300-Q-001"
     );
+  });
+
+  it("limits public KIN problems to 80", async () => {
+    sheetMock.getRows.mockResolvedValue(
+      Array.from({ length: 82 }, (_, index) => ({
+        rowNumber: index + 2,
+        get: (key: string) =>
+          ({
+            hand: "123m456p789s1122z",
+            answer: "1z",
+            source: `KIN-Q-${String(index + 1).padStart(3, "0")}`,
+          })[key],
+      }))
+    );
+
+    const collections = NanikiruCollections.instance;
+    await collections.waitUntilReady();
+
+    expect(KIN_PUBLIC_PROBLEM_LIMIT).toBe(80);
+    expect(collections.getProblemCount(NanikiruType.UzakuKin)).toBe(80);
+    expect(collections.getProblemBySource("KIN-Q-080")?.source).toBe(
+      "KIN-Q-080"
+    );
+    expect(collections.getProblemBySource("KIN-Q-081")).toBeNull();
+    await expect(
+      collections.getProblemFromSource("KIN-Q-081")
+    ).resolves.toBeNull();
+  });
+
+  it("rejects malformed and over-limit KIN sources", () => {
+    expect(isNanikiruProblemPublic("KIN-Q-080")).toBe(true);
+    expect(isNanikiruProblemPublic("KIN-Q-081")).toBe(false);
+    expect(isNanikiruProblemPublic("KIN-custom")).toBe(false);
+    expect(isNanikiruProblemPublic("300-Q-300")).toBe(true);
   });
 });
