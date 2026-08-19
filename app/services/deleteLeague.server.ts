@@ -15,8 +15,8 @@ import { RankingModel } from "../core/models/tournament/Ranking";
 import { SchedulingMessageModel } from "../core/models/tournament/SchedulingMessage";
 import { SubstitutionModel } from "../core/models/tournament/Substitution";
 import { TeamModel } from "../core/models/tournament/Team";
+import { cancelLeagueTasks } from "./cancelLeagueTasks.server";
 import { emitLeagueUpdated } from "./cacheInvalidation.server";
-import { getLeagueQueue } from "./queue.server";
 import { connectToDatabase } from "../utils/dbConnection.server";
 
 interface UserReferenceSource {
@@ -151,19 +151,6 @@ export function standaloneUserDeletionFilter(
   };
 }
 
-async function removeLeagueScheduler(leagueId: string) {
-  try {
-    await getLeagueQueue().removeJobScheduler(
-      `league-update-repeat-${leagueId}`
-    );
-  } catch (error) {
-    console.warn(
-      `Failed to remove recurring scheduler for deleted league ${leagueId}:`,
-      error
-    );
-  }
-}
-
 export class DeleteLeagueError extends Error {
   constructor(
     public readonly code: "not-found" | "name-mismatch",
@@ -195,6 +182,8 @@ export async function deleteLeague(
       "Tournament name does not match"
     );
   }
+
+  await cancelLeagueTasks(leagueId);
 
   const [
     teams,
@@ -405,7 +394,7 @@ export async function deleteLeague(
         );
 
   emitLeagueUpdated(leagueId);
-  await removeLeagueScheduler(leagueId);
+  await cancelLeagueTasks(leagueId);
 
   return {
     deletedGames: deleteIds.length,

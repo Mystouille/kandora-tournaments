@@ -41,6 +41,7 @@ import {
 } from "./league-configs/teamBracketSeating";
 import { SubstitutionModel } from "~/core/models/tournament/Substitution";
 import mongoose from "mongoose";
+import { canContinueSchedulingPoll } from "./leagueTaskLifecycle.server";
 
 const env = process.env.NODE_ENV === "production" ? "prod" : "dev";
 
@@ -536,7 +537,10 @@ export const schedulingWorker = new Worker(
       }
 
       // Re-enqueue self if batch is not fully completed
-      if (!batchAllCompleted) {
+      if (
+        !batchAllCompleted &&
+        (await canContinueSchedulingPoll(leagueId, messageId))
+      ) {
         const delay = batchHasAnyInProgress
           ? POLL_INTERVAL_IN_PROGRESS
           : POLL_INTERVAL_UPCOMING;
@@ -552,11 +556,24 @@ export const schedulingWorker = new Worker(
     const work = runPoll();
     // Prevent an unhandled rejection if runPoll settles after the timeout wins.
     work.catch(() => undefined);
-    await withTimeout(
-      work,
-      HANDLER_TIMEOUT_MS,
-      `scheduling-poll ${job.data.messageId}`
-    );
+    try {
+      await withTimeout(
+        work,
+        HANDLER_TIMEOUT_MS,
+        `scheduling-poll ${job.data.messageId}`
+      );
+    } catch (error) {
+      if (
+        !(await canContinueSchedulingPoll(
+          job.data.leagueId,
+          job.data.messageId
+        ))
+      ) {
+        job.discard();
+        return;
+      }
+      throw error;
+    }
   },
   {
     connection: getRedisConnection(),
@@ -595,12 +612,17 @@ schedulingWorker.on("failed", (job, err) => {
   if (!leagueId || !messageId) {
     return;
   }
-  getSchedulingQueue()
-    .add(
-      `scheduling-poll:${leagueId}:${messageId}`,
-      { leagueId, messageId },
-      { delay: POLL_INTERVAL_IN_PROGRESS }
-    )
+  canContinueSchedulingPoll(leagueId, messageId)
+    .then((canContinue) => {
+      if (!canContinue) {
+        return;
+      }
+      return getSchedulingQueue().add(
+        `scheduling-poll:${leagueId}:${messageId}`,
+        { leagueId, messageId },
+        { delay: POLL_INTERVAL_IN_PROGRESS }
+      );
+    })
     .catch((reEnqueueError) => {
       console.error(
         "[schedulingWorker] failed to re-enqueue after terminal failure:",

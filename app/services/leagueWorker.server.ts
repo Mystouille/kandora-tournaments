@@ -6,6 +6,7 @@ import { LeagueService } from "./LeagueService.server";
 import { getRedisConnection } from "./redisConnection.server";
 import { trackEvent, trackError } from "./telemetry.server";
 import { reconcileSchedulingJobs } from "./schedulingReconcile.server";
+import { canContinueLeagueTask } from "./leagueTaskLifecycle.server";
 
 interface LeagueUpdateJob {
   leagueId: string;
@@ -46,6 +47,11 @@ export const leagueWorker = new Worker(
   "league-updates",
   async (job: Job<LeagueUpdateJob>) => {
     await ensureWorkerInitialized();
+    if (!(await canContinueLeagueTask(job.data.leagueId))) {
+      job.discard();
+      return;
+    }
+
     const start = Date.now();
     try {
       const name = await LeagueService.instance.updateGamesInLeagueById(
@@ -64,6 +70,10 @@ export const leagueWorker = new Worker(
         });
       }
     } catch (error) {
+      if (!(await canContinueLeagueTask(job.data.leagueId))) {
+        job.discard();
+        return;
+      }
       trackError(error, {
         env,
         method: "updateGames",
@@ -71,6 +81,11 @@ export const leagueWorker = new Worker(
         durationMs: Date.now() - start,
       });
       throw error;
+    }
+
+    if (!(await canContinueLeagueTask(job.data.leagueId))) {
+      job.discard();
+      return;
     }
 
     // Reconcile the scheduling poll queue against the sources of truth. Runs on
