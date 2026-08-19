@@ -568,6 +568,17 @@ export interface Translations extends CoreTranslations {
       saveRcTablesSuccess: string;
       saveRcTablesError: string;
       saveRcTablesNoStages: string;
+      dangerZone: string;
+      deleteTournament: string;
+      deleteTournamentDescription: string;
+      deleteTournamentModalTitle: string;
+      deleteTournamentIrreversible: string;
+      deleteTournamentWarning: string;
+      deleteTournamentNamePrompt: string;
+      deleteTournamentNamePlaceholder: string;
+      deleteTournamentConfirm: string;
+      deleteTournamentSuccess: string;
+      deleteTournamentError: string;
       playerPicturesEditor: string;
       playerPicturesSaved: string;
       playerPicturesSaveError: string;

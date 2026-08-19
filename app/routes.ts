@@ -27,6 +27,11 @@ export default [
     "/online-tournaments/:slug/statistics",
     "routes/online-tournaments.$slug.statistics.tsx"
   ),
+  route(
+    "/online-tournaments/:slug/statistics/:tab",
+    "routes/online-tournaments.$slug.statistics.tsx",
+    { id: "tournament-statistics-tab" }
+  ),
 
   // Public, unauthenticated live results overlay for a single bracket stage
   // (designed as an OBS browser source).
@@ -161,6 +166,7 @@ export default [
     "/api/admin/league-presentation",
     "routes/api/admin/league-presentation.ts"
   ),
+  route("/api/admin/league-delete", "routes/api/admin/league-delete.ts"),
   route(
     "/api/admin/league-type-config",
     "routes/api/admin/league-type-config.ts"

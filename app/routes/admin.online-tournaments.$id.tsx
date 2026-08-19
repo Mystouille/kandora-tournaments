@@ -1,7 +1,17 @@
 import { useState, type ReactNode } from "react";
-import { Button, List, Modal, Result, Typography, message } from "antd";
+import {
+  Alert,
+  Button,
+  Input,
+  List,
+  Modal,
+  Result,
+  Typography,
+  message,
+} from "antd";
 import {
   CloudUploadOutlined,
+  DeleteOutlined,
   EditOutlined,
   ImportOutlined,
   PictureOutlined,
@@ -9,7 +19,12 @@ import {
   TrophyOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Link, useOutletContext, useParams } from "react-router";
+import {
+  Link,
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from "react-router";
 import type { Route } from "./+types/admin.online-tournaments.$id";
 import { PageTitle } from "../components/PageTitle";
 import { useLocale } from "../contexts/LocaleContext";
@@ -61,8 +76,12 @@ function DestinationList({ items }: { items: AdminDestination[] }) {
 export default function AdminTournamentPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useLocale();
+  const navigate = useNavigate();
   const access = useOutletContext<TournamentAdminAccess>();
   const [savingRcTables, setSavingRcTables] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const tournament = access.tournaments.find((item) => item.id === id);
 
   if (!tournament) {
@@ -169,6 +188,50 @@ export default function AdminTournamentPage() {
     });
   };
 
+  const closeDeleteModal = () => {
+    if (deleting) {
+      return;
+    }
+    setDeleteModalOpen(false);
+    setDeleteConfirmation("");
+  };
+
+  const handleDeleteTournament = async () => {
+    if (deleteConfirmation !== tournament.name) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`${basePath}/api/admin/league-delete`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leagueId: tournament.id,
+          confirmationName: deleteConfirmation,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        message.error(t.onlineTournaments.admin.deleteTournamentError);
+        return;
+      }
+
+      message.success(
+        t.onlineTournaments.admin.deleteTournamentSuccess
+          .replace("{games}", String(data.deletedGames ?? 0))
+          .replace("{users}", String(data.deletedUsers ?? 0))
+          .replace("{preserved}", String(data.preservedGames ?? 0))
+      );
+      setDeleteModalOpen(false);
+      void navigate("/admin");
+    } catch {
+      message.error(t.onlineTournaments.admin.deleteTournamentError);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div style={{ width: "100%", maxWidth: 880, margin: "0 auto" }}>
       <PageTitle title={t.admin.manageTournament} subtitle={tournament.name} />
@@ -209,6 +272,87 @@ export default function AdminTournamentPage() {
           </List>
         </>
       )}
+
+      <Typography.Title level={3} style={{ marginTop: 32 }}>
+        {t.onlineTournaments.admin.dangerZone}
+      </Typography.Title>
+      <List bordered>
+        <List.Item
+          actions={[
+            <Button
+              key="delete-tournament"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => setDeleteModalOpen(true)}
+            >
+              {t.onlineTournaments.admin.deleteTournament}
+            </Button>,
+          ]}
+        >
+          <div>
+            <Typography.Text strong type="danger">
+              {t.onlineTournaments.admin.deleteTournament}
+            </Typography.Text>
+            <br />
+            <Typography.Text type="secondary">
+              {t.onlineTournaments.admin.deleteTournamentDescription}
+            </Typography.Text>
+          </div>
+        </List.Item>
+      </List>
+
+      <Modal
+        open={deleteModalOpen}
+        title={t.onlineTournaments.admin.deleteTournamentModalTitle.replace(
+          "{name}",
+          tournament.name
+        )}
+        okText={t.onlineTournaments.admin.deleteTournamentConfirm}
+        cancelText={t.common.cancel}
+        okButtonProps={{
+          danger: true,
+          disabled: deleteConfirmation !== tournament.name,
+        }}
+        confirmLoading={deleting}
+        closable={!deleting}
+        keyboard={!deleting}
+        maskClosable={!deleting}
+        onCancel={closeDeleteModal}
+        onOk={handleDeleteTournament}
+      >
+        <Alert
+          type="error"
+          showIcon
+          message={t.onlineTournaments.admin.deleteTournamentIrreversible}
+          description={t.onlineTournaments.admin.deleteTournamentWarning}
+          style={{ marginBottom: 20 }}
+        />
+        <Typography.Paragraph>
+          {t.onlineTournaments.admin.deleteTournamentNamePrompt}
+        </Typography.Paragraph>
+        <Typography.Paragraph copyable={{ text: tournament.name }}>
+          <Typography.Text code>{tournament.name}</Typography.Text>
+        </Typography.Paragraph>
+        <Input
+          value={deleteConfirmation}
+          placeholder={
+            t.onlineTournaments.admin.deleteTournamentNamePlaceholder
+          }
+          disabled={deleting}
+          status={
+            deleteConfirmation && deleteConfirmation !== tournament.name
+              ? "error"
+              : undefined
+          }
+          autoComplete="off"
+          onChange={(event) => setDeleteConfirmation(event.target.value)}
+          onPressEnter={() => {
+            if (deleteConfirmation === tournament.name) {
+              void handleDeleteTournament();
+            }
+          }}
+        />
+      </Modal>
     </div>
   );
 }

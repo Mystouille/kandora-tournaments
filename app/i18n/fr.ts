@@ -678,6 +678,21 @@ export const fr: Translations = {
       saveRcTablesError: "Échec de l'enregistrement des tables sur Riichi City",
       saveRcTablesNoStages:
         "Aucune phase n'est prête à être enregistrée (participants non déterminés ou phases déjà terminées).",
+      dangerZone: "Zone dangereuse",
+      deleteTournament: "Supprimer le tournoi",
+      deleteTournamentDescription:
+        "Supprimer définitivement ce tournoi et ses données non révisées.",
+      deleteTournamentModalTitle: 'Supprimer « {name} » ?',
+      deleteTournamentIrreversible: "Cette action est irréversible.",
+      deleteTournamentWarning:
+        "Tous les relevés de partie sans aucune revue et toutes les données des utilisateurs non inscrits qui ne sont liés à aucun autre tournoi seront définitivement supprimés. Les parties avec une revue seront conservées.",
+      deleteTournamentNamePrompt:
+        "Saisissez exactement le nom du tournoi affiché ci-dessous pour confirmer :",
+      deleteTournamentNamePlaceholder: "Nom du tournoi",
+      deleteTournamentConfirm: "Supprimer définitivement le tournoi",
+      deleteTournamentSuccess:
+        "Tournoi supprimé : {games} parties non révisées et {users} utilisateurs autonomes supprimés ; {preserved} parties révisées conservées.",
+      deleteTournamentError: "Échec de la suppression du tournoi",
       playerPicturesEditor: "Photos de joueurs",
       playerPicturesSaved: "Photo de joueur enregistrée avec succès",
       playerPicturesSaveError: "Échec de l'enregistrement de la photo",

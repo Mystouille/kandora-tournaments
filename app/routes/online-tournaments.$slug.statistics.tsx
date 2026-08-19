@@ -6,6 +6,6 @@ export function meta() {
 }
 
 export default function LeagueStatisticsPage() {
-  const { slug } = useParams<{ slug: string }>();
-  return <Statistics leagueSlug={slug} />;
+  const { slug, tab } = useParams<{ slug: string; tab?: string }>();
+  return <Statistics leagueSlug={slug} tabRoute={tab} />;
 }

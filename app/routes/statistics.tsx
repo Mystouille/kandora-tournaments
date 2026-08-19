@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, Typography } from "antd";
 import {
@@ -10,6 +10,7 @@ import {
   OrderedListOutlined,
   ApartmentOutlined,
 } from "@ant-design/icons";
+import { useLocation, useNavigate } from "react-router";
 import { useLocale } from "../contexts/LocaleContext";
 import { basePath } from "../utils/basePath";
 import { HighlightProvider } from "../contexts/HighlightContext";
@@ -24,6 +25,11 @@ import type { TeamOption } from "../components/statistics/types";
 import FilterBanner from "../components/statistics/FilterBanner";
 import { useStatisticsFilters } from "../components/statistics/useStatisticsFilters";
 import { useGroupedPlayerOptions } from "../components/statistics/useGroupedPlayerOptions";
+import {
+  isStatisticsTabKey,
+  resolveStatisticsTab,
+  statisticsTabRouteFromKey,
+} from "../components/statistics/statisticsTabRoutes";
 import {
   DEFAULT_CARD_ORDER,
   MORE_DEFAULT_CARD_ORDER,
@@ -49,8 +55,11 @@ export function meta() {
 
 export default function Statistics({
   leagueSlug,
-}: { leagueSlug?: string } = {}) {
+  tabRoute,
+}: { leagueSlug?: string; tabRoute?: string } = {}) {
   const { t } = useLocale();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const filters = useStatisticsFilters(leagueSlug);
   const {
@@ -303,6 +312,54 @@ export default function Statistics({
   // ---- Bracket tab visibility ----
   const showBracketTab = !!selectedLeagueData?.hasFinalPhase;
   const showGraphsTab = selectedLeagueData?.hasRegularPhase !== false;
+  const resolvedActiveTab = resolveStatisticsTab(tabRoute, activeTab, {
+    showBracket: showBracketTab,
+    showGraphs: showGraphsTab,
+  });
+
+  useEffect(() => {
+    if (!selectedLeagueData || !leagueSlug) {
+      return;
+    }
+
+    if (activeTab !== resolvedActiveTab) {
+      setActiveTab(resolvedActiveTab);
+    }
+
+    const canonicalTabRoute = statisticsTabRouteFromKey(resolvedActiveTab);
+    if (tabRoute !== canonicalTabRoute) {
+      void navigate(
+        {
+          pathname: `/online-tournaments/${encodeURIComponent(leagueSlug)}/statistics/${canonicalTabRoute}`,
+          search: location.search,
+          hash: location.hash,
+        },
+        { replace: true }
+      );
+    }
+  }, [
+    activeTab,
+    leagueSlug,
+    location.hash,
+    location.search,
+    navigate,
+    resolvedActiveTab,
+    selectedLeagueData,
+    setActiveTab,
+    tabRoute,
+  ]);
+
+  const handleTabChange = (tab: string) => {
+    if (!leagueSlug || !isStatisticsTabKey(tab)) {
+      return;
+    }
+
+    void navigate({
+      pathname: `/online-tournaments/${encodeURIComponent(leagueSlug)}/statistics/${statisticsTabRouteFromKey(tab)}`,
+      search: location.search,
+      hash: location.hash,
+    });
+  };
 
   // ---- Eliminated entity IDs for the selected league ----
   const eliminatedEntityIds = eliminatedTeams;
@@ -542,8 +599,8 @@ export default function Statistics({
             </div>
           ) : (
             <Tabs
-              activeKey={activeTab}
-              onChange={setActiveTab}
+              activeKey={resolvedActiveTab}
+              onChange={handleTabChange}
               items={[
                 ...(showBracketTab
                   ? [

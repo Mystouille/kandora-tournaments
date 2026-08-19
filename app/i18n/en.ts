@@ -664,6 +664,21 @@ export const en: Translations = {
       saveRcTablesError: "Failed to save tables to Riichi City",
       saveRcTablesNoStages:
         "No stages are ready to be saved (participants not resolved or stages already completed).",
+      dangerZone: "Danger zone",
+      deleteTournament: "Delete tournament",
+      deleteTournamentDescription:
+        "Permanently delete this tournament and its unreviewed data.",
+      deleteTournamentModalTitle: 'Delete "{name}"?',
+      deleteTournamentIrreversible: "This action is irreversible.",
+      deleteTournamentWarning:
+        "All game records without at least one review and all unregistered user data not linked to another tournament will be permanently deleted. Games with reviews will be preserved.",
+      deleteTournamentNamePrompt:
+        "Enter the tournament name exactly as shown to confirm:",
+      deleteTournamentNamePlaceholder: "Tournament name",
+      deleteTournamentConfirm: "Permanently delete tournament",
+      deleteTournamentSuccess:
+        "Tournament deleted: {games} unreviewed games and {users} standalone users removed; {preserved} reviewed games preserved.",
+      deleteTournamentError: "Failed to delete tournament",
       playerPicturesEditor: "Player Pictures",
       playerPicturesSaved: "Player picture saved successfully",
       playerPicturesSaveError: "Failed to save player picture",
