@@ -533,6 +533,7 @@ export const fr: Translations = {
     individualMode: "Individuel",
     tabPresentation: "Présentation",
     tabRules: "Règles",
+    tabSchedule: "Calendrier",
     tabPlayerList: "Liste des joueurs",
     tabFinalsRoster: "Roster de la finale",
     resultsAndStats: "Résultats & Statistiques",
@@ -545,6 +546,15 @@ export const fr: Translations = {
       "Les informations sur les règles seront ajoutées prochainement.",
     configDetails: "Détails de la configuration",
     phaseCutoffDates: "Dates de coupure de phase",
+    scheduleTournamentPhase: "Tournoi",
+    scheduleTbd: "À déterminer",
+    scheduleLive: "En direct",
+    scheduleWatchLive: "Voir en direct",
+    scheduleEmpty: "Aucune partie n'est encore programmée.",
+    scheduleError: "Impossible de charger le calendrier.",
+    scheduleRefreshError:
+      "Les mises à jour en direct du calendrier sont temporairement indisponibles.",
+    scheduleRetry: "Réessayer",
     admin: {
       createNew: "Créer un nouveau tournoi",
       coverImageLabel: "Image de couverture",
@@ -588,6 +598,9 @@ export const fr: Translations = {
       nameLabel: "Nom du tournoi",
       nameRequired: "Le nom du tournoi est requis",
       dateRequired: "La date est requise",
+      hasSchedule: "Utiliser un calendrier",
+      hasScheduleHelp:
+        "Créez un calendrier par phase avec les dates, les heures de début et les joueurs ou équipes assignés.",
       discordLocale: "Langue Discord",
       discordLocaleHelp:
         "Langue utilisée pour les messages publiés par le bot sur les canaux Discord de cette ligue.",
@@ -608,6 +621,24 @@ export const fr: Translations = {
       creating: "Création en cours…",
       createSuccess: "Tournoi créé avec succès",
       editPresentation: "Modifier la présentation",
+      setSchedule: "Définir le calendrier",
+      scheduleEditor: "Calendrier du tournoi",
+      scheduleDescription:
+        "Définissez la date, l'heure de début et les quatre joueurs ou équipes de chaque partie. Les places vides sont affichées comme à déterminer.",
+      scheduleTournamentPhase: "Tournoi",
+      scheduleAddGame: "Ajouter une partie",
+      scheduleGame: "Partie {n}",
+      scheduleStart: "Date et heure de début",
+      scheduleSeat: "Place {n}",
+      scheduleTbd: "À déterminer",
+      scheduleNoGames: "Aucune partie programmée dans cette phase.",
+      scheduleRemoveGame: "Supprimer la partie",
+      scheduleSave: "Enregistrer le calendrier",
+      scheduleSaved: "Calendrier enregistré",
+      scheduleSaveError: "Échec de l'enregistrement du calendrier",
+      scheduleLoadError: "Calendrier indisponible",
+      scheduleInvalidDate:
+        "Chaque partie nécessite une date et une heure de début valides",
       presentationEditor: "Éditeur de présentation",
       editingFrench: "Français",
       editingEnglish: "English",
@@ -743,12 +774,15 @@ export const fr: Translations = {
       rosterEditor: "Éditeur du roster",
       rosterEditorDescription:
         "Ajoutez ou retirez des joueurs, renseignez leur ID de plateforme, déplacez-les entre les équipes, ou créez de nouvelles équipes. Les équipes sans aucun joueur lié à la plateforme ne sont pas envoyées à la plateforme de jeu.",
+      rosterIndividualDescription:
+        "Ajoutez ou retirez les joueurs du tournoi et renseignez leurs ID de plateforme. Ce roster est utilisé pour assigner les joueurs aux parties programmées.",
       rosterSyncToPlatform:
         "Pousser les modifications sur la plateforme de jeu lors de l'enregistrement",
       rosterCreateTeam: "Créer une équipe",
       rosterDeleteTeam: "Supprimer l'équipe",
       rosterAddPlayer: "Ajouter un joueur",
       rosterNoPlayers: "Aucun joueur dans cette équipe pour le moment.",
+      rosterNoIndividualPlayers: "Aucun joueur dans ce tournoi pour le moment.",
       rosterCaptain: "Capitaine",
       rosterPlatformIdLabel: "ID de plateforme",
       rosterPlatformIdHelp:

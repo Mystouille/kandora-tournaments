@@ -3,6 +3,7 @@ import type mongoose from "mongoose";
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import { LeagueModel, type League, Platform } from "../../core/models/tournament/League";
 import { LeagueTypeConfigModel } from "../../core/models/tournament/LeagueTypeConfig";
+import { LeagueUserModel } from "../../core/models/tournament/LeagueUser";
 import { TeamModel } from "../../core/models/tournament/Team";
 import { UserModel } from "../../core/models/shared/User";
 import { GameModel } from "../../core/models/tournament/Game";
@@ -60,6 +61,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       leagueTypeConfig,
       teamsAgg,
       gamesFacetResult,
+      individualRosterUsers,
       officialSubsUsers,
       leagueUserPictures,
     ] = await Promise.all([
@@ -149,6 +151,30 @@ export async function loader({ params }: Route.LoaderArgs) {
             ],
           },
         },
+      ]),
+
+      LeagueUserModel.aggregate([
+        {
+          $match: {
+            leagueId: leagueDoc._id,
+            isParticipant: { $ne: false },
+          },
+        },
+        { $sort: { _id: 1 } },
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            pipeline: [
+              { $match: { isDeleted: { $ne: true } } },
+              { $project: userProjection },
+            ],
+            as: "user",
+          },
+        },
+        { $unwind: "$user" },
+        { $replaceRoot: { newRoot: "$user" } },
       ]),
 
       officialSubIds.length > 0
@@ -273,6 +299,9 @@ export async function loader({ params }: Route.LoaderArgs) {
     for (const u of gamePlayerUsers) {
       addUser(u);
     }
+    for (const u of individualRosterUsers as any[]) {
+      addUser(u);
+    }
     for (const u of officialSubsUsers as any[]) {
       addUser(u);
     }
@@ -320,10 +349,17 @@ export async function loader({ params }: Route.LoaderArgs) {
     const withTeams =
       league.rulesConfig?.isTeamMode ?? teamsWithNames.length > 0;
     const officialSubIdSet = new Set(officialSubIds);
+    const individualPlayerIds = new Set<string>();
+    for (const user of individualRosterUsers as any[]) {
+      individualPlayerIds.add(user._id.toString());
+    }
+    for (const user of gamePlayerUsers) {
+      individualPlayerIds.add(user._id.toString());
+    }
     const playerList = withTeams
       ? []
-      : gamePlayerUsers
-          .map((u) => userMap.get(u._id.toString()))
+      : [...individualPlayerIds]
+          .map((userId) => userMap.get(userId))
           .filter((u): u is ResolvedUser => !!u && !officialSubIdSet.has(u._id))
           .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -333,6 +369,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       slug: slugify(league.name),
       startTime: league.startTime,
       endTime: league.endTime,
+      hasSchedule: league.hasSchedule ?? false,
       rulesConfig: league.rulesConfig,
       leagueTypeConfigName:
         (league.leagueTypeConfig as any)?.displayName ?? null,
@@ -351,7 +388,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       summary: league.summary ?? { fr: "", en: "" },
       coverImageUrl: league.coverImageUrl ?? "",
       gameCount,
-      playerCount: userMap.size,
+      playerCount: withTeams ? userMap.size : playerList.length,
       withTeams,
       teams: teamsWithNames,
       players: playerList,

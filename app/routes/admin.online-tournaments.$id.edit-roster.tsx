@@ -76,11 +76,33 @@ interface RosterData {
     displayName: string;
     players: RosterPlayer[];
   }>;
+  players: RosterPlayer[];
   users: UserInfo[];
 }
 
 let nextTempTeamId = 1;
 const tempTeamId = () => `__new_team_${nextTempTeamId++}`;
+const INDIVIDUAL_ROSTER_KEY = "__individual_roster__";
+
+function rosterTeamsFromData(data: RosterData): RosterTeam[] {
+  if (!data.isTeamMode) {
+    return [
+      {
+        _id: INDIVIDUAL_ROSTER_KEY,
+        simpleName: data.leagueName,
+        displayName: data.leagueName,
+        players: data.players,
+      },
+    ];
+  }
+
+  return data.teams.map((team) => ({
+    _id: team._id,
+    simpleName: team.simpleName,
+    displayName: team.displayName,
+    players: team.players,
+  }));
+}
 
 export default function EditRosterPage() {
   const { t } = useLocale();
@@ -124,14 +146,7 @@ export default function EditRosterPage() {
       })
       .then((d: RosterData) => {
         setData(d);
-        setTeams(
-          d.teams.map((t) => ({
-            _id: t._id,
-            simpleName: t.simpleName,
-            displayName: t.displayName,
-            players: t.players,
-          }))
-        );
+        setTeams(rosterTeamsFromData(d));
         const map: Record<string, UserInfo> = {};
         for (const u of d.users) {
           map[u._id] = u;
@@ -155,14 +170,7 @@ export default function EditRosterPage() {
     }
     const d: RosterData = await res.json();
     setData(d);
-    setTeams(
-      d.teams.map((t) => ({
-        _id: t._id,
-        simpleName: t.simpleName,
-        displayName: t.displayName,
-        players: t.players,
-      }))
-    );
+    setTeams(rosterTeamsFromData(d));
     const map: Record<string, UserInfo> = {};
     for (const u of d.users) {
       map[u._id] = u;
@@ -388,22 +396,34 @@ export default function EditRosterPage() {
     setSaving(true);
     try {
       // Validate captain consistency: every team with players must have one
-      for (const team of teams) {
-        if (team.players.length > 0 && !team.players.some((p) => p.isCaptain)) {
-          message.error(`${tt.rosterTeamMissingCaptain}: ${team.displayName}`);
-          setSaving(false);
-          return;
+      if (data.isTeamMode) {
+        for (const team of teams) {
+          if (
+            team.players.length > 0 &&
+            !team.players.some((p) => p.isCaptain)
+          ) {
+            message.error(
+              `${tt.rosterTeamMissingCaptain}: ${team.displayName}`
+            );
+            setSaving(false);
+            return;
+          }
         }
       }
 
       // Filter teams to send: drop teams whose _id starts with the temp prefix
       // and reassign null teamId to indicate "create new".
-      const teamsPayload = teams.map((t) => ({
-        teamId: t._id && !t._id.startsWith("__new_team_") ? t._id : null,
-        simpleName: t.simpleName,
-        displayName: t.displayName,
-        players: t.players,
-      }));
+      const teamsPayload = data.isTeamMode
+        ? teams.map((team) => ({
+            teamId:
+              team._id && !team._id.startsWith("__new_team_")
+                ? team._id
+                : null,
+            simpleName: team.simpleName,
+            displayName: team.displayName,
+            players: team.players,
+          }))
+        : [];
 
       const res = await fetch(`${basePath}/api/admin/league-roster`, {
         method: "PUT",
@@ -411,8 +431,9 @@ export default function EditRosterPage() {
         body: JSON.stringify({
           leagueId: data.leagueId,
           teams: teamsPayload,
+          players: data.isTeamMode ? undefined : teams[0]?.players ?? [],
           platformIdUpdates: platformIdEdits,
-          syncToPlatform,
+          syncToPlatform: data.isTeamMode && syncToPlatform,
         }),
       });
       const json = await res.json();
@@ -479,13 +500,17 @@ export default function EditRosterPage() {
       <Text type="secondary">{data.leagueName}</Text>
 
       <Alert
-        message={tt.rosterEditorDescription}
+        message={
+          data.isTeamMode
+            ? tt.rosterEditorDescription
+            : tt.rosterIndividualDescription
+        }
         type="info"
         showIcon
         style={{ margin: "16px 0" }}
       />
 
-      {data.hasTournamentId && supportsPlatformSync && (
+      {data.isTeamMode && data.hasTournamentId && supportsPlatformSync && (
         <div style={{ marginBottom: 16 }}>
           <Switch
             checked={syncToPlatform}
@@ -519,18 +544,22 @@ export default function EditRosterPage() {
               size="small"
               type="inner"
               title={
-                <Input
-                  value={team.displayName}
-                  onChange={(e) =>
-                    updateTeam(teamKey, (t) => ({
-                      ...t,
-                      displayName: e.target.value,
-                      simpleName: e.target.value,
-                    }))
-                  }
-                  style={{ maxWidth: 280 }}
-                  size="small"
-                />
+                data.isTeamMode ? (
+                  <Input
+                    value={team.displayName}
+                    onChange={(e) =>
+                      updateTeam(teamKey, (currentTeam) => ({
+                        ...currentTeam,
+                        displayName: e.target.value,
+                        simpleName: e.target.value,
+                      }))
+                    }
+                    style={{ maxWidth: 280 }}
+                    size="small"
+                  />
+                ) : (
+                  t.onlineTournaments.tabPlayerList
+                )
               }
               extra={
                 <div style={{ display: "flex", gap: 8 }}>
@@ -541,21 +570,27 @@ export default function EditRosterPage() {
                   >
                     {tt.rosterAddPlayer}
                   </Button>
-                  <Button
-                    danger
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    onClick={() => deleteTeam(teamKey)}
-                  >
-                    {tt.rosterDeleteTeam}
-                  </Button>
+                  {data.isTeamMode && (
+                    <Button
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => deleteTeam(teamKey)}
+                    >
+                      {tt.rosterDeleteTeam}
+                    </Button>
+                  )}
                 </div>
               }
             >
               <List
                 size="small"
                 dataSource={team.players}
-                locale={{ emptyText: tt.rosterNoPlayers }}
+                locale={{
+                  emptyText: data.isTeamMode
+                    ? tt.rosterNoPlayers
+                    : tt.rosterNoIndividualPlayers,
+                }}
                 renderItem={(p: RosterPlayer) => {
                   const u = usersById[p.userId];
                   if (!u) {
@@ -614,19 +649,23 @@ export default function EditRosterPage() {
                           }
                           style={{ width: 140 }}
                         />
-                        <Checkbox
-                          checked={p.isSubstitute}
-                          onChange={() => togglePlayerSub(teamKey, p.userId)}
-                        >
-                          {t.onlineTournaments.substitute}
-                        </Checkbox>
-                        <Checkbox
-                          checked={p.isCaptain}
-                          onChange={() => setPlayerCaptain(teamKey, p.userId)}
-                        >
-                          {tt.rosterCaptain}
-                        </Checkbox>
-                        {teamsForMoveSelect.length > 1 && (
+                        {data.isTeamMode && (
+                          <Checkbox
+                            checked={p.isSubstitute}
+                            onChange={() => togglePlayerSub(teamKey, p.userId)}
+                          >
+                            {t.onlineTournaments.substitute}
+                          </Checkbox>
+                        )}
+                        {data.isTeamMode && (
+                          <Checkbox
+                            checked={p.isCaptain}
+                            onChange={() => setPlayerCaptain(teamKey, p.userId)}
+                          >
+                            {tt.rosterCaptain}
+                          </Checkbox>
+                        )}
+                        {data.isTeamMode && teamsForMoveSelect.length > 1 && (
                           <Select
                             size="small"
                             value={teamKey}
@@ -648,7 +687,8 @@ export default function EditRosterPage() {
                   );
                 }}
               />
-              {!hasPlayerWithPlatformId(team, usersById, platformIdEdits) &&
+              {data.isTeamMode &&
+                !hasPlayerWithPlatformId(team, usersById, platformIdEdits) &&
                 team.players.length > 0 && (
                   <Tag color="warning" style={{ marginTop: 8 }}>
                     {tt.rosterTeamNoPlatformId}

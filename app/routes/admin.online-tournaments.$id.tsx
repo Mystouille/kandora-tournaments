@@ -10,6 +10,7 @@ import {
   message,
 } from "antd";
 import {
+  CalendarOutlined,
   CloudUploadOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -96,6 +97,16 @@ export default function AdminTournamentPage() {
       href: `${routeBase}/edit-presentation`,
       icon: <EditOutlined />,
     },
+    ...(tournament.hasSchedule
+      ? [
+          {
+            key: "schedule",
+            label: t.onlineTournaments.admin.setSchedule,
+            href: `${routeBase}/set-schedule`,
+            icon: <CalendarOutlined />,
+          },
+        ]
+      : []),
   ];
   const participantItems: AdminDestination[] = [
     {

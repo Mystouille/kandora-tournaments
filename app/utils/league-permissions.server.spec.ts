@@ -32,7 +32,11 @@ function league(
   id: string,
   name: string,
   serverId?: string,
-  options?: { isTeamMode?: boolean; platformName?: string }
+  options?: {
+    isTeamMode?: boolean;
+    hasSchedule?: boolean;
+    platformName?: string;
+  }
 ) {
   return {
     _id: id,
@@ -40,6 +44,7 @@ function league(
     startTime: new Date("2026-08-01T00:00:00.000Z"),
     endTime: new Date("2026-09-01T00:00:00.000Z"),
     isDisplayed: true,
+    hasSchedule: options?.hasSchedule,
     rulesConfig: { isTeamMode: options?.isTeamMode ?? true },
     platformConfig: { platformName: options?.platformName ?? "MAJSOUL" },
     discordConfig: serverId ? { serverId } : undefined,
@@ -88,6 +93,7 @@ describe("getTournamentAdminAccess", () => {
       league("league-1", "Été 2026", "guild-1"),
       league("league-2", "Open 2026", undefined, {
         isTeamMode: false,
+        hasSchedule: true,
         platformName: "RIICHICITY",
       }),
     ]);
@@ -101,10 +107,12 @@ describe("getTournamentAdminAccess", () => {
         {
           id: "league-2",
           isTeamMode: false,
+          hasSchedule: true,
           platformName: "RIICHICITY",
         },
       ],
     });
+    expect(access?.tournaments[0].hasSchedule).toBe(false);
     expect(mocks.isDiscordGuildAdmin).not.toHaveBeenCalled();
   });
 

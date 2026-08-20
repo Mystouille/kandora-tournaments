@@ -231,6 +231,7 @@ export async function action({ request }: { request: Request }) {
       name: body.name,
       startTime: new Date(body.startTime),
       endTime: new Date(body.endTime),
+      hasSchedule: body.hasSchedule === true,
       phaseCutoffTimes: (body.phaseCutoffTimes ?? []).map(
         (d: string) => new Date(d)
       ),

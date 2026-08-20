@@ -32,6 +32,11 @@ export default [
     "routes/online-tournaments.$slug.statistics.tsx",
     { id: "tournament-statistics-tab" }
   ),
+  route(
+    "/online-tournaments/:slug/:tab",
+    "routes/online-tournaments.$slug.tsx",
+    { id: "tournament-info-tab" }
+  ),
 
   // Public, unauthenticated live results overlay for a single bracket stage
   // (designed as an OBS browser source).
@@ -62,6 +67,10 @@ export default [
     route(
       "online-tournaments/:id/edit-presentation",
       "routes/admin.online-tournaments.$id.edit-presentation.tsx"
+    ),
+    route(
+      "online-tournaments/:id/set-schedule",
+      "routes/admin.online-tournaments.$id.set-schedule.tsx"
     ),
     route(
       "online-tournaments/:id/import-teams",
@@ -104,6 +113,7 @@ export default [
   route("/api/game-records", "routes/api/game-records.ts"),
   route("/api/games", "routes/api/games.ts"),
   route("/api/ongoing-games", "routes/api/ongoing-games.ts"),
+  route("/api/league-schedule", "routes/api/league-schedule.ts"),
   route("/api/statistics-filters", "routes/api/statistics-filters.ts"),
   route("/api/yaku-map", "routes/api/yaku-map.ts"),
   route("/api/telemetry", "routes/api/telemetry.ts"),
@@ -148,6 +158,7 @@ export default [
     "routes/api/admin/league-finals-roster.ts"
   ),
   route("/api/admin/league-roster", "routes/api/admin/league-roster.ts"),
+  route("/api/admin/league-schedule", "routes/api/admin/league-schedule.ts"),
   route(
     "/api/admin/league-team-picture",
     "routes/api/admin/league-team-picture.ts"

@@ -228,7 +228,9 @@ export function AdminSidebar({
             ...(tournament?.isDisplayed
               ? [
                   getItem(
-                    <Link to={`/online-tournaments/${tournament.slug}`}>
+                    <Link
+                      to={`/online-tournaments/${tournament.slug}/presentation`}
+                    >
                       {t.admin.viewTournament}
                     </Link>,
                     "view-tournament",

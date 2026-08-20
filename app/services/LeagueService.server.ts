@@ -1107,7 +1107,10 @@ export class LeagueService {
       }
       return seedings;
     }
-    const leagueUsers = await LeagueUserModel.find({ leagueId: league._id })
+    const leagueUsers = await LeagueUserModel.find({
+      leagueId: league._id,
+      isParticipant: { $ne: false },
+    })
       .sort({ _id: 1 })
       .select("userId")
       .lean<{ userId: { toString(): string } }[]>();

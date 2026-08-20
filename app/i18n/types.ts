@@ -442,6 +442,7 @@ export interface Translations extends CoreTranslations {
     individualMode: string;
     tabPresentation: string;
     tabRules: string;
+    tabSchedule: string;
     tabPlayerList: string;
     tabFinalsRoster: string;
     resultsAndStats: string;
@@ -453,6 +454,14 @@ export interface Translations extends CoreTranslations {
     rulesPlaceholder: string;
     configDetails: string;
     phaseCutoffDates: string;
+    scheduleTournamentPhase: string;
+    scheduleTbd: string;
+    scheduleLive: string;
+    scheduleWatchLive: string;
+    scheduleEmpty: string;
+    scheduleError: string;
+    scheduleRefreshError: string;
+    scheduleRetry: string;
     admin: {
       createNew: string;
       coverImageLabel: string;
@@ -491,6 +500,8 @@ export interface Translations extends CoreTranslations {
       nameLabel: string;
       nameRequired: string;
       dateRequired: string;
+      hasSchedule: string;
+      hasScheduleHelp: string;
       discordLocale: string;
       discordLocaleHelp: string;
       cutoffDates: string;
@@ -509,6 +520,22 @@ export interface Translations extends CoreTranslations {
       creating: string;
       createSuccess: string;
       editPresentation: string;
+      setSchedule: string;
+      scheduleEditor: string;
+      scheduleDescription: string;
+      scheduleTournamentPhase: string;
+      scheduleAddGame: string;
+      scheduleGame: string;
+      scheduleStart: string;
+      scheduleSeat: string;
+      scheduleTbd: string;
+      scheduleNoGames: string;
+      scheduleRemoveGame: string;
+      scheduleSave: string;
+      scheduleSaved: string;
+      scheduleSaveError: string;
+      scheduleLoadError: string;
+      scheduleInvalidDate: string;
       presentationEditor: string;
       editingFrench: string;
       editingEnglish: string;
@@ -614,11 +641,13 @@ export interface Translations extends CoreTranslations {
       editRoster: string;
       rosterEditor: string;
       rosterEditorDescription: string;
+      rosterIndividualDescription: string;
       rosterSyncToPlatform: string;
       rosterCreateTeam: string;
       rosterDeleteTeam: string;
       rosterAddPlayer: string;
       rosterNoPlayers: string;
+      rosterNoIndividualPlayers: string;
       rosterCaptain: string;
       rosterPlatformIdLabel: string;
       rosterPlatformIdHelp: string;

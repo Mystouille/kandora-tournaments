@@ -122,6 +122,7 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
 
   // Cutoff dates
   const [cutoffDates, setCutoffDates] = useState<(Dayjs | null)[]>([]);
+  const [hasSchedule, setHasSchedule] = useState(false);
 
   // League type config
   const [configResult, setConfigResult] =
@@ -458,6 +459,7 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
         name: values.name,
         startTime,
         endTime,
+        hasSchedule,
         phaseCutoffTimes,
         rulesConfig: {
           gameRules: values.gameRules,
@@ -881,6 +883,13 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
             />
           </Form.Item>
         )}
+
+        <Form.Item
+          label={t.onlineTournaments.admin.hasSchedule}
+          tooltip={t.onlineTournaments.admin.hasScheduleHelp}
+        >
+          <Switch checked={hasSchedule} onChange={setHasSchedule} />
+        </Form.Item>
 
         {/* ── Section C: Discord ── */}
         <Divider />

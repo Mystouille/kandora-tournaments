@@ -59,7 +59,7 @@ export function Sidebar({
     ...(tournamentSlug
       ? [
           getItem(
-            <Link to={`/online-tournaments/${tournamentSlug}`}>
+            <Link to={`/online-tournaments/${tournamentSlug}/presentation`}>
               {t.onlineTournaments.navInfo}
             </Link>,
             `/online-tournaments/${tournamentSlug}`,

@@ -13,6 +13,7 @@ import { LiveGameModel } from "../core/models/tournament/LiveGame";
 import { OngoingGameMessageModel } from "../core/models/tournament/OngoingGameMessage";
 import { RankingModel } from "../core/models/tournament/Ranking";
 import { SchedulingMessageModel } from "../core/models/tournament/SchedulingMessage";
+import { ScheduledGameModel } from "../core/models/tournament/ScheduledGame";
 import { SubstitutionModel } from "../core/models/tournament/Substitution";
 import { TeamModel } from "../core/models/tournament/Team";
 import { cancelLeagueTasks } from "./cancelLeagueTasks.server";
@@ -377,6 +378,7 @@ export async function deleteLeague(
     LeagueUserModel.deleteMany({ leagueId: league._id }),
     LiveGameModel.deleteMany({ league: league._id }),
     OngoingGameMessageModel.deleteMany({ league: league._id }),
+    ScheduledGameModel.deleteMany({ league: league._id }),
     SchedulingMessageModel.deleteMany({ league: league._id }),
     SubstitutionModel.deleteMany({ league: league._id }),
     TeamModel.deleteMany({ leagueId: league._id }),

@@ -18,6 +18,7 @@ import {
 import { trackEvent } from "~/services/telemetry.server";
 import { emitLeagueUpdated } from "~/services/cacheInvalidation.server";
 import { linkPlayedGamesToTables } from "~/services/schedulingLink.server";
+import { resolveLeagueLobbies } from "~/services/leagueLobbies";
 
 /**
  * Returns the effective roster for a team given the current phase.
@@ -71,51 +72,6 @@ function isGameInFinalsPhase(
   return isInFinalsPhase(game.startTime, league);
 }
 
-/** A tournament lobby to fetch games from, tagged with the phase it feeds. */
-interface LeagueLobby {
-  /** Config phase id this lobby feeds, or `null` for the single legacy lobby
-   *  (games stay untagged and phase attribution remains time-based). */
-  phaseId: string | null;
-  tournamentId: string;
-  internalTournamentId?: string;
-  seasonId?: string;
-}
-
-/**
- * Resolves the tournament lobbies to fetch games from.
- *
- * When `platformConfig.phaseTournaments` is non-empty (per-phase mode), returns
- * one lobby per entry, each carrying its `phaseId` so ingested games are tagged
- * (see `Game.phaseId`). Otherwise returns the single legacy lobby
- * (`platformConfig.tournamentId`) with a `null` phaseId, preserving time-based
- * phase attribution. Returns an empty array when no lobby is configured.
- */
-function resolveLeagueLobbies(league: League): LeagueLobby[] {
-  const platformConfig = league.platformConfig;
-  const phaseTournaments = platformConfig.phaseTournaments ?? [];
-  if (phaseTournaments.length > 0) {
-    return phaseTournaments
-      .filter((entry) => !!entry.tournamentId)
-      .map((entry) => ({
-        phaseId: entry.phaseId,
-        tournamentId: entry.tournamentId,
-        internalTournamentId: entry.internalTournamentId ?? undefined,
-        seasonId: entry.seasonId ?? undefined,
-      }));
-  }
-  if (platformConfig.tournamentId) {
-    return [
-      {
-        phaseId: null,
-        tournamentId: platformConfig.tournamentId,
-        internalTournamentId: platformConfig.internalTournamentId ?? undefined,
-        seasonId: platformConfig.seasonId ?? undefined,
-      },
-    ];
-  }
-  return [];
-}
-
 /** A game summary tagged with the phase of the lobby it was fetched from. */
 type TaggedGameSummary = GameSummary & { phaseId: string | null };
 
@@ -131,7 +87,7 @@ export async function hydrateLeagueGames(
   league: League,
   connector: ILeagueTournamentConnector
 ): Promise<void> {
-  const lobbies = resolveLeagueLobbies(league);
+  const lobbies = resolveLeagueLobbies(league.platformConfig);
   if (lobbies.length === 0) {
     console.warn(
       `hydrateLeagueGames: league ${league.name} has no tournament lobby configured`

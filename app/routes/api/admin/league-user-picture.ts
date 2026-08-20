@@ -82,7 +82,10 @@ export async function action({ request }: { request: Request }) {
   await connectToDatabase();
 
   if (pictures === null || pictures === undefined) {
-    await LeagueUserModel.deleteOne({ leagueId, userId });
+    await LeagueUserModel.updateOne(
+      { leagueId, userId },
+      { $set: { pictures: null } }
+    );
   } else {
     const stored = await storePicturePair(pictures);
     await LeagueUserModel.updateOne(

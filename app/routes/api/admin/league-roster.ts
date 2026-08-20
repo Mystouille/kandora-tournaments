@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import type { League } from "../../../core/models/tournament/League";
 import { LeagueModel, Platform } from "../../../core/models/tournament/League";
+import { LeagueUserModel } from "../../../core/models/tournament/LeagueUser";
+import { ScheduledGameModel } from "../../../core/models/tournament/ScheduledGame";
 import { TeamModel } from "../../../core/models/tournament/Team";
 import { UserModel } from "../../../core/models/shared/User";
 import { connectToDatabase } from "../../../utils/dbConnection.server";
@@ -61,6 +63,24 @@ interface PlatformLookupResult {
   nickname?: string;
   accountId?: string;
   error?: string;
+}
+
+async function clearScheduledParticipants(
+  leagueId: mongoose.Types.ObjectId,
+  participantIds: mongoose.Types.ObjectId[]
+) {
+  if (participantIds.length === 0) {
+    return;
+  }
+
+  await ScheduledGameModel.updateMany(
+    {
+      league: leagueId,
+      "slots.participantId": { $in: participantIds },
+    },
+    { $set: { "slots.$[slot].participantId": null } },
+    { arrayFilters: [{ "slot.participantId": { $in: participantIds } }] }
+  ).exec();
 }
 
 async function lookupPlatformId(
@@ -181,6 +201,15 @@ export async function loader({ request }: { request: Request }) {
   const teams = await TeamModel.find({ leagueId: league._id })
     .select("_id simpleName displayName roster")
     .lean();
+  const leagueUsers = isTeamMode
+    ? []
+    : await LeagueUserModel.find({
+        leagueId: league._id,
+        isParticipant: { $ne: false },
+      })
+        .select("userId")
+        .sort({ _id: 1 })
+        .lean<Array<{ userId: mongoose.Types.ObjectId }>>();
 
   const userIds = new Set<string>();
   for (const t of teams) {
@@ -193,6 +222,9 @@ export async function loader({ request }: { request: Request }) {
     for (const id of t.roster?.substitutes ?? []) {
       userIds.add(id.toString());
     }
+  }
+  for (const leagueUser of leagueUsers) {
+    userIds.add(leagueUser.userId.toString());
   }
 
   const users = await UserModel.find({
@@ -272,6 +304,11 @@ export async function loader({ request }: { request: Request }) {
     isTeamMode,
     hasTournamentId: !!league.platformConfig.tournamentId,
     teams: teamPayload,
+    players: leagueUsers.map((leagueUser) => ({
+      userId: leagueUser.userId.toString(),
+      isSubstitute: false,
+      isCaptain: false,
+    })),
     users: [...userMap.values()],
   });
 }
@@ -410,7 +447,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   const body = (await request.json()) as PutBody;
-  const { leagueId, teams, platformIdUpdates, syncToPlatform } = body;
+  const { leagueId, teams, players, platformIdUpdates, syncToPlatform } = body;
   if (!leagueId || !Array.isArray(teams)) {
     return Response.json({ error: "Invalid body" }, { status: 400 });
   }
@@ -443,6 +480,16 @@ export async function action({ request }: { request: Request }) {
         .select("_id simpleName displayName roster")
         .lean()
     : [];
+  const existingLeagueUsers = isTeamMode
+    ? []
+    : await LeagueUserModel.find({ leagueId: league._id })
+        .select("userId isParticipant")
+        .lean<
+          Array<{
+            userId: mongoose.Types.ObjectId;
+            isParticipant?: boolean;
+          }>
+        >();
   const existingTeamMap = new Map(
     existingTeams.map((t) => [t._id.toString(), t])
   );
@@ -535,6 +582,10 @@ export async function action({ request }: { request: Request }) {
       .map((t) => t._id.toString())
       .filter((id) => !submittedTeamIds.has(id));
     if (toDeleteIds.length > 0) {
+      await clearScheduledParticipants(
+        league._id,
+        toDeleteIds.map((id) => new mongoose.Types.ObjectId(id))
+      );
       await TeamModel.deleteMany({ _id: { $in: toDeleteIds } }).exec();
       anyTeamPlatformChange = true;
     }
@@ -553,6 +604,9 @@ export async function action({ request }: { request: Request }) {
       if (!captainId) {
         // Empty team: drop existing doc (if any) and skip creation.
         if (teamPayload.teamId && existingTeamMap.has(teamPayload.teamId)) {
+          await clearScheduledParticipants(league._id, [
+            new mongoose.Types.ObjectId(teamPayload.teamId),
+          ]);
           await TeamModel.deleteOne({ _id: teamPayload.teamId }).exec();
           anyTeamPlatformChange = true;
         }
@@ -630,6 +684,60 @@ export async function action({ request }: { request: Request }) {
         anyTeamPlatformChange = true;
       }
     }
+  } else {
+    const submittedIds = [
+      ...new Set((players ?? []).map((player) => player.userId)),
+    ];
+    if (submittedIds.some((id) => !mongoose.isValidObjectId(id))) {
+      return Response.json(
+        { error: "Individual roster contains an invalid user" },
+        { status: 400 }
+      );
+    }
+
+    const submittedObjectIds = submittedIds.map(
+      (id) => new mongoose.Types.ObjectId(id)
+    );
+    const existingUserCount = await UserModel.countDocuments({
+      _id: { $in: submittedObjectIds },
+      isDeleted: { $ne: true },
+    });
+    if (existingUserCount !== submittedObjectIds.length) {
+      return Response.json(
+        { error: "Individual roster contains an unknown user" },
+        { status: 400 }
+      );
+    }
+
+    if (submittedObjectIds.length > 0) {
+      await LeagueUserModel.bulkWrite(
+        submittedObjectIds.map((userId) => ({
+          updateOne: {
+            filter: { leagueId: league._id, userId },
+            update: { $set: { isParticipant: true } },
+            upsert: true,
+          },
+        }))
+      );
+    }
+
+    const submittedIdSet = new Set(submittedIds);
+    const removedUserIds = existingLeagueUsers
+      .filter(
+        (leagueUser) =>
+          leagueUser.isParticipant !== false &&
+          !submittedIdSet.has(leagueUser.userId.toString())
+      )
+      .map((leagueUser) => leagueUser.userId);
+    if (removedUserIds.length > 0) {
+      await Promise.all([
+        LeagueUserModel.updateMany(
+          { leagueId: league._id, userId: { $in: removedUserIds } },
+          { $set: { isParticipant: false } }
+        ).exec(),
+        clearScheduledParticipants(league._id, removedUserIds),
+      ]);
+    }
   }
 
   // 3. Push to the game platform — gated on whether any platform-visible
@@ -645,6 +753,7 @@ export async function action({ request }: { request: Request }) {
     anyTeamPlatformChange || usersWithChangedPlatformId.size > 0;
 
   if (
+    isTeamMode &&
     syncToPlatform &&
     league.platformConfig.tournamentId &&
     platform !== Platform.IRL

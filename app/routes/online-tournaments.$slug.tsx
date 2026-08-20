@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router";
+import {
+  Navigate,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router";
 import {
   Typography,
   Tabs,
@@ -13,6 +18,7 @@ import {
   Result,
 } from "antd";
 import {
+  CalendarOutlined,
   FileTextOutlined,
   InfoCircleOutlined,
   TrophyOutlined,
@@ -25,6 +31,12 @@ import { TeamLogo } from "../components/TeamLogo";
 import { PlayerAvatar } from "../components/PlayerAvatar";
 import { LeagueConfigDetails } from "../components/LeagueConfigDetails";
 import type { LeagueTypeConfig } from "../core/types/league-config";
+import { TournamentScheduleTab } from "../components/TournamentScheduleTab";
+import {
+  isTournamentInfoTabKey,
+  resolveTournamentInfoTab,
+  tournamentInfoTabRouteFromKey,
+} from "../components/tournamentInfoTabRoutes";
 
 const { Title, Text } = Typography;
 
@@ -59,6 +71,7 @@ interface LeagueDetail {
   slug: string;
   startTime: string;
   endTime: string;
+  hasSchedule: boolean;
   rulesConfig: {
     gameRules: string;
     isTeamMode: boolean;
@@ -102,7 +115,9 @@ function formatDateTime(iso: string, locale: string): string {
 }
 
 export default function LeagueDetailPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, tab } = useParams<{ slug: string; tab?: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { t, locale } = useLocale();
   const [league, setLeague] = useState<LeagueDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -451,6 +466,19 @@ export default function LeagueDetailPage() {
       ),
       children: rulesTab,
     },
+    ...(league.hasSchedule
+      ? [
+          {
+            key: "schedule",
+            label: (
+              <span>
+                <CalendarOutlined /> {t.onlineTournaments.tabSchedule}
+              </span>
+            ),
+            children: <TournamentScheduleTab leagueId={league._id} />,
+          },
+        ]
+      : []),
     {
       key: "players",
       label: (
@@ -463,7 +491,7 @@ export default function LeagueDetailPage() {
     ...(hasFinalsRoster
       ? [
           {
-            key: "finals-roster",
+            key: "finalsRoster",
             label: (
               <span>
                 <TrophyOutlined /> {t.onlineTournaments.tabFinalsRoster}
@@ -474,6 +502,36 @@ export default function LeagueDetailPage() {
         ]
       : []),
   ];
+
+  const resolvedActiveTab = resolveTournamentInfoTab(tab, {
+    showSchedule: league.hasSchedule,
+    showFinalsRoster: hasFinalsRoster,
+  });
+  const canonicalTabRoute = tournamentInfoTabRouteFromKey(resolvedActiveTab);
+  const canonicalPath = `/online-tournaments/${encodeURIComponent(league.slug)}/${canonicalTabRoute}`;
+  if (tab !== canonicalTabRoute) {
+    return (
+      <Navigate
+        replace
+        to={{
+          pathname: canonicalPath,
+          search: location.search,
+          hash: location.hash,
+        }}
+      />
+    );
+  }
+
+  const handleTabChange = (nextTab: string) => {
+    if (!isTournamentInfoTabKey(nextTab)) {
+      return;
+    }
+    void navigate({
+      pathname: `/online-tournaments/${encodeURIComponent(league.slug)}/${tournamentInfoTabRouteFromKey(nextTab)}`,
+      search: location.search,
+      hash: location.hash,
+    });
+  };
 
   return (
     <div style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>
@@ -492,7 +550,11 @@ export default function LeagueDetailPage() {
         </Title>
       </div>
 
-      <Tabs defaultActiveKey="presentation" items={tabItems} />
+      <Tabs
+        activeKey={resolvedActiveTab}
+        items={tabItems}
+        onChange={handleTabChange}
+      />
     </div>
   );
 }

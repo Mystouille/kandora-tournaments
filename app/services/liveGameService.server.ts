@@ -5,6 +5,7 @@ import { UserModel } from "~/core/models/shared/User";
 import { OngoingGameStatus } from "~/core/types/ongoing-game-status";
 import { TenhouService } from "~/api/tenhou/TenhouService.server";
 import { type ILeagueTournamentConnector } from "./connectors/ILeagueTournamentConnector.server";
+import { resolveLeagueLobbies } from "./leagueLobbies";
 
 /**
  * DB projection of live (in-progress) games. Runs inside the league poll loop
@@ -23,6 +24,10 @@ interface NormalizedLiveGame {
   status: OngoingGameStatus;
   startTime?: Date;
   players: Array<{ seat: number; nickname: string; accountId?: string }>;
+}
+
+interface TaggedLiveGame extends NormalizedLiveGame {
+  phaseId: string | null;
 }
 
 const DB_PLATFORM: Partial<Record<Platform, "majsoul" | "tenhou" | "riichiCity">> =
@@ -139,12 +144,22 @@ export async function syncLiveGames(
 ): Promise<void> {
   const platform = league.platformConfig.platformName as Platform;
   const dbPlatform = DB_PLATFORM[platform];
-  const tournamentId = league.platformConfig.tournamentId;
-  if (!dbPlatform || !tournamentId) {
+  const lobbies = resolveLeagueLobbies(league.platformConfig);
+  if (!dbPlatform || lobbies.length === 0) {
     return;
   }
 
-  const games = await gatherLiveGames(platform, tournamentId, connector);
+  const games: TaggedLiveGame[] = [];
+  for (const lobby of lobbies) {
+    const lobbyGames = await gatherLiveGames(
+      platform,
+      lobby.tournamentId,
+      connector
+    );
+    for (const game of lobbyGames) {
+      games.push({ ...game, phaseId: lobby.phaseId });
+    }
+  }
 
   const accountIds = [
     ...new Set(
@@ -161,24 +176,36 @@ export async function syncLiveGames(
   const seenGameIds: string[] = [];
   for (const g of games) {
     seenGameIds.push(g.gameId);
+    const setValues: Record<string, unknown> = {
+      platform: dbPlatform,
+      watchId: g.watchId,
+      tableId: g.tableId,
+      status: g.status,
+      lastSeenAt: now,
+      players: g.players.map((p) => ({
+        seat: p.seat,
+        nickname: p.nickname,
+        accountId: p.accountId,
+        userId: p.accountId ? accountToUser.get(p.accountId) : undefined,
+      })),
+    };
+    if (g.phaseId !== null) {
+      setValues.phaseId = g.phaseId;
+    }
+    if (g.startTime) {
+      setValues.startTime = g.startTime;
+    }
+    const update: Record<string, unknown> = { $set: setValues };
+    if (!g.startTime) {
+      update.$setOnInsert = { startTime: now };
+    }
+    if (g.phaseId === null) {
+      update.$unset = { phaseId: "" };
+    }
+
     await LiveGameModel.updateOne(
       { league: league._id, gameId: g.gameId },
-      {
-        $set: {
-          platform: dbPlatform,
-          watchId: g.watchId,
-          tableId: g.tableId,
-          status: g.status,
-          startTime: g.startTime,
-          lastSeenAt: now,
-          players: g.players.map((p) => ({
-            seat: p.seat,
-            nickname: p.nickname,
-            accountId: p.accountId,
-            userId: p.accountId ? accountToUser.get(p.accountId) : undefined,
-          })),
-        },
-      },
+      update,
       { upsert: true }
     ).exec();
   }

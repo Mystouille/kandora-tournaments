@@ -139,7 +139,9 @@ export default function OnlineTournaments() {
                       },
                     }}
                     cover={
-                      <Link to={`/online-tournaments/${league.slug}`}>
+                      <Link
+                        to={`/online-tournaments/${league.slug}/presentation`}
+                      >
                         {league.coverImageUrl ? (
                           <img
                             src={league.coverImageUrl}
@@ -190,7 +192,9 @@ export default function OnlineTournaments() {
                       </Text>
                     </div>
 
-                    <Link to={`/online-tournaments/${league.slug}`}>
+                    <Link
+                      to={`/online-tournaments/${league.slug}/presentation`}
+                    >
                       <Title level={4} style={{ margin: 0 }}>
                         {league.name}
                       </Title>

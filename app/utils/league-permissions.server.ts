@@ -13,6 +13,7 @@ export interface ManageableTournamentSummary {
   endTime: string;
   isDisplayed: boolean;
   isTeamMode: boolean;
+  hasSchedule: boolean;
   platformName: string;
 }
 
@@ -32,6 +33,7 @@ interface AdminLeagueRecord {
   startTime: Date;
   endTime: Date;
   isDisplayed?: boolean;
+  hasSchedule?: boolean;
   rulesConfig?: { isTeamMode?: boolean };
   platformConfig?: { platformName?: string };
   discordConfig?: { serverId?: string };
@@ -58,6 +60,7 @@ function summarizeLeague(
     endTime: league.endTime.toISOString(),
     isDisplayed: league.isDisplayed ?? true,
     isTeamMode: league.rulesConfig?.isTeamMode ?? false,
+    hasSchedule: league.hasSchedule ?? false,
     platformName: league.platformConfig?.platformName ?? "",
   };
 }
@@ -93,7 +96,7 @@ export async function getTournamentAdminAccessForUser(
 
   const leagues = await LeagueModel.find({ isDisplayed: true })
     .select(
-      "name startTime endTime isDisplayed rulesConfig.isTeamMode platformConfig.platformName discordConfig.serverId"
+      "name startTime endTime isDisplayed hasSchedule rulesConfig.isTeamMode platformConfig.platformName discordConfig.serverId"
     )
     .sort({ startTime: -1 })
     .lean<AdminLeagueRecord[]>();
