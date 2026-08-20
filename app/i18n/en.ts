@@ -791,6 +791,8 @@ export const en: Translations = {
       rosterAddPlayerNeedInput:
         "Enter a platform ID or a display name to add a player",
       rosterPlatformSyncFailed: "Roster saved, but platform sync failed",
+      rosterExistingUsersReused:
+        "Reused existing user accounts for {count} edited platform ID(s).",
       rosterSaved: "Roster saved",
       rosterSaveError: "Failed to save the roster",
       rosterLoadError: "Failed to load the roster",

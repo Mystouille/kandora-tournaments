@@ -669,6 +669,7 @@ export interface Translations extends CoreTranslations {
       rosterAddPlayerFailed: string;
       rosterAddPlayerNeedInput: string;
       rosterPlatformSyncFailed: string;
+      rosterExistingUsersReused: string;
       rosterSaved: string;
       rosterSaveError: string;
       rosterLoadError: string;

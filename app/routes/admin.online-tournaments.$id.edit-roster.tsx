@@ -443,6 +443,18 @@ export default function EditRosterPage() {
         return;
       }
 
+      const reusedExistingUsers = Array.isArray(json.reusedExistingUsers)
+        ? json.reusedExistingUsers
+        : [];
+      if (reusedExistingUsers.length > 0) {
+        message.info(
+          tt.rosterExistingUsersReused.replace(
+            "{count}",
+            String(reusedExistingUsers.length)
+          )
+        );
+      }
+
       if (json.platformSync?.attempted && !json.platformSync.success) {
         message.warning(
           `${tt.rosterPlatformSyncFailed}: ${json.platformSync.error ?? ""}`

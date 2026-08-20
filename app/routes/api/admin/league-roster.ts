@@ -10,6 +10,12 @@ import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
 import { slugify } from "../../../utils/slugify";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type { TeamEntry } from "../../../services/connectors/ILeagueTournamentConnector.server";
+import {
+  RosterUserRemapError,
+  remapRosterUsers,
+  remapScheduledGameUsers,
+  selectRosterIdentityOwner,
+} from "../../../services/rosterUserRemap";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "../../../services/connectors/RiichiCityLeagueConnector.server";
 
@@ -159,6 +165,40 @@ function getUserPlatformId(user: any, platform: Platform): string | null {
     return user.tenhouIdentity?.name ?? null;
   }
   return null;
+}
+
+async function findExistingPlatformUsers(
+  platform: Platform,
+  platformId: string,
+  accountId: string | undefined,
+  currentUserId: mongoose.Types.ObjectId
+) {
+  let identityFilter: Record<string, unknown>;
+  if (platform === Platform.MAJSOUL) {
+    identityFilter = {
+      $or: [
+        { "majsoulIdentity.friendId": platformId },
+        { "majsoulIdentity.userId": accountId ?? platformId },
+      ],
+    };
+  } else if (platform === Platform.RIICHICITY) {
+    identityFilter = {
+      "riichiCityIdentity.id": accountId ?? platformId,
+    };
+  } else if (platform === Platform.TENHOU) {
+    identityFilter = { "tenhouIdentity.name": platformId };
+  } else {
+    return [];
+  }
+
+  return UserModel.find({
+    ...identityFilter,
+    _id: { $ne: currentUserId },
+    isDeleted: { $ne: true },
+  })
+    .select("_id name discordIdentity.id email")
+    .limit(10)
+    .exec();
 }
 
 function platformIdToAccountId(
@@ -447,8 +487,14 @@ export async function action({ request }: { request: Request }) {
   }
 
   const body = (await request.json()) as PutBody;
-  const { leagueId, teams, players, platformIdUpdates, syncToPlatform } = body;
-  if (!leagueId || !Array.isArray(teams)) {
+  const {
+    leagueId,
+    teams: requestedTeams,
+    players: requestedPlayers,
+    platformIdUpdates,
+    syncToPlatform,
+  } = body;
+  if (!leagueId || !Array.isArray(requestedTeams)) {
     return Response.json({ error: "Invalid body" }, { status: 400 });
   }
 
@@ -465,7 +511,7 @@ export async function action({ request }: { request: Request }) {
 
   const platform = league.platformConfig.platformName;
   const isTeamMode = league.rulesConfig.isTeamMode;
-  if (isTeamMode === false && teams.length > 0) {
+  if (isTeamMode === false && requestedTeams.length > 0) {
     return Response.json(
       { error: "Cannot save teams for an individual league" },
       { status: 400 }
@@ -493,10 +539,14 @@ export async function action({ request }: { request: Request }) {
   const existingTeamMap = new Map(
     existingTeams.map((t) => [t._id.toString(), t])
   );
+  let teams = requestedTeams;
+  let players = requestedPlayers ?? [];
 
   // Track which users had their platform ID changed (by us, here) — that
   // affects the platform team payload even if the team membership did not.
   const usersWithChangedPlatformId = new Set<string>();
+  const userIdReplacements = new Map<string, string>();
+  const reusedExistingUsers: Array<{ id: string; name: string }> = [];
 
   // 1. Apply platform ID updates on user documents, skipping any entry
   //    whose value matches the user's current ID (no external lookup, no
@@ -507,12 +557,27 @@ export async function action({ request }: { request: Request }) {
     );
 
     if (updateEntries.length > 0) {
+      const submittedRosterUserIds = new Set(
+        isTeamMode
+          ? teams.flatMap((team) => team.players.map((player) => player.userId))
+          : players.map((player) => player.userId)
+      );
+      const offRosterUpdate = updateEntries.find(
+        ([userId]) => !submittedRosterUserIds.has(userId)
+      );
+      if (offRosterUpdate) {
+        return Response.json(
+          { error: "Cannot edit a platform ID outside this roster" },
+          { status: 400 }
+        );
+      }
+
       const candidateIds = updateEntries.map(([userId]) => userId);
       const candidateUsers = await UserModel.find({
         _id: { $in: candidateIds },
       })
         .select(
-          "_id name majsoulIdentity riichiCityIdentity tenhouIdentity avatarUrl"
+          "_id name majsoulIdentity riichiCityIdentity tenhouIdentity avatarUrl discordIdentity.id email"
         )
         .exec();
       const candidateMap = new Map(
@@ -523,13 +588,10 @@ export async function action({ request }: { request: Request }) {
         const platformId = rawPlatformId.trim();
         const user = candidateMap.get(userId);
         if (!user) {
-          continue;
-        }
-        const currentPlatformId = getUserPlatformId(user, platform);
-        if (currentPlatformId === platformId) {
-          // Field was rendered with the existing value but never edited —
-          // nothing to do, and crucially no external API roundtrip.
-          continue;
+          return Response.json(
+            { error: `Roster user ${userId} was not found` },
+            { status: 400 }
+          );
         }
 
         const lookup = await lookupPlatformId(platform, platformId);
@@ -540,6 +602,56 @@ export async function action({ request }: { request: Request }) {
             },
             { status: 400 }
           );
+        }
+
+        const existingUsers = await findExistingPlatformUsers(
+          platform,
+          platformId,
+          lookup.accountId,
+          user._id
+        );
+        let existingUser;
+        try {
+          existingUser = selectRosterIdentityOwner(
+            {
+              id: user._id.toString(),
+              name: user.name,
+              isRegistered: Boolean(user.discordIdentity?.id || user.email),
+            },
+            existingUsers.map((candidate) => ({
+              document: candidate,
+              id: candidate._id.toString(),
+              name: candidate.name,
+              isRegistered: Boolean(
+                candidate.discordIdentity?.id || candidate.email
+              ),
+            }))
+          )?.document;
+        } catch (error) {
+          if (!(error instanceof RosterUserRemapError)) {
+            throw error;
+          }
+          return Response.json(
+            {
+              error: `Multiple users already use platform ID "${platformId}"`,
+            },
+            { status: 409 }
+          );
+        }
+        if (existingUser) {
+          userIdReplacements.set(userId, existingUser._id.toString());
+          reusedExistingUsers.push({
+            id: existingUser._id.toString(),
+            name: existingUser.name,
+          });
+          usersWithChangedPlatformId.add(userId);
+          continue;
+        }
+
+        const currentPlatformId = getUserPlatformId(user, platform);
+        if (currentPlatformId === platformId) {
+          // The current user is the sole owner of this identity.
+          continue;
         }
 
         if (platform === Platform.MAJSOUL) {
@@ -563,6 +675,81 @@ export async function action({ request }: { request: Request }) {
         await user.save();
         usersWithChangedPlatformId.add(userId);
       }
+    }
+  }
+
+  try {
+    const remapped = remapRosterUsers(teams, players, userIdReplacements);
+    teams = remapped.teams;
+    players = remapped.players;
+  } catch (error) {
+    if (error instanceof RosterUserRemapError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
+
+  const scheduledGameUpdates: Array<{
+    id: mongoose.Types.ObjectId;
+    slots: Array<{
+      seatIndex: number;
+      participantId: mongoose.Types.ObjectId | null;
+    }>;
+  }> = [];
+  if (!isTeamMode && userIdReplacements.size > 0) {
+    const scheduledGames = await ScheduledGameModel.find({
+      league: league._id,
+    })
+      .select("_id scheduledAt slots")
+      .lean<
+        Array<{
+          _id: mongoose.Types.ObjectId;
+          scheduledAt: Date;
+          slots: Array<{
+            seatIndex: number;
+            participantId?: mongoose.Types.ObjectId | null;
+          }>;
+        }>
+      >();
+    try {
+      const remappedGames = remapScheduledGameUsers(
+        scheduledGames.map((game) => ({
+          id: game._id.toString(),
+          scheduledAt: game.scheduledAt,
+          slots: game.slots.map((slot) => ({
+            seatIndex: slot.seatIndex,
+            participantId: slot.participantId?.toString() ?? null,
+          })),
+        })),
+        userIdReplacements
+      );
+      for (let index = 0; index < scheduledGames.length; index++) {
+        const original = scheduledGames[index];
+        const remappedGame = remappedGames[index];
+        const originalIds = original.slots.map(
+          (slot) => slot.participantId?.toString() ?? null
+        );
+        const remappedIds = remappedGame.slots.map(
+          (slot) => slot.participantId
+        );
+        if (JSON.stringify(originalIds) === JSON.stringify(remappedIds)) {
+          continue;
+        }
+        scheduledGameUpdates.push({
+          id: original._id,
+          slots: remappedGame.slots.map((slot) => ({
+            seatIndex: slot.seatIndex,
+            participantId: slot.participantId
+              ? new mongoose.Types.ObjectId(slot.participantId)
+              : null,
+          })),
+        });
+      }
+    } catch (error) {
+      if (error instanceof RosterUserRemapError) {
+        return Response.json({ error: error.message }, { status: 409 });
+      }
+      throw error;
     }
   }
 
@@ -709,6 +896,17 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
+    if (scheduledGameUpdates.length > 0) {
+      await Promise.all(
+        scheduledGameUpdates.map((scheduledGame) =>
+          ScheduledGameModel.updateOne(
+            { _id: scheduledGame.id, league: league._id },
+            { $set: { slots: scheduledGame.slots } }
+          ).exec()
+        )
+      );
+    }
+
     if (submittedObjectIds.length > 0) {
       await LeagueUserModel.bulkWrite(
         submittedObjectIds.map((userId) => ({
@@ -738,6 +936,44 @@ export async function action({ request }: { request: Request }) {
         clearScheduledParticipants(league._id, removedUserIds),
       ]);
     }
+  }
+
+  for (const [sourceUserId, targetUserId] of userIdReplacements) {
+    const sourceMembership = await LeagueUserModel.findOne({
+      leagueId: league._id,
+      userId: sourceUserId,
+    })
+      .select("pictures")
+      .lean<{
+        pictures?: { fullPicture: string; croppedPicture: string } | null;
+      }>();
+    if (!sourceMembership?.pictures) {
+      continue;
+    }
+    const targetMembership = await LeagueUserModel.findOne({
+      leagueId: league._id,
+      userId: targetUserId,
+    })
+      .select("pictures")
+      .lean<{
+        pictures?: { fullPicture: string; croppedPicture: string } | null;
+      }>();
+    if (!targetMembership?.pictures) {
+      await LeagueUserModel.updateOne(
+        { leagueId: league._id, userId: targetUserId },
+        {
+          $set: {
+            pictures: sourceMembership.pictures,
+            ...(!isTeamMode ? { isParticipant: true } : {}),
+          },
+        },
+        { upsert: true }
+      ).exec();
+    }
+    await LeagueUserModel.updateOne(
+      { leagueId: league._id, userId: sourceUserId },
+      { $set: { pictures: null } }
+    ).exec();
   }
 
   // 3. Push to the game platform — gated on whether any platform-visible
@@ -850,5 +1086,9 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  return Response.json({ success: true, platformSync });
+  return Response.json({
+    success: true,
+    platformSync,
+    reusedExistingUsers,
+  });
 }

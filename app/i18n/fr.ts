@@ -812,6 +812,8 @@ export const fr: Translations = {
         "Saisissez un ID de plateforme ou un nom pour ajouter un joueur",
       rosterPlatformSyncFailed:
         "Roster enregistré, mais la synchro plateforme a échoué",
+      rosterExistingUsersReused:
+        "Compte(s) utilisateur existant(s) réutilisé(s) pour {count} identifiant(s) plateforme modifié(s).",
       rosterSaved: "Roster enregistré",
       rosterSaveError: "Échec de l'enregistrement du roster",
       rosterLoadError: "Échec du chargement du roster",
