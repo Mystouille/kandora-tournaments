@@ -11,13 +11,15 @@ import { slugify } from "../../../utils/slugify";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type { TeamEntry } from "../../../services/connectors/ILeagueTournamentConnector.server";
 import {
+  canonicalRosterUserId,
+  resolveRosterIdentityOwner,
   RosterUserRemapError,
   remapRosterUsers,
   remapScheduledGameUsers,
-  selectRosterIdentityOwner,
 } from "../../../services/rosterUserRemap";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "../../../services/connectors/RiichiCityLeagueConnector.server";
+import { AuthService } from "../../../utils/auth.server";
 
 interface PlayerInRoster {
   userId: string;
@@ -610,9 +612,9 @@ export async function action({ request }: { request: Request }) {
           lookup.accountId,
           user._id
         );
-        let existingUser;
+        let identityResolution;
         try {
-          existingUser = selectRosterIdentityOwner(
+          identityResolution = resolveRosterIdentityOwner(
             {
               id: user._id.toString(),
               name: user.name,
@@ -626,7 +628,7 @@ export async function action({ request }: { request: Request }) {
                 candidate.discordIdentity?.id || candidate.email
               ),
             }))
-          )?.document;
+          );
         } catch (error) {
           if (!(error instanceof RosterUserRemapError)) {
             throw error;
@@ -638,8 +640,26 @@ export async function action({ request }: { request: Request }) {
             { status: 409 }
           );
         }
+        const existingUser = identityResolution.owner?.document;
+        const canonicalUserId = existingUser?._id.toString() ?? userId;
+        const usersToMerge = [
+          ...(existingUser ? [user] : []),
+          ...identityResolution.duplicatesToMerge.map(
+            (duplicate) => duplicate.document
+          ),
+        ];
+        for (const duplicate of usersToMerge) {
+          const duplicateId = duplicate._id.toString();
+          if (duplicateId === canonicalUserId) {
+            continue;
+          }
+          userIdReplacements.set(duplicateId, canonicalUserId);
+          await AuthService.transferUserReferences(
+            new mongoose.Types.ObjectId(canonicalUserId),
+            duplicate._id
+          );
+        }
         if (existingUser) {
-          userIdReplacements.set(userId, existingUser._id.toString());
           reusedExistingUsers.push({
             id: existingUser._id.toString(),
             name: existingUser.name,
@@ -676,6 +696,13 @@ export async function action({ request }: { request: Request }) {
         usersWithChangedPlatformId.add(userId);
       }
     }
+  }
+
+  for (const sourceUserId of userIdReplacements.keys()) {
+    userIdReplacements.set(
+      sourceUserId,
+      canonicalRosterUserId(sourceUserId, userIdReplacements)
+    );
   }
 
   try {

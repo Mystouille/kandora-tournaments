@@ -30,7 +30,6 @@ import { linkPlayedGamesToTables } from "./schedulingLink.server";
 import { editChannelMessage } from "./discordPublisher.server";
 import { computePlayerDeltas, isGameScored } from "./leagueUtils";
 import { GameModel, type Game } from "~/core/models/tournament/Game";
-import { GameRecordModel, type GameRecord } from "~/core/models/tournament/GameRecord";
 import type {
   FinalStageDefinition,
   LeagueTypeConfig,
@@ -221,9 +220,7 @@ export const schedulingWorker = new Worker(
       // A linked game may still be a placeholder (created from listing metadata
       // before its log was hydrated, with all scores/places zeroed); such games
       // are skipped here and the table is shown as "waiting for game log" until
-      // the real result lands, so we never render bogus deltas or complete a
-      // round early. Prefer the stored GameRecord deltaPoints; fall back to
-      // computing from the raw results with the league's ruleset.
+      // the real result lands. Deltas always come from raw results + league rules.
       const linkedGameIds = new Set<string>();
       for (const m of schedulingMsgs) {
         for (const table of m.tables ?? []) {
@@ -237,23 +234,12 @@ export const schedulingWorker = new Worker(
       const scoredGameIds = new Set<string>();
       if (linkedGameIds.size > 0) {
         const ids = Array.from(linkedGameIds);
-        const [games, records] = await Promise.all([
-          GameModel.find({ league: league._id, gameId: { $in: ids } })
-            .select("gameId results")
-            .lean<Game[]>(),
-          GameRecordModel.find({ gameId: { $in: ids } })
-            .select("gameId byUserData.userDbId byUserData.deltaPoints")
-            .lean<GameRecord[]>(),
-        ]);
-
-        const storedByGameId = new Map<string, Map<string, number>>();
-        for (const record of records) {
-          const userDeltas = new Map<string, number>();
-          for (const ud of record.byUserData ?? []) {
-            userDeltas.set(ud.userDbId.toString(), ud.deltaPoints);
-          }
-          storedByGameId.set(record.gameId, userDeltas);
-        }
+        const games = await GameModel.find({
+          league: league._id,
+          gameId: { $in: ids },
+        })
+          .select("gameId results")
+          .lean<Game[]>();
 
         for (const game of games) {
           if (!game.gameId) {
@@ -265,7 +251,6 @@ export const schedulingWorker = new Worker(
             continue;
           }
           scoredGameIds.add(game.gameId);
-          const stored = storedByGameId.get(game.gameId);
           const sharedDeltas = computePlayerDeltas(
             results.map((r) => ({ score: r.score })),
             league.rulesConfig.gameRules
@@ -273,7 +258,7 @@ export const schedulingWorker = new Worker(
           const userDeltas = new Map<string, number>();
           for (let i = 0; i < results.length; i++) {
             const userId = results[i].userId.toString();
-            userDeltas.set(userId, stored?.get(userId) ?? sharedDeltas[i]);
+            userDeltas.set(userId, sharedDeltas[i]);
           }
           gameDeltaMap.set(game.gameId, userDeltas);
         }

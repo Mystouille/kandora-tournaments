@@ -3,8 +3,16 @@ import { connectToDatabase } from "../../utils/dbConnection.server";
 import { getLeagueUserPictureMapForLeagues } from "../../services/leagueUserPictures.server";
 import type { Route } from "./+types/games";
 import mongoose from "mongoose";
-import { GameModel, type Game, type GameResult } from "../../core/models/tournament/Game";
-import { LeagueModel } from "../../core/models/tournament/League";
+import {
+  GameModel,
+  type Game,
+  type GameResult,
+} from "../../core/models/tournament/Game";
+import {
+  LeagueModel,
+  Ruleset,
+  type League,
+} from "../../core/models/tournament/League";
 import { TeamModel, type Team } from "../../core/models/tournament/Team";
 import { UserModel, type User } from "../../core/models/shared/User";
 import {
@@ -14,6 +22,7 @@ import {
 } from "../../core/models/tournament/GameRecord";
 
 import { getLeagueApiCache } from "~/services/leagueApiCache.server";
+import { computePlayerDeltas, isGameScored } from "~/services/leagueUtils";
 
 // ---------- In-memory cache ----------
 type GamesCacheEntry = { data: unknown; etag: string };
@@ -206,7 +215,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     // Fetch games with pagination
     const games = await Game.find(matchFilter)
-      .select("gameId startTime endTime results log platform")
+      .select("gameId startTime endTime results log platform league rules")
       .sort({ startTime: -1 })
       .skip(skip)
       .limit(limit)
@@ -220,7 +229,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       gameId: { $in: [...gameIdSet] },
     })
       .select(
-        "gameId byUserData.userDbId byUserData.teamDbId byUserData.teamName byUserData.score byUserData.place byUserData.deltaPoints byUserData.nickname"
+        "gameId byUserData.userDbId byUserData.teamDbId byUserData.teamName byUserData.score byUserData.place byUserData.nickname"
       )
       .lean<GameRecord[]>();
 
@@ -287,13 +296,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     const leagues = await LeagueModel.find({
       _id: { $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)) },
     })
-      .select("officialSubstitutes")
-      .lean();
+      .select("officialSubstitutes rulesConfig.gameRules")
+      .lean<Pick<League, "_id" | "officialSubstitutes" | "rulesConfig">[]>();
     const officialSubIdSet = new Set<string>();
+    const leagueRules = new Map<string, Ruleset>();
     for (const lg of leagues) {
       for (const id of (lg as any).officialSubstitutes ?? []) {
         officialSubIdSet.add(id.toString());
       }
+      leagueRules.set(lg._id.toString(), lg.rulesConfig.gameRules as Ruleset);
     }
 
     const leagueUserPictures =
@@ -304,6 +315,13 @@ export async function loader({ request }: Route.LoaderArgs) {
       games: games.map((game) => {
         const gameId = game.gameId as string | undefined;
         const recordData = gameId ? recordMap.get(gameId) : undefined;
+        const deltaPoints = isGameScored(game.results)
+          ? computePlayerDeltas(
+              game.results,
+              leagueRules.get(game.league?.toString() ?? "") ??
+                (game.rules as Ruleset)
+            )
+          : null;
 
         // Build replay link
         let replayUrl: string | null = null;
@@ -314,38 +332,38 @@ export async function loader({ request }: Route.LoaderArgs) {
         }
 
         // Build player entries from game results, enriched with GameRecord data
-        const players = (game.results ?? []).map((r: GameResult) => {
-          const pid = r.userId.toString();
-          const user = userMap.get(pid);
-          const teamName = playerTeamMap.get(pid) ?? null;
+        const players = (game.results ?? []).map(
+          (r: GameResult, resultIndex: number) => {
+            const pid = r.userId.toString();
+            const user = userMap.get(pid);
+            const teamName = playerTeamMap.get(pid) ?? null;
 
-          // Try to find matching record data for delta
-          let deltaPoints: number | null = null;
-          let finalScore = r.score;
-          if (recordData) {
-            const rec = recordData.find(
-              (rd) => rd.userDbId?.toString() === pid
-            );
-            if (rec) {
-              deltaPoints = rec.deltaPoints ?? null;
-              finalScore = rec.score ?? r.score;
+            // Try to find matching record data for delta
+            let finalScore = r.score;
+            if (recordData) {
+              const rec = recordData.find(
+                (rd) => rd.userDbId?.toString() === pid
+              );
+              if (rec) {
+                finalScore = rec.score ?? r.score;
+              }
             }
-          }
 
-          return {
-            userId: pid,
-            name: user?.name ?? "Unknown",
-            avatarUrl: user?.avatarUrl ?? null,
-            leaguePicture: leagueUserPictures.get(pid) ?? null,
-            teamName,
-            teamPicture: playerTeamPictureMap.get(pid) ?? null,
-            score: finalScore,
-            place: r.place,
-            deltaPoints,
-            isSub: regularSubIdSet.has(pid),
-            isOfficialSub: officialSubIdSet.has(pid),
-          };
-        });
+            return {
+              userId: pid,
+              name: user?.name ?? "Unknown",
+              avatarUrl: user?.avatarUrl ?? null,
+              leaguePicture: leagueUserPictures.get(pid) ?? null,
+              teamName,
+              teamPicture: playerTeamPictureMap.get(pid) ?? null,
+              score: finalScore,
+              place: r.place,
+              deltaPoints: deltaPoints?.[resultIndex] ?? null,
+              isSub: regularSubIdSet.has(pid),
+              isOfficialSub: officialSubIdSet.has(pid),
+            };
+          }
+        );
 
         // Sort by score descending
         players.sort((a, b) => b.score - a.score);

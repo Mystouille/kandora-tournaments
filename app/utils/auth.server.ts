@@ -150,6 +150,18 @@ export class AuthService {
           }
         }
 
+        if (currentUser.tenhouIdentity && existingDiscordUser.tenhouIdentity) {
+          if (
+            currentUser.tenhouIdentity.name !==
+            existingDiscordUser.tenhouIdentity.name
+          ) {
+            conflicts.push(
+              `Tenhou username conflict: your account has ${currentUser.tenhouIdentity.name}, ` +
+                `but the Discord account has ${existingDiscordUser.tenhouIdentity.name}.`
+            );
+          }
+        }
+
         if (conflicts.length > 0) {
           return {
             success: false,
@@ -229,9 +241,9 @@ export class AuthService {
     if (sourceUser.isAdmin) {
       targetUser.isAdmin = true;
     }
-    await targetUser.save();
 
     await this.transferUserReferences(targetUserId, sourceUserId);
+    await targetUser.save();
     console.log(
       `Merged user ${sourceUserId} into ${targetUserId} (Discord login email conflict)`
     );

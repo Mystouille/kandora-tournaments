@@ -63,7 +63,9 @@ export interface ILeagueTournamentConnector {
 
   /**
    * Returns a lightweight summary for every finished game in the tournament.
-   * Used to create / validate Game documents.
+   * `players[].rawScore` must contain raw table points before league uma/oka,
+   * or null when the listing exposes only a platform-computed delta. Used to
+   * create / validate Game documents; app scoring is applied separately.
    */
   getGameSummaries(
     tournamentId: string | number,

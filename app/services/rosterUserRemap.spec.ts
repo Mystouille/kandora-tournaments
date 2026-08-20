@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RosterUserRemapError,
+  resolveRosterIdentityOwner,
   selectExistingRosterUser,
   selectRosterIdentityOwner,
   remapScheduledGameUsers,
@@ -18,9 +19,7 @@ describe("remapRosterUsers", () => {
           teamId: "team-1",
           simpleName: "One",
           displayName: "One",
-          players: [
-            { userId: source, isCaptain: true, isSubstitute: false },
-          ],
+          players: [{ userId: source, isCaptain: true, isSubstitute: false }],
         },
       ],
       [],
@@ -62,17 +61,13 @@ describe("remapRosterUsers", () => {
             teamId: "team-1",
             simpleName: "One",
             displayName: "One",
-            players: [
-              { userId: source, isCaptain: true, isSubstitute: false },
-            ],
+            players: [{ userId: source, isCaptain: true, isSubstitute: false }],
           },
           {
             teamId: "team-2",
             simpleName: "Two",
             displayName: "Two",
-            players: [
-              { userId: target, isCaptain: true, isSubstitute: false },
-            ],
+            players: [{ userId: target, isCaptain: true, isSubstitute: false }],
           },
         ],
         [],
@@ -199,6 +194,48 @@ describe("selectRosterIdentityOwner", () => {
   it("rejects two registered owners", () => {
     expect(() =>
       selectRosterIdentityOwner(
+        { id: "current", name: "Current", isRegistered: true },
+        [{ id: "registered", name: "Registered", isRegistered: true }]
+      )
+    ).toThrowError(RosterUserRemapError);
+  });
+});
+
+describe("resolveRosterIdentityOwner", () => {
+  it("keeps a registered current user and merges its standalone duplicate", () => {
+    expect(
+      resolveRosterIdentityOwner(
+        { id: "current", name: "Current", isRegistered: true },
+        [{ id: "placeholder", name: "Placeholder", isRegistered: false }]
+      )
+    ).toEqual({
+      owner: null,
+      duplicatesToMerge: [
+        { id: "placeholder", name: "Placeholder", isRegistered: false },
+      ],
+    });
+  });
+
+  it("uses one registered owner and merges every standalone duplicate", () => {
+    expect(
+      resolveRosterIdentityOwner(
+        { id: "current", name: "Current", isRegistered: false },
+        [
+          { id: "placeholder", name: "Placeholder", isRegistered: false },
+          { id: "registered", name: "Registered", isRegistered: true },
+        ]
+      )
+    ).toEqual({
+      owner: { id: "registered", name: "Registered", isRegistered: true },
+      duplicatesToMerge: [
+        { id: "placeholder", name: "Placeholder", isRegistered: false },
+      ],
+    });
+  });
+
+  it("rejects a second registered owner", () => {
+    expect(() =>
+      resolveRosterIdentityOwner(
         { id: "current", name: "Current", isRegistered: true },
         [{ id: "registered", name: "Registered", isRegistered: true }]
       )

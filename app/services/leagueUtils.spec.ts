@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isGameScored } from "./leagueUtils";
+import { Ruleset } from "../core/models/tournament/League";
+import { computePlayerDeltas, isGameScored } from "./leagueUtils";
 
 describe("isGameScored", () => {
   it("treats a fully scored game (real places) as scored", () => {
@@ -41,5 +42,20 @@ describe("isGameScored", () => {
     expect(isGameScored([])).toBe(false);
     expect(isGameScored(undefined)).toBe(false);
     expect(isGameScored(null)).toBe(false);
+  });
+});
+
+describe("computePlayerDeltas", () => {
+  it("applies M-League scoring once to raw final points", () => {
+    const rawResults = [
+      { score: 27800 },
+      { score: 27700 },
+      { score: 26300 },
+      { score: 18200 },
+    ];
+
+    expect(computePlayerDeltas(rawResults, Ruleset.MLEAGUE)).toEqual([
+      47.8, 7.7, -13.7, -41.8,
+    ]);
   });
 });

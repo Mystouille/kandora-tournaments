@@ -19,7 +19,6 @@ import {
 } from "~/core/models/tournament/SchedulingMessage";
 import { SubstitutionModel } from "~/core/models/tournament/Substitution";
 import { GameModel, type Game } from "~/core/models/tournament/Game";
-import { GameRecordModel, type GameRecord } from "~/core/models/tournament/GameRecord";
 import { computePlayerDeltas, isGameScored } from "~/services/leagueUtils";
 import {
   sendChannelMessage,
@@ -52,11 +51,7 @@ export type ResolvedRound = ResolvedTable[];
 
 /** Per-player ready status derived from the platform lobby. */
 export type PlayerReadyState =
-  | "online"
-  | "ready"
-  | "in-game"
-  | "offline"
-  | "unknown";
+  "online" | "ready" | "in-game" | "offline" | "unknown";
 
 export interface PlayerReadyMap {
   [platformAccountId: string]: PlayerReadyState;
@@ -693,7 +688,7 @@ export async function buildUserMap(
  * Load the per-user delta scores for a set of games, keeping only games that
  * are fully scored (a placeholder game created from listing metadata before its
  * log hydrated has every `place` at 0 and must be ignored). Prefers the stored
- * `GameRecord.deltaPoints` and falls back to computing from the raw results.
+ * Deltas are always computed from raw game results with the league ruleset.
  *
  * @returns `scoredGameIds` (games safe to treat as played) and `gameDeltaMap`
  * (gameId → userId → delta).
@@ -712,23 +707,12 @@ export async function loadScoredGameDeltas(
     return { scoredGameIds, gameDeltaMap };
   }
 
-  const [games, records] = await Promise.all([
-    GameModel.find({ league: league._id, gameId: { $in: ids } })
-      .select("gameId results")
-      .lean<Game[]>(),
-    GameRecordModel.find({ gameId: { $in: ids } })
-      .select("gameId byUserData.userDbId byUserData.deltaPoints")
-      .lean<GameRecord[]>(),
-  ]);
-
-  const storedByGameId = new Map<string, Map<string, number>>();
-  for (const record of records) {
-    const userDeltas = new Map<string, number>();
-    for (const ud of record.byUserData ?? []) {
-      userDeltas.set(ud.userDbId.toString(), ud.deltaPoints);
-    }
-    storedByGameId.set(record.gameId, userDeltas);
-  }
+  const games = await GameModel.find({
+    league: league._id,
+    gameId: { $in: ids },
+  })
+    .select("gameId results")
+    .lean<Game[]>();
 
   for (const game of games) {
     if (!game.gameId) {
@@ -739,7 +723,6 @@ export async function loadScoredGameDeltas(
       continue;
     }
     scoredGameIds.add(game.gameId);
-    const stored = storedByGameId.get(game.gameId);
     const sharedDeltas = computePlayerDeltas(
       results.map((r) => ({ score: r.score })),
       league.rulesConfig.gameRules
@@ -747,7 +730,7 @@ export async function loadScoredGameDeltas(
     const userDeltas = new Map<string, number>();
     for (let i = 0; i < results.length; i++) {
       const userId = results[i].userId.toString();
-      userDeltas.set(userId, stored?.get(userId) ?? sharedDeltas[i]);
+      userDeltas.set(userId, sharedDeltas[i]);
     }
     gameDeltaMap.set(game.gameId, userDeltas);
   }

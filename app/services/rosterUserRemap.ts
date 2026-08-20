@@ -18,7 +18,7 @@ export class RosterUserRemapError extends Error {
   }
 }
 
-function canonicalUserId(
+export function canonicalRosterUserId(
   userId: string,
   replacements: ReadonlyMap<string, string>
 ) {
@@ -40,15 +40,14 @@ function remapPlayers(
 ) {
   const remapped = new Map<string, RosterPlayerInput>();
   for (const player of players) {
-    const userId = canonicalUserId(player.userId, replacements);
+    const userId = canonicalRosterUserId(player.userId, replacements);
     const existing = remapped.get(userId);
     if (!existing) {
       remapped.set(userId, { ...player, userId });
       continue;
     }
     existing.isCaptain = existing.isCaptain || player.isCaptain;
-    existing.isSubstitute =
-      existing.isSubstitute && player.isSubstitute;
+    existing.isSubstitute = existing.isSubstitute && player.isSubstitute;
   }
   return [...remapped.values()];
 }
@@ -98,7 +97,7 @@ export function remapScheduledGameUsers(
     const participantsInGame = new Set<string>();
     const slots = game.slots.map((slot) => {
       const participantId = slot.participantId
-        ? canonicalUserId(slot.participantId, replacements)
+        ? canonicalRosterUserId(slot.participantId, replacements)
         : null;
       if (participantId) {
         if (participantsInGame.has(participantId)) {
@@ -125,6 +124,13 @@ export interface ExistingRosterUserCandidate {
   id: string;
   name: string;
   isRegistered: boolean;
+}
+
+export interface RosterIdentityResolution<
+  Candidate extends ExistingRosterUserCandidate,
+> {
+  owner: Candidate | null;
+  duplicatesToMerge: Candidate[];
 }
 
 export function selectExistingRosterUser<
@@ -160,4 +166,38 @@ export function selectRosterIdentityOwner<
     );
   }
   return null;
+}
+
+export function resolveRosterIdentityOwner<
+  Candidate extends ExistingRosterUserCandidate,
+>(
+  current: ExistingRosterUserCandidate,
+  existingCandidates: Candidate[]
+): RosterIdentityResolution<Candidate> {
+  const registered = existingCandidates.filter(
+    (candidate) => candidate.isRegistered
+  );
+  if (current.isRegistered) {
+    if (registered.length > 0) {
+      throw new RosterUserRemapError(
+        "Multiple registered users own this platform identity"
+      );
+    }
+    return { owner: null, duplicatesToMerge: existingCandidates };
+  }
+  if (registered.length > 1) {
+    throw new RosterUserRemapError(
+      "Multiple registered users own this platform identity"
+    );
+  }
+  if (registered.length === 1) {
+    const owner = registered[0];
+    return {
+      owner,
+      duplicatesToMerge: existingCandidates.filter(
+        (candidate) => candidate.id !== owner.id
+      ),
+    };
+  }
+  return { owner: null, duplicatesToMerge: existingCandidates };
 }

@@ -1,8 +1,11 @@
 export type GameSummaryPlayer = {
   platformUserId: string;
   nickname: string;
-  score: number;
-  place: number;
+  /** Raw final table points before league uma/oka; null when a lightweight
+   * listing only exposes a platform-computed delta or no final standing. */
+  rawScore: number | null;
+  /** Placement derived from raw standings; null until raw standings exist. */
+  place: number | null;
   seat: number;
 };
 

@@ -72,18 +72,6 @@ function parseLine(raw: string): TenhouLogLine | null {
   };
 }
 
-/**
- * Computes 1-based placements from scores (descending). Ties share the
- * same placement.
- */
-function computePlacements(scores: number[]): number[] {
-  const sorted = [...scores].sort((a, b) => b - a);
-  return scores.map((s) => {
-    const idx = sorted.indexOf(s);
-    return idx + 1;
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -145,20 +133,21 @@ export function parseTenhouLobbyLog(
     // Result line — has `un=` and `sc=`
     if (line.params.un && line.params.sc !== undefined && pending) {
       const names = line.params.un.split(",").map((n) => decodeURIComponent(n));
-      const scores = line.params.sc.split(",").map(Number);
+      const platformDeltas = line.params.sc.split(",").map(Number);
 
-      if (names.length !== scores.length || names.length === 0) {
+      if (names.length !== platformDeltas.length || names.length === 0) {
         pending = null;
         continue;
       }
 
-      const placements = computePlacements(scores);
-
       const players: GameSummaryPlayer[] = names.map((name, i) => ({
         platformUserId: name,
         nickname: name,
-        score: scores[i],
-        place: placements[i],
+        // Tenhou's lobby `sc=` field is already the platform's final delta
+        // (raw points + its configured uma/oka). It must never enter Kandora's
+        // raw-score field or the league rules would be applied a second time.
+        rawScore: null,
+        place: null,
         seat: i,
       }));
 

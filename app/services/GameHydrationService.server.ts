@@ -208,9 +208,12 @@ export async function hydrateLeagueGames(
       );
 
       const allPlayersInDb = playerInfos.every((p) => p.user);
+      const hasRawSummaryStandings = playerInfos.every(
+        (player) => player.rawScore !== null && player.place !== null
+      );
 
       let isValid = false;
-      if (allPlayersInDb) {
+      if (allPlayersInDb && hasRawSummaryStandings) {
         if (!league.rulesConfig.isTeamMode) {
           // Non-team league: no check during regular phase.
           // During finals, only allow qualified players or official subs.
@@ -297,8 +300,8 @@ export async function hydrateLeagueGames(
         .filter((p) => p.dbUserId)
         .map((p) => ({
           userId: p.dbUserId,
-          score: p.score,
-          place: p.place,
+          score: p.rawScore ?? 0,
+          place: p.place ?? 0,
           nbChombo: 0,
         }));
 
@@ -633,10 +636,14 @@ async function hydrateGameRecord(
         const summaryPlayer = summary?.players.find(
           (p) => p.platformUserId === userData.userId
         );
-        if (summaryPlayer && summaryPlayer.score !== 0) {
+        if (
+          summaryPlayer?.rawScore !== null &&
+          summaryPlayer?.rawScore !== undefined &&
+          summaryPlayer.place !== null
+        ) {
           gameResults.push({
             userId: user._id,
-            score: summaryPlayer.score,
+            score: summaryPlayer.rawScore,
             place: summaryPlayer.place,
             nbChombo: 0,
           });

@@ -69,7 +69,7 @@ export class MajsoulLeagueConnector implements ILeagueTournamentConnector {
             return {
               platformUserId: account.account_id?.toString() ?? "",
               nickname: account.nickname ?? "Unknown",
-              score,
+              rawScore: score,
               place,
               seat: account.seat ?? 0,
             };

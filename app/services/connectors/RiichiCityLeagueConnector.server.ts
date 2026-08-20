@@ -145,8 +145,8 @@ export class RiichiCityLeagueConnector implements ILeagueTournamentConnector {
         const players: GameSummaryPlayer[] = meta.players.map((p, seat) => ({
           platformUserId: p.userId.toString(),
           nickname: p.nickname,
-          score: p.pointNum ?? 0,
-          place: 0,
+          rawScore: null,
+          place: null,
           seat,
         }));
 

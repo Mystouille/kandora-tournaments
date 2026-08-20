@@ -3,11 +3,21 @@ import { getLeagueUserPictureMapForLeagues } from "../../services/leagueUserPict
 import type { Route } from "./+types/player-standings";
 import mongoose from "mongoose";
 import { GameModel, type Game } from "../../core/models/tournament/Game";
-import { LeagueModel, Ruleset, type League } from "../../core/models/tournament/League";
+import {
+  LeagueModel,
+  Ruleset,
+  type League,
+} from "../../core/models/tournament/League";
 import { TeamModel, type Team } from "../../core/models/tournament/Team";
 import { UserModel, type User } from "../../core/models/shared/User";
-import { GameRecordModel, type GameRecord } from "../../core/models/tournament/GameRecord";
-import { getStartingScore } from "../../services/leagueUtils";
+import {
+  GameRecordModel,
+  type GameRecord,
+} from "../../core/models/tournament/GameRecord";
+import {
+  computePlayerDeltas,
+  getStartingScore,
+} from "../../services/leagueUtils";
 import { resolveLeagueTypeConfig } from "~/services/league-configs";
 import {
   buildUserToTeamMap,
@@ -204,6 +214,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       "results.userId": {
         $in: resolvedPlayerIds.map((id) => new mongoose.Types.ObjectId(id)),
       },
+      isValid: true,
     };
     if (startDate) {
       gameMatchFilter.startTime = {
@@ -219,7 +230,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
 
     const matchingGames = await Game.find(gameMatchFilter)
-      .select("_id gameId league")
+      .select("_id gameId league results")
       .lean<Game[]>();
 
     if (matchingGames.length === 0) {
@@ -241,6 +252,25 @@ export async function loader({ request }: Route.LoaderArgs) {
     const gameIdSet = new Set(
       matchingGames.map((g) => g.gameId).filter((id): id is string => !!id)
     );
+    const gameDeltaMap = new Map<string, Map<string, number>>();
+    for (const game of matchingGames) {
+      if (!game.gameId) {
+        continue;
+      }
+      const deltas = computePlayerDeltas(
+        game.results ?? [],
+        gameIdToRuleset.get(game.gameId) ?? Ruleset.MLEAGUE
+      );
+      gameDeltaMap.set(
+        game.gameId,
+        new Map(
+          (game.results ?? []).map((result, index) => [
+            result.userId.toString(),
+            deltas[index],
+          ])
+        )
+      );
+    }
     const resolvedPlayerSet = new Set(resolvedPlayerIds);
 
     // ---------- Aggregate from GameRecords ----------
@@ -248,7 +278,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       gameId: { $in: [...gameIdSet] },
     })
       .select(
-        "gameId byUserData.userDbId byUserData.teamDbId byUserData.teamName byUserData.score byUserData.place byUserData.deltaPoints byUserData.roundEvents.yakus"
+        "gameId byUserData.userDbId byUserData.teamDbId byUserData.teamName byUserData.score byUserData.place byUserData.roundEvents.yakus"
       )
       .lean<GameRecord[]>();
 
@@ -272,7 +302,9 @@ export async function loader({ request }: Route.LoaderArgs) {
           continue;
         }
 
-        const deltaPoints = userData.deltaPoints ?? 0;
+        const deltaPoints =
+          gameDeltaMap.get(record.gameId)?.get(userData.userDbId.toString()) ??
+          0;
         const score = userData.score ?? 25000;
         const place = userData.place ?? 4;
         const startingScore = getStartingScore(

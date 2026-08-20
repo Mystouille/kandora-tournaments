@@ -1,13 +1,19 @@
 import mongoose from "mongoose";
 import { UserModel } from "../../../core/models/shared/User";
 import { TeamModel } from "../../../core/models/tournament/Team";
-import { LeagueModel, Platform, type League } from "../../../core/models/tournament/League";
+import {
+  LeagueModel,
+  Platform,
+  type League,
+} from "../../../core/models/tournament/League";
 import { fetchGuildMembers } from "../../../utils/discord-guilds.server";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
 import { RiichiCityLeagueConnector } from "../../../services/connectors/RiichiCityLeagueConnector.server";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type { TeamEntry } from "../../../services/connectors/ILeagueTournamentConnector.server";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
+import { linkPlatformIdentity } from "../../../core/services/identityLinking";
+import { identityLinkDeps } from "../../../services/identityLinkDeps.server";
 
 interface CsvRow {
   teamName: string;
@@ -49,6 +55,26 @@ function parseCsv(raw: string, isTeamMode: boolean): CsvRow[] {
     }
   }
   return rows;
+}
+
+async function findExistingPlatformUser(platform: Platform, accountId: string) {
+  let filter: Record<string, unknown>;
+  if (platform === Platform.MAJSOUL) {
+    filter = { "majsoulIdentity.userId": accountId };
+  } else if (platform === Platform.RIICHICITY) {
+    filter = { "riichiCityIdentity.id": accountId };
+  } else if (platform === Platform.TENHOU) {
+    filter = { "tenhouIdentity.name": accountId };
+  } else {
+    return null;
+  }
+
+  return UserModel.findOne({
+    ...filter,
+    isDeleted: { $ne: true },
+  })
+    .select("_id name firstName lastName discordIdentity")
+    .lean();
 }
 
 /**
@@ -425,6 +451,22 @@ export async function action({ request }: { request: Request }) {
         const effectiveDiscordAvatarUrl =
           override?.avatarUrl ?? m.discordAvatarUrl;
 
+        if (!m.existingUser && m.accountId) {
+          const existingUser = await findExistingPlatformUser(
+            platform,
+            m.accountId
+          );
+          if (existingUser) {
+            m.existingUser = {
+              _id: existingUser._id.toString(),
+              name: existingUser.name,
+              firstName: existingUser.firstName ?? null,
+              lastName: existingUser.lastName ?? null,
+              discordId: existingUser.discordIdentity?.id ?? null,
+            };
+          }
+        }
+
         if (m.existingUser) {
           // Update Discord identity if provided and not already set
           if (effectiveDiscordId && !m.existingUser.discordId) {
@@ -484,13 +526,23 @@ export async function action({ request }: { request: Request }) {
                 .select("tenhouIdentity")
                 .lean<{ tenhouIdentity?: { name?: string } }>();
               if (!user?.tenhouIdentity?.name) {
-                await UserModel.findByIdAndUpdate(m.existingUser._id, {
-                  $set: {
-                    tenhouIdentity: {
-                      name: m.accountId,
+                const result = await linkPlatformIdentity(
+                  m.existingUser._id,
+                  "tenhouId",
+                  m.accountId,
+                  identityLinkDeps
+                );
+                if (result.status !== 200) {
+                  return Response.json(
+                    {
+                      error:
+                        typeof result.body.error === "string"
+                          ? result.body.error
+                          : "Unable to link that Tenhou username.",
                     },
-                  },
-                });
+                    { status: result.status }
+                  );
+                }
               }
             }
           }

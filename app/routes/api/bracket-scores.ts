@@ -3,11 +3,14 @@ import { getLeagueUserPictureMap } from "../../services/leagueUserPictures.serve
 import type { Route } from "./+types/bracket-scores";
 import type { PicturePair } from "../../types/pictures";
 import mongoose from "mongoose";
-import { Ruleset, LeagueModel, type League } from "../../core/models/tournament/League";
+import {
+  Ruleset,
+  LeagueModel,
+  type League,
+} from "../../core/models/tournament/League";
 import { GameModel, type Game } from "../../core/models/tournament/Game";
 import { TeamModel, type Team } from "../../core/models/tournament/Team";
 import { UserModel, type User } from "../../core/models/shared/User";
-import { GameRecordModel, type GameRecord } from "../../core/models/tournament/GameRecord";
 import {
   BracketModel,
   type Bracket,
@@ -109,7 +112,6 @@ export async function loader({ request }: Route.LoaderArgs) {
     const Game = GameModel;
     const Team = TeamModel;
     const User = UserModel;
-    const GameRecord = GameRecordModel;
     const Bracket = BracketModel;
     const League = LeagueModel;
 
@@ -533,25 +535,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       return leagueUserPictures.get(userId) ?? null;
     };
 
-    // Fetch GameRecords for deltaPoints (if available)
-    const gameIds = games
-      .map((g) => g.gameId)
-      .filter((id): id is string => !!id);
-    const gameRecords = await GameRecord.find({
-      gameId: { $in: gameIds },
-    })
-      .select("gameId byUserData.userDbId byUserData.deltaPoints")
-      .lean<GameRecord[]>();
-
-    const recordMap = new Map<string, Map<string, number>>();
-    for (const rec of gameRecords) {
-      const userDeltas = new Map<string, number>();
-      for (const ud of rec.byUserData ?? []) {
-        userDeltas.set(ud.userDbId.toString(), ud.deltaPoints);
-      }
-      recordMap.set(rec.gameId, userDeltas);
-    }
-
     // Build response phases using computed stage data + enriched game details
     type PlannedPlayer = {
       teamId: string | null;
@@ -858,9 +841,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 
       const phase = phases[phaseKey];
 
-      // Try to use GameRecord deltaPoints first, fall back to computation
-      const record = game.gameId ? recordMap.get(game.gameId) : null;
-
       // Build replay URL
       let replayUrl: string | null = null;
       if (game.log) {
@@ -923,13 +903,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           continue;
         }
 
-        // Prefer stored GameRecord delta, fall back to shared computation
-        let delta: number;
-        if (record && record.has(userId)) {
-          delta = record.get(userId)!;
-        } else {
-          delta = sharedDeltas[i];
-        }
+        const delta = sharedDeltas[i];
 
         gamePlayers.push({
           teamId,
