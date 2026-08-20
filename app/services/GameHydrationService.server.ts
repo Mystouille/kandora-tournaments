@@ -1,4 +1,8 @@
-import { GameModel, type Game, type GameResult } from "~/core/models/tournament/Game";
+import {
+  GameModel,
+  type Game,
+  type GameResult,
+} from "~/core/models/tournament/Game";
 import { GameRecordModel } from "~/core/models/tournament/GameRecord";
 import { ReplayLogModel } from "~/core/models/game/ReplayLog";
 import { REPLAY_LOG_SCHEMA_VERSION } from "~/game/replay/types";
@@ -795,7 +799,11 @@ async function hydrateGameRecord(
     await dbGameRecord.save();
     await GameModel.updateOne(
       { _id: game._id },
-      { gameRecord: dbGameRecord._id, refetchGameRecord: false }
+      {
+        gameRecord: dbGameRecord._id,
+        refetchGameRecord: false,
+        ...(league.rulesConfig.isTeamMode ? { isValid: true } : {}),
+      }
     ).exec();
 
     console.log(

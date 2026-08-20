@@ -6,6 +6,7 @@ token.json
 /node_modules/
 /backups/
 /.data/
+/scriptsIgnored/
 
 # React Router
 /.react-router/

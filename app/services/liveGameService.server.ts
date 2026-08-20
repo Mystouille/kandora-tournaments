@@ -6,6 +6,10 @@ import { OngoingGameStatus } from "~/core/types/ongoing-game-status";
 import { TenhouService } from "~/api/tenhou/TenhouService.server";
 import { type ILeagueTournamentConnector } from "./connectors/ILeagueTournamentConnector.server";
 import { resolveLeagueLobbies } from "./leagueLobbies";
+import {
+  RosterUserRemapError,
+  selectExistingRosterUser,
+} from "./rosterUserRemap";
 
 /**
  * DB projection of live (in-progress) games. Runs inside the league poll loop
@@ -30,12 +34,13 @@ interface TaggedLiveGame extends NormalizedLiveGame {
   phaseId: string | null;
 }
 
-const DB_PLATFORM: Partial<Record<Platform, "majsoul" | "tenhou" | "riichiCity">> =
-  {
-    [Platform.MAJSOUL]: "majsoul",
-    [Platform.TENHOU]: "tenhou",
-    [Platform.RIICHICITY]: "riichiCity",
-  };
+const DB_PLATFORM: Partial<
+  Record<Platform, "majsoul" | "tenhou" | "riichiCity">
+> = {
+  [Platform.MAJSOUL]: "majsoul",
+  [Platform.TENHOU]: "tenhou",
+  [Platform.RIICHICITY]: "riichiCity",
+};
 
 const PLATFORM_ID_FIELD: Partial<Record<Platform, string>> = {
   [Platform.MAJSOUL]: "majsoulIdentity.userId",
@@ -45,12 +50,18 @@ const PLATFORM_ID_FIELD: Partial<Record<Platform, string>> = {
 
 interface UserIdentities {
   _id: mongoose.Types.ObjectId;
+  name?: string;
+  email?: string;
+  discordIdentity?: { id?: string };
   majsoulIdentity?: { userId?: string };
   riichiCityIdentity?: { id?: string };
   tenhouIdentity?: { name?: string };
 }
 
-function accountIdOf(platform: Platform, user: UserIdentities): string | undefined {
+function accountIdOf(
+  platform: Platform,
+  user: UserIdentities
+): string | undefined {
   switch (platform) {
     case Platform.MAJSOUL:
       return user.majsoulIdentity?.userId;
@@ -115,19 +126,52 @@ async function buildAccountUserIdMap(
   if (!field || accountIds.length === 0) {
     return map;
   }
-  const users = await UserModel.find({ [field]: { $in: accountIds } })
+  const users = await UserModel.find({
+    [field]: { $in: accountIds },
+    isDeleted: { $ne: true },
+  })
     .select({
       _id: 1,
+      name: 1,
+      email: 1,
+      "discordIdentity.id": 1,
       majsoulIdentity: 1,
       riichiCityIdentity: 1,
       tenhouIdentity: 1,
     })
     .lean<UserIdentities[]>()
     .exec();
+  const candidatesByAccountId = new Map<string, UserIdentities[]>();
   for (const user of users) {
     const accId = accountIdOf(platform, user);
     if (accId) {
-      map.set(accId, user._id);
+      const candidates = candidatesByAccountId.get(accId) ?? [];
+      candidates.push(user);
+      candidatesByAccountId.set(accId, candidates);
+    }
+  }
+  for (const [accId, candidates] of candidatesByAccountId) {
+    try {
+      const owner = selectExistingRosterUser(
+        candidates.map((candidate) => ({
+          document: candidate,
+          id: candidate._id.toString(),
+          name: candidate.name ?? accId,
+          isRegistered: Boolean(
+            candidate.discordIdentity?.id || candidate.email
+          ),
+        }))
+      )?.document;
+      if (owner) {
+        map.set(accId, owner._id);
+      }
+    } catch (error) {
+      if (!(error instanceof RosterUserRemapError)) {
+        throw error;
+      }
+      console.warn(
+        `[live-games] Ambiguous ${platform} identity ${accId}; leaving it unresolved.`
+      );
     }
   }
   return map;

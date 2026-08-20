@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import mongoose from "mongoose";
 
 const mocks = vi.hoisted(() => ({
   deleteMany: vi.fn(),
@@ -78,5 +79,43 @@ describe("syncLiveGames", () => {
       league: league._id,
       gameId: { $nin: ["watch-regular", "watch-finals"] },
     });
+  });
+
+  it("prefers a registered owner when a Tenhou identity has placeholders", async () => {
+    const placeholderId = new mongoose.Types.ObjectId();
+    const registeredId = new mongoose.Types.ObjectId();
+    mocks.findUsers.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        lean: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue([
+            {
+              _id: placeholderId,
+              name: "east",
+              tenhouIdentity: { name: "east" },
+            },
+            {
+              _id: registeredId,
+              name: "Registered East",
+              discordIdentity: { id: "discord-east" },
+              tenhouIdentity: { name: "east" },
+            },
+          ]),
+        }),
+      }),
+    });
+    const league = {
+      _id: "64b000000000000000000001",
+      name: "Cup",
+      platformConfig: {
+        platformName: Platform.TENHOU,
+        tournamentId: "primary",
+      },
+    } as unknown as League;
+
+    await syncLiveGames(league, {} as never);
+
+    expect(mocks.updateOne.mock.calls[0][1].$set.players[0].userId).toEqual(
+      registeredId
+    );
   });
 });
