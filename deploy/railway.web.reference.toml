@@ -25,8 +25,9 @@
 #     Builder        = Dockerfile
 #     Dockerfile Path = game-server/Dockerfile
 #     Start Command  = (blank → Dockerfile CMD: `tsx game-server/index.ts`)
-#     Watch Paths    = game-server/**, app/game/**, app/core/**, config.ts,
-#                      package.json, package-lock.json, tsconfig.json,
+#     Watch Paths    = GAME_SERVER_VERSION, game-server/**, app/game/**,
+#                      app/core/**, config.ts, package.json, package-lock.json,
+#                      tsconfig.json,
 #                      app/services/gamePortalAdapter.server.ts,
 #                      app/utils/jwt.server.ts, app/utils/dbConnection.server.ts
 #     Root Directory = /   (build context must be the repo root)

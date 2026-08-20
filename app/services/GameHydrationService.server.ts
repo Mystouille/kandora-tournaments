@@ -23,6 +23,11 @@ import { trackEvent } from "~/services/telemetry.server";
 import { emitLeagueUpdated } from "~/services/cacheInvalidation.server";
 import { linkPlayedGamesToTables } from "~/services/schedulingLink.server";
 import { resolveLeagueLobbies } from "~/services/leagueLobbies";
+import {
+  RosterUserRemapError,
+  selectExistingRosterUser,
+} from "~/services/rosterUserRemap";
+import { reconcileGameResultStanding } from "~/services/gameResultReconciliation";
 
 /**
  * Returns the effective roster for a team given the current phase.
@@ -607,16 +612,15 @@ async function hydrateGameRecord(
       const alreadyInResults = gameResults.some(
         (r) => r.userId?.toString() === uid
       );
-      if (!alreadyInResults) {
-        if (userData.score != null && userData.place != null) {
-          gameResults.push({
-            userId: user._id,
-            score: userData.score,
-            place: userData.place,
-            nbChombo: 0,
-          });
-          resultsPatched = true;
-        } else {
+      if (userData.score != null && userData.place != null) {
+        resultsPatched =
+          reconcileGameResultStanding(
+            gameResults,
+            user._id,
+            userData.score,
+            userData.place
+          ) || resultsPatched;
+      } else if (!alreadyInResults) {
           // Try summary as fallback
           const summaryPlayer = summary?.players.find(
             (p) => p.platformUserId === userData.userId
@@ -639,21 +643,12 @@ async function hydrateGameRecord(
             ).exec();
             return false;
           }
-        }
-      } else if (userData.score != null && userData.place != null) {
-        // Patch existing results that have placeholder scores (0)
-        const idx = gameResults.findIndex((r) => r.userId?.toString() === uid);
-        if (idx >= 0 && gameResults[idx].score === 0) {
-          gameResults[idx].score = userData.score;
-          gameResults[idx].place = userData.place;
-          resultsPatched = true;
-        }
       }
     }
     if (resultsPatched) {
       await GameModel.updateOne(
         { _id: game._id },
-        { results: gameResults, isValid: true }
+        { results: gameResults }
       ).exec();
     }
 
@@ -821,21 +816,51 @@ async function hydrateGameRecord(
 // ---------------------------------------------------------------------------
 
 async function resolveUser(platformUserId: string, platform: string) {
+  let identityFilter: Record<string, string>;
   switch (platform) {
     case "majsoul":
-      return UserModel.findOne({
+      identityFilter = {
         "majsoulIdentity.userId": platformUserId,
-      }).exec();
+      };
+      break;
     case "riichiCity":
-      return UserModel.findOne({
+      identityFilter = {
         "riichiCityIdentity.id": platformUserId,
-      }).exec();
+      };
+      break;
     case "tenhou":
-      return UserModel.findOne({
+      identityFilter = {
         "tenhouIdentity.name": platformUserId,
-      }).exec();
+      };
+      break;
     default:
       return null;
+  }
+  const candidates = await UserModel.find({
+    ...identityFilter,
+    isDeleted: { $ne: true },
+  }).exec();
+  try {
+    return (
+      selectExistingRosterUser(
+        candidates.map((candidate) => ({
+          document: candidate,
+          id: candidate._id.toString(),
+          name: candidate.name,
+          isRegistered: Boolean(
+            candidate.discordIdentity?.id || candidate.email
+          ),
+        }))
+      )?.document ?? null
+    );
+  } catch (error) {
+    if (!(error instanceof RosterUserRemapError)) {
+      throw error;
+    }
+    console.warn(
+      `[game-hydration] Ambiguous ${platform} identity ${platformUserId}; leaving it unresolved.`
+    );
+    return null;
   }
 }
 
