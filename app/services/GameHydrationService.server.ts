@@ -604,13 +604,20 @@ async function hydrateGameRecord(
     let gameResults: GameResult[] = (game.results ?? []) as GameResult[];
     let resultsPatched = false;
     for (const userData of recordData.byUserData) {
-      const user = await resolveUser(userData.userId, platform);
+      const { user, aliasUserIds } = await resolveUserIdentity(
+        userData.userId,
+        platform
+      );
       if (!user) {
         continue;
       }
       const uid = user._id.toString();
-      const alreadyInResults = gameResults.some(
-        (r) => r.userId?.toString() === uid
+      const matchingResultIds = new Set([
+        uid,
+        ...aliasUserIds.map((alias) => alias.toString()),
+      ]);
+      const alreadyInResults = gameResults.some((result) =>
+        matchingResultIds.has(result.userId?.toString())
       );
       if (userData.score != null && userData.place != null) {
         resultsPatched =
@@ -618,31 +625,32 @@ async function hydrateGameRecord(
             gameResults,
             user._id,
             userData.score,
-            userData.place
+            userData.place,
+            aliasUserIds
           ) || resultsPatched;
       } else if (!alreadyInResults) {
-          // Try summary as fallback
-          const summaryPlayer = summary?.players.find(
-            (p) => p.platformUserId === userData.userId
+        // Try summary as fallback
+        const summaryPlayer = summary?.players.find(
+          (p) => p.platformUserId === userData.userId
+        );
+        if (summaryPlayer && summaryPlayer.score !== 0) {
+          gameResults.push({
+            userId: user._id,
+            score: summaryPlayer.score,
+            place: summaryPlayer.place,
+            nbChombo: 0,
+          });
+          resultsPatched = true;
+        } else {
+          console.warn(
+            `GameRecord for ${game.gameId}: player ${userData.userId} missing scores, needs re-fetch`
           );
-          if (summaryPlayer && summaryPlayer.score !== 0) {
-            gameResults.push({
-              userId: user._id,
-              score: summaryPlayer.score,
-              place: summaryPlayer.place,
-              nbChombo: 0,
-            });
-            resultsPatched = true;
-          } else {
-            console.warn(
-              `GameRecord for ${game.gameId}: player ${userData.userId} missing scores, needs re-fetch`
-            );
-            await GameModel.updateOne(
-              { _id: game._id },
-              { refetchGameRecord: true }
-            ).exec();
-            return false;
-          }
+          await GameModel.updateOne(
+            { _id: game._id },
+            { refetchGameRecord: true }
+          ).exec();
+          return false;
+        }
       }
     }
     if (resultsPatched) {
@@ -816,6 +824,10 @@ async function hydrateGameRecord(
 // ---------------------------------------------------------------------------
 
 async function resolveUser(platformUserId: string, platform: string) {
+  return (await resolveUserIdentity(platformUserId, platform)).user;
+}
+
+async function resolveUserIdentity(platformUserId: string, platform: string) {
   let identityFilter: Record<string, string>;
   switch (platform) {
     case "majsoul":
@@ -834,14 +846,14 @@ async function resolveUser(platformUserId: string, platform: string) {
       };
       break;
     default:
-      return null;
+      return { user: null, aliasUserIds: [] };
   }
   const candidates = await UserModel.find({
     ...identityFilter,
     isDeleted: { $ne: true },
   }).exec();
   try {
-    return (
+    const owner =
       selectExistingRosterUser(
         candidates.map((candidate) => ({
           document: candidate,
@@ -851,8 +863,13 @@ async function resolveUser(platformUserId: string, platform: string) {
             candidate.discordIdentity?.id || candidate.email
           ),
         }))
-      )?.document ?? null
-    );
+      )?.document ?? null;
+    return {
+      user: owner,
+      aliasUserIds: candidates
+        .filter((candidate) => !owner || !candidate._id.equals(owner._id))
+        .map((candidate) => candidate._id),
+    };
   } catch (error) {
     if (!(error instanceof RosterUserRemapError)) {
       throw error;
@@ -860,7 +877,7 @@ async function resolveUser(platformUserId: string, platform: string) {
     console.warn(
       `[game-hydration] Ambiguous ${platform} identity ${platformUserId}; leaving it unresolved.`
     );
-    return null;
+    return { user: null, aliasUserIds: [] };
   }
 }
 

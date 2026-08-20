@@ -26,4 +26,22 @@ describe("reconcileGameResultStanding", () => {
 
     expect(reconcileGameResultStanding(results, userId, 27800, 1)).toBe(false);
   });
+
+  it("replaces a placeholder alias and removes duplicate canonical results", () => {
+    const placeholderId = new mongoose.Types.ObjectId();
+    const canonicalId = new mongoose.Types.ObjectId();
+    const results: GameResult[] = [
+      { userId: placeholderId, score: -58.9, place: 4, nbChombo: 0 },
+      { userId: canonicalId, score: 1100, place: 4, nbChombo: 0 },
+    ];
+
+    expect(
+      reconcileGameResultStanding(results, canonicalId, 1100, 4, [
+        placeholderId,
+      ])
+    ).toBe(true);
+    expect(results).toEqual([
+      { userId: canonicalId, score: 1100, place: 4, nbChombo: 0 },
+    ]);
+  });
 });
