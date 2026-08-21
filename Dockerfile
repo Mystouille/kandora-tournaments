@@ -52,6 +52,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends libcairo2 libpa
 COPY ./package.json package-lock.json /app/
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/build /app/build
+COPY ./app/bot/resources/tiles/base/ /app/resources/tiles/base/
+RUN mkdir -p /tmp/tiles-generated
 # `react-router-serve`'s .bin symlink isn't created under `npm ci --omit=dev`:
 # @react-router/serve is a peerOptional of the dev-only @react-router/dev, so npm
 # flags it "peer" and skips bin-linking when dev deps are omitted. Invoke the bin
