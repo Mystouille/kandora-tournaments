@@ -8,7 +8,6 @@
   "exclude": [
     "app/core/majsoul/**/*",
     "app/bot/**/*",
-    "app/game/routes/lobby.tsx",
     "app/game/routes/match.tsx"
   ],
   "compilerOptions": {
