@@ -5,20 +5,6 @@ export const stringsFr: StringResources = {
     common: {
       shantenGoodWaitInfo: "\\*:donne un tenpai de 5+ tuiles",
     },
-    admin: {
-      name: "admin",
-      desc: "commandes admin",
-      checkNanikiru: {
-        name: "checknanikiru",
-        desc: "affiche un problème nanikiru par sa source pour vérifier son contenu",
-        params: {
-          source: {
-            name: "source",
-            desc: "L'identifiant source du problème (ex: 300-Q-226)",
-          },
-        },
-      },
-    },
     quiz: {
       name: "quiz",
       common: {
@@ -118,21 +104,6 @@ export const stringsFr: StringResources = {
       update: {
         name: "update",
         desc: "affiche/modifie vos informations",
-      },
-      delete: {
-        name: "delete",
-        desc: "supprime vos informations",
-        reply: {
-          noDataToDelete: "L'utilisateur n'a pas de données à supprimer.",
-          modalTitle: "Confirmer la suppression des informations",
-          confirmationMessage:
-            "### ⚡💀Êtes-vous sûr de vouloir supprimer vos informations ? Cette action ne peut pas être annulée. Toutes vos données seront supprimées de la base de données de Kandora, y compris votre historique de jeux et de tournois.\nLes jeux enregistrés seront toujours conservés mais contiendront `anonyme` à la place de votre nom d'utilisateur.",
-          usernameLabel: "Entrez votre nom d'utilisateur Discord : {0}",
-          usernamePlaceholder: "Votre nom d'utilisateur Discord",
-          userNotFound: "Utilisateur non trouvé.",
-          successMessage:
-            "Vos informations ont été supprimées. Tout ce qui était lié à votre identité a disparu, même si certaines données de jeu anonymes peuvent subsister.",
-        },
       },
     },
     league: {

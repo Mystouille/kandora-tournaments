@@ -9,6 +9,10 @@ import { localize } from "../../../localizationUtils";
 import { AppEmojiName } from "../../../resources/emojis/AppEmojiCollection";
 import { discordBotConfig } from "config";
 import { stringFormat } from "../../../stringUtils";
+import {
+  logInteractionError,
+  safeInteractionErrorMessage,
+} from "../../../interactionError";
 
 export type QuizQuestion = {
   questionText: string | undefined;
@@ -229,7 +233,9 @@ export abstract class QuizHandler {
       time: this.timeout > 0 ? this.timeout * 1_000 : undefined,
     });
     collector.on("end", (_, reason: StopReason) => {
-      this.onQuestionEnd(message, reason);
+      void this.onQuestionEnd(message, reason).catch((error) =>
+        this.reportLifecycleError(error)
+      );
     });
     collector.on(ChangeType.Collect, (reaction, user) => {
       if (
@@ -286,39 +292,56 @@ export abstract class QuizHandler {
     if (this.currentQuestion.questionText !== undefined) {
       sb.push(this.currentQuestion.questionText);
     }
-    message.edit({ content: sb.join("\n") });
-    message.reactions.removeAll();
-    this.replyWithAnswer(message, reason).then(async (message) => {
-      if (this.nbQuestionsAsked >= this.nbTotalQuestion) {
-        this.endQuiz();
-        return;
-      }
-      if (this.pauseBetweenQuestion || this.quizMode === QuizMode.Explore) {
-        await message.react(AppEmojiName.Eyes);
-        await message.edit({
-          content:
-            message.content +
-            "\n" +
-            localize(this.locale, commonStrings.continueQuizPrompt),
-        });
-        const collector = message.createReactionCollector({
-          time: 180_000, // 3min
-        });
-        collector.on("end", () => {
-          this.postNewQuestion();
-        });
-        collector.on(ChangeType.Collect, (reaction, user) => {
-          if (
-            user.id !== discordBotConfig()?.DISCORD_CLIENT_ID &&
-            reaction.emoji.name === AppEmojiName.Eyes
-          ) {
-            collector.stop();
-          }
-        });
-      } else {
-        this.postNewQuestion();
-      }
-    });
+    await Promise.all([
+      message.edit({ content: sb.join("\n") }),
+      message.reactions.removeAll(),
+    ]);
+    const answerMessage = await this.replyWithAnswer(message, reason);
+    if (this.nbQuestionsAsked >= this.nbTotalQuestion) {
+      this.endQuiz();
+      return;
+    }
+    if (this.pauseBetweenQuestion || this.quizMode === QuizMode.Explore) {
+      await answerMessage.react(AppEmojiName.Eyes);
+      await answerMessage.edit({
+        content:
+          answerMessage.content +
+          "\n" +
+          localize(this.locale, commonStrings.continueQuizPrompt),
+      });
+      const collector = answerMessage.createReactionCollector({
+        time: 180_000, // 3min
+      });
+      collector.on("end", () => {
+        void this.postNewQuestion().catch((error) =>
+          this.reportLifecycleError(error)
+        );
+      });
+      collector.on(ChangeType.Collect, (reaction, user) => {
+        if (
+          user.id !== discordBotConfig()?.DISCORD_CLIENT_ID &&
+          reaction.emoji.name === AppEmojiName.Eyes
+        ) {
+          collector.stop();
+        }
+      });
+    } else {
+      await this.postNewQuestion();
+    }
+  }
+
+  private async reportLifecycleError(error: unknown): Promise<void> {
+    const reference = logInteractionError("quiz lifecycle", error);
+    try {
+      await this.thread.send({
+        content: `The quiz stopped unexpectedly. ${safeInteractionErrorMessage(reference)}`,
+      });
+    } catch (reportError) {
+      logInteractionError(
+        `quiz lifecycle report ${reference}`,
+        reportError
+      );
+    }
   }
 
   private replyWithAnswer(message: Message<true>, reason: StopReason) {

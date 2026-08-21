@@ -5,20 +5,6 @@ export const stringsEn: StringResources = {
     common: {
       shantenGoodWaitInfo: "\\*:yields a 5+ tile tenpai",
     },
-    admin: {
-      name: "admin",
-      desc: "admin commands",
-      checkNanikiru: {
-        name: "checknanikiru",
-        desc: "display a nanikiru problem by its source to check its content",
-        params: {
-          source: {
-            name: "source",
-            desc: "The source identifier of the problem (e.g. 300-Q-226)",
-          },
-        },
-      },
-    },
     quiz: {
       name: "quiz",
       common: {
@@ -117,21 +103,6 @@ export const stringsEn: StringResources = {
       update: {
         name: "update",
         desc: "display/modify your information",
-      },
-      delete: {
-        name: "delete",
-        desc: "delete your information",
-        reply: {
-          noDataToDelete: "User has no data to delete.",
-          modalTitle: "Confirm info deletion",
-          confirmationMessage:
-            "### ⚡💀Are you sure you want to delete your information? This action cannot be undone. All your data will be removed from Kandora's database, including your game and tournament history.\nThe recorded games will still be preserved but will contain `anonymous` instead of your username.",
-          usernameLabel: "Enter your discord username: {0}",
-          usernamePlaceholder: "Your discord username",
-          userNotFound: "User not found.",
-          successMessage:
-            "Your information has been deleted. Everything that is linked to your identity is gone, eventhough some anonymous game data may remain.",
-        },
       },
     },
     league: {

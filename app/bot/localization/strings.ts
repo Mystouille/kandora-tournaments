@@ -12,20 +12,6 @@ export const strings = {
     common: {
       shantenGoodWaitInfo: "commands.common.shantenGoodWaitInfo",
     },
-    admin: {
-      name: "commands.admin.name",
-      desc: "commands.admin.desc",
-      checkNanikiru: {
-        name: "commands.admin.checkNanikiru.name",
-        desc: "commands.admin.checkNanikiru.desc",
-        params: {
-          source: {
-            name: "commands.admin.checkNanikiru.params.source.name",
-            desc: "commands.admin.checkNanikiru.params.source.desc",
-          },
-        },
-      },
-    },
     quiz: {
       name: "commands.quiz.name",
       common: {
@@ -129,21 +115,6 @@ export const strings = {
       update: {
         name: "commands.myinfo.update.name",
         desc: "commands.myinfo.update.desc",
-      },
-      delete: {
-        name: "commands.myinfo.delete.name",
-        desc: "commands.myinfo.delete.desc",
-        reply: {
-          noDataToDelete: "commands.myinfo.delete.reply.noDataToDelete",
-          modalTitle: "commands.myinfo.delete.reply.modalTitle",
-          confirmationMessage:
-            "commands.myinfo.delete.reply.confirmationMessage",
-          usernameLabel: "commands.myinfo.delete.reply.usernameLabel",
-          usernamePlaceholder:
-            "commands.myinfo.delete.reply.usernamePlaceholder",
-          userNotFound: "commands.myinfo.delete.reply.userNotFound",
-          successMessage: "commands.myinfo.delete.reply.successMessage",
-        },
       },
     },
     league: {

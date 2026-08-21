@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { Client, Events, GatewayIntentBits } from "discord.js";
 import { discordBotConfig } from "config";
 import { commands } from "./commandUtils";
 import { modals, userContextMenus } from "./interactionUtils";
@@ -13,6 +13,7 @@ import {
   executeOngoingGameButton,
   executeOngoingGameConfirmModal,
 } from "./commands/admin/ongoingGameInteractions";
+import { reportInteractionError } from "./interactionError";
 
 let client: Client | null = null;
 
@@ -59,19 +60,7 @@ export async function initDiscordBot(): Promise<void> {
         await modals[customId as keyof typeof modals].execute(interaction);
       }
     } catch (error) {
-      console.error(error);
-      const errorMsg = `There was an error while executing this command! \n ${error}`;
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else {
-        await interaction.reply({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+      await reportInteractionError(interaction, "modal", error);
     }
   });
 
@@ -87,19 +76,7 @@ export async function initDiscordBot(): Promise<void> {
     try {
       await executeOngoingGameButton(interaction);
     } catch (error) {
-      console.error(error);
-      const errorMsg = `There was an error handling this button! \n ${error}`;
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else {
-        await interaction.reply({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+      await reportInteractionError(interaction, "button", error);
     }
   });
 
@@ -116,19 +93,7 @@ export async function initDiscordBot(): Promise<void> {
         ].execute(interaction);
       }
     } catch (error) {
-      console.error(error);
-      const errorMsg = `There was an error while executing this command! \n ${error}`;
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else {
-        await interaction.reply({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+      await reportInteractionError(interaction, "user context menu", error);
     }
   });
 
@@ -145,19 +110,7 @@ export async function initDiscordBot(): Promise<void> {
         );
       }
     } catch (error) {
-      console.error(error);
-      const errorMsg = `There was an error while executing this command! \n ${error}`;
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else {
-        await interaction.reply({
-          content: errorMsg,
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+      await reportInteractionError(interaction, "slash command", error);
     }
   });
 

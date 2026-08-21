@@ -11,6 +11,10 @@ import { executeStartNext } from "./startNext";
 import { executeLaunch } from "./launch";
 import { executeCancelNext } from "./cancelNext";
 import { executeSub } from "./sub";
+import {
+  logInteractionError,
+  safeInteractionErrorMessage,
+} from "~/bot/interactionError";
 
 const startNextSubCommandName =
   invariantResources.commands.league.startnext.name;
@@ -60,56 +64,60 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     try {
       await executeStartNext(interaction);
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : localize(
-              interaction.locale,
-              strings.commands.league.startnext.reply.unexpectedError
-            );
-      await interaction.editReply(`❌ ${message}`);
+      await replyUnexpectedError(
+        interaction,
+        "league startnext",
+        strings.commands.league.startnext.reply.unexpectedError,
+        err
+      );
     }
   } else if (interaction.options.getSubcommand() === launchSubCommandName) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       await executeLaunch(interaction);
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : localize(
-              interaction.locale,
-              strings.commands.league.launch.reply.unexpectedError
-            );
-      await interaction.editReply(`❌ ${message}`);
+      await replyUnexpectedError(
+        interaction,
+        "league launch",
+        strings.commands.league.launch.reply.unexpectedError,
+        err
+      );
     }
   } else if (interaction.options.getSubcommand() === cancelNextSubCommandName) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       await executeCancelNext(interaction);
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : localize(
-              interaction.locale,
-              strings.commands.league.cancelnext.reply.unexpectedError
-            );
-      await interaction.editReply(`❌ ${message}`);
+      await replyUnexpectedError(
+        interaction,
+        "league cancelnext",
+        strings.commands.league.cancelnext.reply.unexpectedError,
+        err
+      );
     }
   } else if (interaction.options.getSubcommand() === subSubCommandName) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       await executeSub(interaction);
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : localize(
-              interaction.locale,
-              strings.commands.league.sub.reply.unexpectedError
-            );
-      await interaction.editReply(`❌ ${message}`);
+      await replyUnexpectedError(
+        interaction,
+        "league sub",
+        strings.commands.league.sub.reply.unexpectedError,
+        err
+      );
     }
   }
+}
+
+async function replyUnexpectedError(
+  interaction: ChatInputCommandInteraction,
+  context: string,
+  localizedMessage: string,
+  error: unknown
+): Promise<void> {
+  const reference = logInteractionError(context, error);
+  await interaction.editReply(
+    `❌ ${localize(interaction.locale, localizedMessage)} ${safeInteractionErrorMessage(reference)}`
+  );
 }

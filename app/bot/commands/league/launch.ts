@@ -22,6 +22,10 @@ import { createConnectorForLeague } from "~/services/connectors/createConnectorF
 import { strings } from "~/bot/localization/strings";
 import { localize } from "~/bot/localizationUtils";
 import { stringFormat } from "~/bot/stringUtils";
+import {
+  logInteractionError,
+  safeInteractionErrorMessage,
+} from "~/bot/interactionError";
 
 const reply = strings.commands.league.launch.reply;
 
@@ -288,10 +292,9 @@ export async function executeLaunch(
         `[launch] ${table.stageName.toUpperCase()} launched (${table.playerAccountIds.join(", ")})`
       );
     } catch (error) {
-      const reason =
-        error instanceof Error ? error.message : String(error ?? "unknown");
-      console.error(
-        `[launch] ${table.stageName.toUpperCase()} failed (${table.playerAccountIds.join(", ")}): ${reason}`
+      const reference = logInteractionError(
+        `league launch ${table.stageName} (${table.playerAccountIds.join(", ")})`,
+        error
       );
       launchFailures.push(
         stringFormat(
@@ -299,7 +302,7 @@ export async function executeLaunch(
           reply.tableFailFormat,
           table.stageName.toUpperCase(),
           table.playerAccountIds.join(", "),
-          reason
+          `${localize(locale, reply.unexpectedError)} ${safeInteractionErrorMessage(reference)}`
         )
       );
     }

@@ -20,6 +20,10 @@ import {
   parseOngoingGameCustomId,
   type OngoingGameAction,
 } from "~/services/ongoingGameMessageRenderer";
+import {
+  logInteractionError,
+  safeInteractionErrorMessage,
+} from "~/bot/interactionError";
 
 const ACTION_TITLES: Record<OngoingGameAction, string> = {
   pause: "Pause game",
@@ -139,7 +143,7 @@ export async function executeOngoingGameConfirmModal(
     `⏳ ${action} in progress…`
   );
 
-  let actionError: unknown;
+  let actionErrorReference: string | null = null;
   try {
     switch (action) {
       case "pause":
@@ -152,12 +156,14 @@ export async function executeOngoingGameConfirmModal(
         await connector.terminateGame!(gameId, tournamentId);
         break;
       default:
-        actionError = new Error(`Unknown action: ${action}`);
+        actionErrorReference = logInteractionError(
+          "ongoing game action",
+          new Error(`Unknown action: ${action}`)
+        );
     }
   } catch (err) {
-    actionError = err;
-    console.error(
-      `Ongoing-game ${action} failed for league ${league.name}, game ${gameId}:`,
+    actionErrorReference = logInteractionError(
+      `ongoing game ${action} for league ${league.name}, game ${gameId}`,
       err
     );
   }
@@ -170,11 +176,9 @@ export async function executeOngoingGameConfirmModal(
     console.error(`Ongoing-game ${action} refresh failed:`, err);
   }
 
-  if (actionError) {
+  if (actionErrorReference) {
     await interaction.editReply(
-      `❌ ${action} failed: ${
-        actionError instanceof Error ? actionError.message : String(actionError)
-      }`
+      `❌ ${action} failed. ${safeInteractionErrorMessage(actionErrorReference)}`
     );
     return;
   }

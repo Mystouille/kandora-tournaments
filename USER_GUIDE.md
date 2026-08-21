@@ -417,13 +417,6 @@ Each quiz runs in its own thread.
 **Modes:** **Explore** (no timer — react 👀 to reveal the answer), **First** (only
 the first correct answer scores), **Race** (timed, default 30 s per question).
 
-### 10.6 `/admin checknanikiru` — maintenance
-
-Admin/QA helper that DMs you a specific nanikiru problem by its **`source`** id
-(e.g. `300-Q-226`) to check its content.
-
----
-
 ## 11. Quick reference
 
 | Task              | Page                                   | Who                 |
@@ -442,8 +435,7 @@ Admin/QA helper that DMs you a specific nanikiru problem by its **`source`** id
 | Command                                               | Purpose                                         | Who          |
 | ----------------------------------------------------- | ----------------------------------------------- | ------------ |
 | `/league startnext` · `launch` · `cancelnext` · `sub` | Run the finals/bracket rounds and substitutions | Server admin |
-| `/myinfo update` · `delete`                           | Set your Tenhou name / delete your data         | Anyone       |
+| `/myinfo update`                                      | Set your Tenhou name                            | Anyone       |
 | `[Kandora] Mahjong Info`                              | View a member's linked platform IDs             | Anyone       |
 | `/mjg nanikiru`                                       | Hand shanten/ukeire analysis                    | Anyone       |
 | `/quiz nanikiru` · `chinitsu`                         | Practice quizzes                                | Anyone       |
-| `/admin checknanikiru`                                | Inspect a quiz problem (QA)                     | Anyone       |
