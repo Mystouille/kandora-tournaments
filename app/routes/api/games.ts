@@ -10,8 +10,8 @@ import {
 } from "../../core/models/tournament/Game";
 import {
   LeagueModel,
-  Ruleset,
   type League,
+  type Ruleset,
 } from "../../core/models/tournament/League";
 import { TeamModel, type Team } from "../../core/models/tournament/Team";
 import { UserModel, type User } from "../../core/models/shared/User";
