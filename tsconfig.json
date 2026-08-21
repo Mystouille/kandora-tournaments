@@ -7,8 +7,7 @@
   ],
   "exclude": [
     "app/core/majsoul/**/*",
-    "app/bot/**/*",
-    "app/game/routes/match.tsx"
+    "app/bot/**/*"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],

@@ -49,6 +49,7 @@ export default [
   // Game lobby, replay, and live viewers
   // ---------------------------------------------------------------------
   route("/lobby", "routes/lobby.tsx"),
+  route("/game/:matchId", "routes/game-match.tsx"),
 
   // Archived replays load from ReplayLog; live viewing starts/reuses a relay
   // and renders the shared spectator while retaining the public watch-id URL.
