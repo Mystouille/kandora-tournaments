@@ -119,6 +119,10 @@ export class NanikiruCollections {
     }
   }
 
+  public isConfigured(): boolean {
+    return sheetsCfg !== null;
+  }
+
   private resetCollections() {
     this.collections = {
       uzaku300Collection: { problems: [], remainingProblems: [] },

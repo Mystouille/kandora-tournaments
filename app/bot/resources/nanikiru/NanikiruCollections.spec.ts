@@ -127,6 +127,29 @@ describe("NanikiruCollections", () => {
     ).resolves.toBeNull();
   });
 
+  it("classifies 301 problems into the 301 collection", async () => {
+    sheetMock.getRows.mockResolvedValue([
+      {
+        rowNumber: 2,
+        get: (key: string) =>
+          ({
+            hand: "123m456p789s1122z",
+            answer: "1z",
+            source: "301-Q-001",
+          })[key],
+      },
+    ]);
+
+    const collections = NanikiruCollections.instance;
+    await collections.waitUntilReady();
+
+    expect(collections.isConfigured()).toBe(true);
+    expect(collections.getProblemCount(NanikiruType.Uzaku301)).toBe(1);
+    expect(collections.getNextProblem(NanikiruType.Uzaku301)?.source).toBe(
+      "301-Q-001"
+    );
+  });
+
   it("rejects malformed and over-limit KIN sources", () => {
     expect(isNanikiruProblemPublic("KIN-Q-080")).toBe(true);
     expect(isNanikiruProblemPublic("KIN-Q-081")).toBe(false);

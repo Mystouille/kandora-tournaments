@@ -14,6 +14,7 @@ import { stringFormat } from "../../stringUtils";
 import { ChinitsuQuizHandler } from "./handlers/ChinitsuQuizHandler";
 import { localize } from "../../localizationUtils";
 import { commonOptions } from "./quizOptions";
+import { startQuizInThread } from "./quizThread";
 
 export const chinitsuOptions = {
   suit: strings.commands.quiz.chinitsu.params.suit,
@@ -105,7 +106,7 @@ export async function executeQuizChinitsu(itr: ChatInputCommandInteraction) {
       suit,
       difficulty
     );
-    await quizHandler.startQuiz();
+    await startQuizInThread(thread, () => quizHandler.startQuiz());
     return;
   } else {
     await itr.editReply({ content: "cant create a thread here!" });

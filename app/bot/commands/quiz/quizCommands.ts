@@ -7,7 +7,11 @@ import { NanikiruType } from "../../resources/nanikiru/NanikiruCollections";
 import { QuizMode } from "./handlers/QuizHandler";
 import { chinitsuOptions, executeQuizChinitsu } from "./chinitsu";
 import { DifficultyOption, SuitOption } from "../../mahjong/ChinitsuGenerator";
-import { commonOptions } from "./quizOptions";
+import {
+  commonOptions,
+  MAX_QUIZ_ROUNDS,
+  MAX_QUIZ_TIMEOUT_SECONDS,
+} from "./quizOptions";
 
 const nanikiruSubCommandName = invariantResources.commands.quiz.nanikiru.name;
 const chinitsuSubCommandName = invariantResources.commands.quiz.chinitsu.name;
@@ -21,7 +25,10 @@ export const data: any = new SlashCommandBuilder()
         buildOptionNameAndDescription(
           option,
           commonOptions.nbrounds
-        ).setRequired(true)
+        )
+          .setMinValue(1)
+          .setMaxValue(MAX_QUIZ_ROUNDS)
+          .setRequired(true)
       )
       .addStringOption((option) =>
         buildOptionNameAndDescription(option, commonOptions.mode)
@@ -42,6 +49,12 @@ export const data: any = new SlashCommandBuilder()
               value: QuizMode.Race,
             },
           ])
+          .setRequired(false)
+      )
+      .addIntegerOption((option) =>
+        buildOptionNameAndDescription(option, commonOptions.timeout)
+          .setMinValue(1)
+          .setMaxValue(MAX_QUIZ_TIMEOUT_SECONDS)
           .setRequired(false)
       )
       .addStringOption((option) =>
@@ -72,7 +85,10 @@ export const data: any = new SlashCommandBuilder()
         buildOptionNameAndDescription(
           option,
           commonOptions.nbrounds
-        ).setRequired(true)
+        )
+          .setMinValue(1)
+          .setMaxValue(MAX_QUIZ_ROUNDS)
+          .setRequired(true)
       )
       .addStringOption((option) =>
         buildOptionNameAndDescription(option, commonOptions.mode)
@@ -93,6 +109,12 @@ export const data: any = new SlashCommandBuilder()
               value: QuizMode.Race,
             },
           ])
+          .setRequired(false)
+      )
+      .addIntegerOption((option) =>
+        buildOptionNameAndDescription(option, commonOptions.timeout)
+          .setMinValue(1)
+          .setMaxValue(MAX_QUIZ_TIMEOUT_SECONDS)
           .setRequired(false)
       )
       .addIntegerOption((option) =>

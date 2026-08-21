@@ -65,6 +65,10 @@ export const stringsEn: StringResources = {
           threadFirstMessageFormat: "A series of {0} nanikiru is starting!",
           defaultOpeningMessage: "Find the best discard.",
           answerLabel: "Answer: ",
+          notConfigured:
+            "The Nanikiru quiz is unavailable because Google Sheets is not configured.",
+          noProblemsFormat:
+            'No Nanikiru problems are available for series "{0}".',
         },
       },
       chinitsu: {

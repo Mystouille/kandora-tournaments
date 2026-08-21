@@ -76,6 +76,9 @@ export const strings = {
           defaultOpeningMessage:
             "commands.quiz.nanikiru.reply.defaultOpeningMessage",
           answerLabel: "commands.quiz.nanikiru.reply.answerLabel",
+          notConfigured: "commands.quiz.nanikiru.reply.notConfigured",
+          noProblemsFormat:
+            "commands.quiz.nanikiru.reply.noProblemsFormat",
         },
       },
       chinitsu: {

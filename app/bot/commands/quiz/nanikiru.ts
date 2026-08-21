@@ -9,11 +9,15 @@ import {
   strings,
 } from "../../localization/strings";
 import { localize } from "../../localizationUtils";
-import { NanikiruType } from "../../resources/nanikiru/NanikiruCollections";
+import {
+  NanikiruCollections,
+  NanikiruType,
+} from "../../resources/nanikiru/NanikiruCollections";
 import { stringFormat } from "../../stringUtils";
 import { QuizMode } from "./handlers/QuizHandler";
 import { NanikiruQuizHandler } from "./handlers/NanikiruQuizHandler";
 import { commonOptions } from "./quizOptions";
+import { startQuizInThread } from "./quizThread";
 
 export const nanikiruOptions = {
   series: strings.commands.quiz.nanikiru.params.series,
@@ -51,6 +55,22 @@ export async function executeQuizNanikiru(itr: ChatInputCommandInteraction) {
           ? 0
           : 30
         : timeoutParam;
+    const collections = NanikiruCollections.instance;
+    await collections.waitUntilReady();
+    if (collections.getProblemCount(series) === 0) {
+      const content = collections.isConfigured()
+        ? stringFormat(
+            itr.locale,
+            strings.commands.quiz.nanikiru.reply.noProblemsFormat,
+            series
+          )
+        : localize(
+            itr.locale,
+            strings.commands.quiz.nanikiru.reply.notConfigured
+          );
+      await itr.editReply({ content });
+      return;
+    }
 
     const currentDate = new Date().toLocaleDateString(itr.locale, {
       month: "narrow",
@@ -97,7 +117,7 @@ export async function executeQuizNanikiru(itr: ChatInputCommandInteraction) {
       nbRounds,
       series
     );
-    await quizHandler.startQuiz();
+    await startQuizInThread(thread, () => quizHandler.startQuiz());
     return;
   } else {
     await itr.editReply({ content: "cant create a thread here!" });
