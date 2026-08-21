@@ -36,7 +36,7 @@ export type HandToDisplay = {
 /*
  * Similar to Tile34 but split the array by suit
  * eg: [[...][1,0,2,...]] represents a hand wwith ..., 1*1p, 0*2p, 2*3p, ... => meaning the hand is [...] + 1p3p3p + [...]
- * Used by the syanten module
+ * Used by shanten calculators that consume a 9/9/9/7 count matrix.
  * NO RED FIVE
  */
 type NbTile = 0 | 1 | 2 | 3 | 4;

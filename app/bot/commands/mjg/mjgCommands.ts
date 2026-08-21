@@ -85,8 +85,7 @@ export const data: any = new SlashCommandBuilder()
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (interaction.options.getSubcommand() === nanikiruSubCommandName) {
-    interaction.deferReply({}).then(async () => {
-      await executeNanikiru(interaction);
-    });
+    await interaction.deferReply({});
+    await executeNanikiru(interaction);
   }
 }

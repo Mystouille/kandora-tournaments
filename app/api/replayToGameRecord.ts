@@ -1,6 +1,5 @@
-import syanten from "syanten";
-import { handToSyantenFormat } from "~/api/majsoul/handToSyantenFormat";
 import type { GameEvent } from "~/game/protocol/messages";
+import { shanten } from "~/game/rules/shanten";
 import {
   type GameRecordData,
   getNewRoundEndEvent,
@@ -120,9 +119,7 @@ export function buildGameRecordFromReplay(
                 // dealer's platform hand includes a 14th tile (their first
                 // draw); slicing to 13 excludes it so every seat is scored on
                 // its true starting hand, never the post-draw 14-tile hand.
-                state[s].haipaiShanten = syanten(
-                  handToSyantenFormat(hand.slice(0, 13))
-                );
+                state[s].haipaiShanten = shanten(hand.slice(0, 13));
               } catch {
                 state[s].haipaiShanten = -2;
               }

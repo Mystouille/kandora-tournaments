@@ -1,7 +1,7 @@
 import { fromTile9997ToStr } from "./handConverter";
-import * as shantenCalc from "syanten";
 import { makeNewTile997, type Suit997 } from "./handTypes";
 import { SuitOption } from "./ChinitsuGenerator";
+import { shantenFromTileMatrix } from "./shantenAdapter";
 
 export { SuitOption };
 
@@ -102,7 +102,7 @@ function generateIishantenChinitsu(suit: SuitOption): {
 
     const fullHand = makeNewTile997();
     fullHand[suit.valueOf()] = hand;
-    const shanten = shantenCalc.syantenAll(fullHand);
+    const shanten = shantenFromTileMatrix(fullHand);
 
     if (shanten !== 1) {
       continue;
@@ -129,7 +129,7 @@ function generateIishantenChinitsu(suit: SuitOption): {
         }
         hand[draw]++;
         fullHand[suit.valueOf()] = hand;
-        const newShanten = shantenCalc.syantenAll(fullHand);
+        const newShanten = shantenFromTileMatrix(fullHand);
         if (newShanten === 0) {
           types++;
           total += 4 - (hand[draw] - 1); // tiles remaining in the wall (excluding those in hand before draw)
@@ -194,7 +194,7 @@ function generateTenpaiChinitsu(suit: SuitOption): {
 
     const fullHand = makeNewTile997();
     fullHand[suit.valueOf()] = hand;
-    const shanten = shantenCalc.syantenAll(fullHand);
+    const shanten = shantenFromTileMatrix(fullHand);
 
     if (shanten !== 0) {
       continue;
@@ -210,7 +210,7 @@ function generateTenpaiChinitsu(suit: SuitOption): {
       hand[d]--;
       fullHand[suit.valueOf()] = hand;
 
-      const shantenAfterDiscard = shantenCalc.syantenAll(fullHand);
+      const shantenAfterDiscard = shantenFromTileMatrix(fullHand);
       if (shantenAfterDiscard !== 0) {
         // Discard breaks tenpai — skip
         hand[d]++;
@@ -228,7 +228,7 @@ function generateTenpaiChinitsu(suit: SuitOption): {
         }
         hand[draw]++;
         fullHand[suit.valueOf()] = hand;
-        const newShanten = shantenCalc.syantenAll(fullHand);
+        const newShanten = shantenFromTileMatrix(fullHand);
         if (newShanten === -1) {
           types++;
           total += 4 - (hand[draw] - 1);

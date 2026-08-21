@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import syanten from "syanten";
 import type { GameEvent } from "~/game/protocol/messages";
-import { handToSyantenFormat } from "~/api/majsoul/handToSyantenFormat";
+import { shanten } from "~/game/rules/shanten";
 import { buildGameRecordFromReplay } from "./replayToGameRecord";
 
 const seatToUserId = ["uA", "uB", "uC", "uD"];
@@ -235,11 +234,10 @@ describe("buildGameRecordFromReplay", () => {
       { type: "hand_end", reason: "exhaustive_draw", delta: [0, 0, 0, 0] },
     ]);
 
-    const expected13 = syanten(handToSyantenFormat(haipai13));
-    const expected14 = syanten(handToSyantenFormat(dealerHand14));
     // Sanity: including the first draw really would change the shanten.
-    expect(expected13).not.toBe(expected14);
+    expect(shanten(haipai13)).toBe(0);
+    expect(shanten(dealerHand14)).toBe(-1);
     // The projector must report the 13-tile haipai shanten (draw excluded).
-    expect(rounds(rec, 0)[0].haipaiShanten).toBe(expected13);
+    expect(rounds(rec, 0)[0].haipaiShanten).toBe(0);
   });
 });

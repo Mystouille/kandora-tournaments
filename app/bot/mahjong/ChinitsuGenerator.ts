@@ -1,8 +1,8 @@
 import { fromTile9997ToStr } from "./handConverter";
 
-import * as shantenCalc from "syanten";
 import { makeNewTile997, type Suit997 } from "./handTypes";
 import { checkFileExists } from "./imageUtils";
+import { shantenFromTileMatrix } from "./shantenAdapter";
 
 export enum SuitOption {
   Manzu = 0,
@@ -78,13 +78,13 @@ function getRandomChinitsuTenpai(suit: SuitOption, nbMinWaits: number) {
     }
     const fullHand = makeNewTile997();
     fullHand[suit.valueOf()] = hand;
-    shanten = shantenCalc.syantenAll(fullHand);
+    shanten = shantenFromTileMatrix(fullHand);
     if (shanten === 0) {
       waits = [];
       for (let j = 0; j < 9; j++) {
         if (hand[j] < 4) {
           hand[j]++;
-          const newShanten = shantenCalc.syantenAll(fullHand);
+          const newShanten = shantenFromTileMatrix(fullHand);
           if (newShanten === -1) {
             waits.push(j + 1);
           }

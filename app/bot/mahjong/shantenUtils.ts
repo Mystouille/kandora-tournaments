@@ -1,9 +1,18 @@
-import { addTileStrTo9997, fromStrToTile9997 } from "./handConverter";
-import * as shantenCalc from "syanten";
 import { getHandEmojis, splitTiles } from "./handParser";
-import { Locale } from "discord.js";
+import type { Locale } from "discord.js";
 import { localize } from "../localizationUtils";
 import { strings } from "../localization/strings";
+import {
+  countsFromTiles,
+  shanten as calculateShanten,
+  tileToIndex,
+  type HandCounts,
+} from "~/game/rules/shanten";
+import {
+  analyzeStandardUkeire,
+  type UkeireDiscard,
+} from "~/game/rules/ukeire";
+import type { Tile } from "~/game/rules/types";
 
 export enum UkeireChoice {
   No = "No",
@@ -31,30 +40,25 @@ export type WaitInfo = {
 };
 
 /**
- * Fast version: returns only tile → nbTotalWaits for each discard.
- * Calls shantenCalc.hairi() only ONCE (no nested tenpai analysis).
+ * Fast version: returns only tile -> nbTotalWaits for each discard.
  */
 export function getSimpleUkeire(
   handStr: string
 ): { tile: string; nbTotalWaits: number }[] {
-  const tile9997 = fromStrToTile9997(handStr);
-  const hairi = shantenCalc.hairi(tile9997);
+  const analysis = analyzeStandardUkeire(splitTiles(handStr));
   const results: { tile: string; nbTotalWaits: number; key: string }[] = [];
 
-  for (const [toCut, draws] of Object.entries(hairi)) {
-    if (toCut === "now" || toCut === "wait") {
-      continue;
-    }
-    let nbTotalWaits = 0;
-    for (const nbTile of Object.values(draws as Record<string, number>)) {
-      nbTotalWaits += nbTile;
-    }
-    const key = JSON.stringify(draws) + "'" + nbTotalWaits;
+  for (const discard of analysis.discards) {
+    const key = JSON.stringify(toDrawRecord(discard)) + "'" + discard.total;
     const similar = results.find((r) => r.key === key);
     if (similar) {
-      similar.tile += toCut;
+      similar.tile += discard.tile;
     } else {
-      results.push({ tile: toCut, nbTotalWaits, key });
+      results.push({
+        tile: discard.tile,
+        nbTotalWaits: discard.total,
+        key,
+      });
     }
   }
 
@@ -67,74 +71,74 @@ export function getSimpleUkeire(
  * @param hand - A strict natural representation of the hand (and no aka)
  */
 export function getWaitInfo(handStr: string): WaitInfo {
-  const tile9997 = fromStrToTile9997(handStr);
-  const hairi = shantenCalc.hairi(tile9997);
+  const tiles = splitTiles(handStr);
+  const counts = countsFromTiles(tiles);
+  const analysis = analyzeStandardUkeire(counts);
   const goodWaitLimit = 5;
   const hairiExt: Ukeire[] = [];
-  const shanten = hairi["wait"] ? 0 : hairi["now"];
+  const shanten = tiles.length % 3 === 1 ? 0 : analysis.shanten;
 
-  Object.entries(hairi).forEach((entryCut) => {
-    const toCut = entryCut[0];
-    if (toCut === "now" || toCut === "wait") {
-      return;
-    }
-
+  for (const discard of analysis.discards) {
     let nbGoodTenpaiWaits = 0;
     let nbTotalWaits = 0;
-    addTileStrTo9997(toCut, tile9997, -1);
+    changeTile(counts, discard.tile, -1);
     const waits: Wait[] = [];
-    Object.entries(entryCut[1] as object).forEach((entryDraw) => {
-      const toDraw = entryDraw[0];
-      const nbTile = entryDraw[1];
-      addTileStrTo9997(toDraw, tile9997, 1);
-      const tenpai = shantenCalc.hairi(tile9997);
-      let maxWaits = 0;
-      if (tenpai["now"] == 0) {
-        Object.entries(tenpai as object).forEach((tenpaiDiscard) => {
-          if (tenpaiDiscard[0] === "now") {
-            return;
-          }
-          let nbWaits = 0;
-          Object.values(tenpaiDiscard[1] as object).forEach((nbAgari) => {
-            nbWaits += nbAgari;
-          });
-          maxWaits = Math.max(maxWaits, nbWaits);
-        });
-      }
-      nbTotalWaits += nbTile;
-      nbGoodTenpaiWaits += maxWaits >= goodWaitLimit ? nbTile : 0;
+    for (const draw of discard.draws) {
+      changeTile(counts, draw.tile, 1);
+      const tenpai = analyzeStandardUkeire(counts);
+      const maxWaits =
+        tenpai.shanten === 0
+          ? Math.max(0, ...tenpai.discards.map((entry) => entry.total))
+          : 0;
+      nbTotalWaits += draw.remaining;
+      nbGoodTenpaiWaits +=
+        maxWaits >= goodWaitLimit ? draw.remaining : 0;
       waits.push({
-        tile: toDraw,
+        tile: draw.tile,
         goodTenpai: maxWaits >= goodWaitLimit,
-        nbTile,
+        nbTile: draw.remaining,
       });
-      addTileStrTo9997(toDraw, tile9997, -1);
-    });
+      changeTile(counts, draw.tile, -1);
+    }
     const waitsStr =
-      JSON.stringify(entryCut[1]) + nbGoodTenpaiWaits + "'" + nbTotalWaits;
+      JSON.stringify(toDrawRecord(discard)) +
+      nbGoodTenpaiWaits +
+      "'" +
+      nbTotalWaits;
     const similarWait = hairiExt.find((c) => c.waitsStr === waitsStr);
     if (similarWait !== undefined) {
-      similarWait.tile += toCut;
-      addTileStrTo9997(toCut, tile9997, 1);
-      return;
+      similarWait.tile += discard.tile;
+      changeTile(counts, discard.tile, 1);
+      continue;
     }
     hairiExt.push({
-      tile: toCut,
+      tile: discard.tile,
       waits,
       nbGoodTenpaiWaits,
       nbTotalWaits,
       waitsStr,
     });
-    hairiExt.sort(
-      (a, b) =>
-        b.nbTotalWaits * 100 +
-        b.nbGoodTenpaiWaits -
-        a.nbTotalWaits * 100 -
-        a.nbGoodTenpaiWaits
-    );
-    addTileStrTo9997(toCut, tile9997, 1);
-  });
+    changeTile(counts, discard.tile, 1);
+  }
+  hairiExt.sort(
+    (a, b) =>
+      b.nbTotalWaits * 100 +
+      b.nbGoodTenpaiWaits -
+      a.nbTotalWaits * 100 -
+      a.nbGoodTenpaiWaits
+  );
   return { shanten, ukeire: hairiExt };
+}
+
+function toDrawRecord(discard: UkeireDiscard): Record<string, number> {
+  return Object.fromEntries(
+    discard.draws.map((draw) => [draw.tile, draw.remaining])
+  );
+}
+
+function changeTile(counts: HandCounts, tile: Tile, delta: number): void {
+  const { suit, index } = tileToIndex(tile);
+  counts[suit][index] += delta;
 }
 
 export function getShantenInfo(
@@ -150,7 +154,7 @@ export function getShantenInfo(
   if (ukeireDisplayType !== UkeireChoice.No) {
     handInfo = getWaitInfo(closedHands);
   } else {
-    shanten = shantenCalc.syantenAll(fromStrToTile9997(handStr));
+    shanten = calculateShanten(splitTiles(handStr));
   }
 
   switch (ukeireDisplayType) {
@@ -161,9 +165,9 @@ export function getShantenInfo(
     default:
       return shanten > 0
         ? `${shanten}-shanten`
-        : shanten === 1
+        : shanten === 0
           ? "Tenpai"
-          : shanten === 0
+          : shanten === -1
             ? "Agari!"
             : "Shouhai/Tahai";
   }

@@ -28,10 +28,9 @@ export async function executeNanikiru(itr: ChatInputCommandInteraction) {
   );
 
   if (thread && itr.channel?.type === ChannelType.GuildText) {
-    replyInThread(itr, itr.channel.threads);
-  } else {
-    replyInSitu(itr);
+    return replyInThread(itr, itr.channel.threads);
   }
+  return replyInSitu(itr);
 }
 
 export enum SeatChoice {
@@ -78,29 +77,31 @@ async function replyInSitu(itr: ChatInputCommandInteraction) {
       ? (ukeireChoiceParam as UkeireChoice)
       : UkeireChoice.No;
   const contextStr = getFullHandContext(seat, round, turn, doras, itr.locale);
-  const message = await itr.editReply({
+  await itr.editReply({
     content: contextStr,
   });
 
-  const messageResp = Promise.resolve(
-    getShantenInfo(hand, ukeireChoice, itr.locale, discards || undefined)
-  ).then((shantenInfo) =>
-    itr.editReply({
-      content: `${contextStr}\n${spoiler ? "||" : ""}${shantenInfo}${spoiler ? "||" : ""}`,
-    })
-  );
   const toDisplay = fromStrToHandToDisplay(hand);
-  getImageFromTiles(toDisplay).then((image) =>
-    itr.editReply({ files: [image] })
+  const imagePromise = getImageFromTiles(toDisplay);
+  const shantenInfo = getShantenInfo(
+    hand,
+    ukeireChoice,
+    itr.locale,
+    discards || undefined
   );
+  const image = await imagePromise;
+  const message = await itr.editReply({
+    content: `${contextStr}\n${spoiler ? "||" : ""}${shantenInfo}${spoiler ? "||" : ""}`,
+    files: [image],
+  });
 
   const emojis = getHandEmojis({
     hand: discards || toDisplay.closedTiles,
     sorted: true,
     unique: true,
   });
-  emojis.forEach(async (emoji) => message.react(emoji));
-  return messageResp;
+  await Promise.all(emojis.map((emoji) => message.react(emoji)));
+  return message;
 }
 
 async function replyInThread(
@@ -116,49 +117,52 @@ async function replyInThread(
   const seat = itr.options.getString(optionName(nanikiruOptions.seat), false);
   const round = itr.options.getString(optionName(nanikiruOptions.round), false);
   const turn = itr.options.getString(optionName(nanikiruOptions.turn), false);
-  const ukeireChoice = itr.options.getString(
+  const ukeireChoiceParam = itr.options.getString(
     optionName(nanikiruOptions.ukeire),
     false
-  ) as UkeireChoice;
+  );
+  const ukeireChoice =
+    ukeireChoiceParam !== null
+      ? (ukeireChoiceParam as UkeireChoice)
+      : UkeireChoice.No;
 
   const replyMessage = getFullHandContext(seat, round, turn, doras, itr.locale);
-  itr.editReply({
+  await itr.editReply({
     content: replyMessage,
   });
 
   const toDisplay = fromStrToHandToDisplay(hand);
-  getImageFromTiles(toDisplay)
-    .then((image) => itr.editReply({ files: [image] }))
-    .then((message) =>
-      threadManager.create({
-        name: stringFormat(
-          itr.locale,
-          strings.commands.mjg.nanikiru.reply.threadTitle,
-          itr.member?.user.username || "",
-          hand
-        ),
-        autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
-        startMessage: message.id,
-        type: 11,
-      })
-    )
-    .then((thread) => {
-      thread
-        .send({
-          content: getShantenInfo(hand, ukeireChoice, itr.locale),
-        })
-        .then((message) => {
-          const emojis = getHandEmojis({
-            hand: discards || toDisplay.closedTiles,
-            sorted: true,
-            unique: true,
-          });
-
-          emojis.forEach(async (emoji) => {
-            message.react(emoji);
-          });
-        });
-    });
+  const image = await getImageFromTiles(toDisplay);
+  const message = await itr.editReply({
+    content: replyMessage,
+    files: [image],
+  });
+  const thread = await threadManager.create({
+    name: stringFormat(
+      itr.locale,
+      strings.commands.mjg.nanikiru.reply.threadTitle,
+      itr.member?.user.username || "",
+      hand
+    ),
+    autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
+    startMessage: message.id,
+    type: 11,
+  });
+  const threadMessage = await thread.send({
+    content: getShantenInfo(
+      hand,
+      ukeireChoice,
+      itr.locale,
+      discards || undefined
+    ),
+  });
+  const emojis = getHandEmojis({
+    hand: discards || toDisplay.closedTiles,
+    sorted: true,
+    unique: true,
+  });
+  await Promise.all(emojis.map((emoji) => threadMessage.react(emoji)));
+  return threadMessage;
 }
 
 function getFullHandContext(

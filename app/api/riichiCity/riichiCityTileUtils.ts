@@ -1,5 +1,3 @@
-import syanten from "syanten";
-
 /**
  * Riichi City tile encoding (empirically reverse-engineered against
  * the live RC viewer):
@@ -23,9 +21,8 @@ import syanten from "syanten";
  * times because all four copies of 4p ended up there).
  *
  * `decodeTile` returns the *canonical* suit index (0=m, 1=p, 2=s,
- * 3=z) so downstream consumers (`tilesToSyantenFormat`, the protocol
- * `Tile` strings, etc.) don't need to know about RC's swapped block
- * ordering.
+ * 3=z) so downstream consumers don't need to know about RC's swapped
+ * block ordering.
  */
 
 const SUIT_LABEL = ["m", "p", "s", "z"] as const;
@@ -72,31 +69,4 @@ export function tileToString(tile: number): string {
   const { suit, value, isAka } = decodeTile(tile);
   const displayValue = isAka ? 0 : value;
   return `${displayValue}${SUIT_LABEL[suit]}`;
-}
-
-/**
- * Convert an array of Riichi City tile IDs to the HaiArr format expected
- * by the `syanten` library.  Uses only the first 13 tiles.
- */
-export function tilesToSyantenFormat(tiles: number[]): syanten.HaiArr {
-  const hai: syanten.HaiArr = [
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0],
-  ];
-
-  const hand = tiles.slice(0, 13);
-  for (const tile of hand) {
-    const { suit, value, isAka } = decodeTile(tile);
-    // Normalize aka to value 5
-    const v = isAka ? 5 : value;
-    const maxLen = suit === 3 ? 7 : 9;
-    if (suit < 0 || suit > 3 || v < 1 || v > maxLen) {
-      continue;
-    }
-    hai[suit][v - 1]++;
-  }
-
-  return hai;
 }
