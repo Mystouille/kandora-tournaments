@@ -27,6 +27,10 @@ function resolveGameServerUrl(): string {
 const GAME_SERVER_URL = resolveGameServerUrl();
 const RELAY_SECRET = process.env.RELAY_SECRET ?? "";
 
+export function getGameServerHttpUrl(): string {
+  return GAME_SERVER_URL;
+}
+
 export type RelayErrorCode =
   | "relay_not_configured"
   | "relay_unauthorized"

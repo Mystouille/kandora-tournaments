@@ -55,6 +55,7 @@ export default [
   route("/watch/replay/tenhou-har", "routes/game/spectate-har.tsx"),
   route("/watch/replay/:gameId", "routes/game/replay.tsx"),
   route("/watch/live/:watchId", "routes/game/live.$watchId.tsx"),
+  route("/api/game/rooms", "routes/api/game/rooms.ts"),
   route("/api/game/session", "routes/api/game/session.ts"),
   route("/api/game/watch", "routes/api/game/watch.ts"),
   route("/api/game/enrichment", "routes/api/game/enrichment.ts"),
