@@ -46,8 +46,10 @@ export default [
   route("/review", "routes/review.tsx"),
 
   // ---------------------------------------------------------------------
-  // Replay and live viewers
+  // Game lobby, replay, and live viewers
   // ---------------------------------------------------------------------
+  route("/lobby", "routes/lobby.tsx"),
+
   // Archived replays load from ReplayLog; live viewing starts/reuses a relay
   // and renders the shared spectator while retaining the public watch-id URL.
   route("/watch/replay/tenhou-har", "routes/game/spectate-har.tsx"),
