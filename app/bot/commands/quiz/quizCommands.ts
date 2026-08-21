@@ -7,15 +7,10 @@ import { NanikiruType } from "../../resources/nanikiru/NanikiruCollections";
 import { QuizMode } from "./handlers/QuizHandler";
 import { chinitsuOptions, executeQuizChinitsu } from "./chinitsu";
 import { DifficultyOption, SuitOption } from "../../mahjong/ChinitsuGenerator";
+import { commonOptions } from "./quizOptions";
 
 const nanikiruSubCommandName = invariantResources.commands.quiz.nanikiru.name;
 const chinitsuSubCommandName = invariantResources.commands.quiz.chinitsu.name;
-
-export const commonOptions = {
-  nbrounds: strings.commands.quiz.common.params.nbrounds,
-  mode: strings.commands.quiz.common.params.mode,
-  timeout: strings.commands.quiz.common.params.timeout,
-};
 
 export const data: any = new SlashCommandBuilder()
   .setName(invariantResources.commands.quiz.name)
@@ -147,14 +142,12 @@ export const data: any = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   switch (interaction.options.getSubcommand()) {
     case nanikiruSubCommandName:
-      interaction.deferReply({}).then(async () => {
-        await executeQuizNanikiru(interaction);
-      });
+      await interaction.deferReply({});
+      await executeQuizNanikiru(interaction);
       break;
     case chinitsuSubCommandName:
-      interaction.deferReply({}).then(async () => {
-        await executeQuizChinitsu(interaction);
-      });
+      await interaction.deferReply({});
+      await executeQuizChinitsu(interaction);
       break;
   }
 }

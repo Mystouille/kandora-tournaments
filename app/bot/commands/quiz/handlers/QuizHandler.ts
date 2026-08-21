@@ -190,8 +190,8 @@ export abstract class QuizHandler {
     }
   }
 
-  public startQuiz() {
-    this.postNewQuestion();
+  public startQuiz(): Promise<Message<true> | undefined> {
+    return this.postNewQuestion();
   }
 
   private endQuiz() {}

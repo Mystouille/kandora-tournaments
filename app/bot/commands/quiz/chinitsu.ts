@@ -13,7 +13,7 @@ import { DifficultyOption, SuitOption } from "../../mahjong/ChinitsuGenerator";
 import { stringFormat } from "../../stringUtils";
 import { ChinitsuQuizHandler } from "./handlers/ChinitsuQuizHandler";
 import { localize } from "../../localizationUtils";
-import { commonOptions } from "./quizCommands";
+import { commonOptions } from "./quizOptions";
 
 export const chinitsuOptions = {
   suit: strings.commands.quiz.chinitsu.params.suit,
@@ -79,40 +79,36 @@ export async function executeQuizChinitsu(itr: ChatInputCommandInteraction) {
       strings.commands.quiz.chinitsu.reply.threadFirstMessageFormat,
       nbRounds.toString()
     );
-    itr
-      .editReply({
-        content: `${startDisclaimer} ${timerDisclaimer}`,
-      })
-      .then((message) => {
-        threadManager
-          .create({
-            name: stringFormat(
-              itr.locale,
-              strings.commands.quiz.nanikiru.reply.theadNameFormat,
-              currentDate,
-              nbRounds.toString()
-            ),
-            autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
-            startMessage: message.id,
-            type: 11,
-          })
-          .then((thread) => {
-            if (thread.type === ChannelType.PublicThread) {
-              const quizHandler = new ChinitsuQuizHandler(
-                thread,
-                itr,
-                mode,
-                timeout,
-                nbRounds,
-                suit,
-                difficulty
-              );
-              quizHandler.startQuiz();
-            }
-          });
-      });
+    const message = await itr.editReply({
+      content: `${startDisclaimer} ${timerDisclaimer}`,
+    });
+    const thread = await threadManager.create({
+      name: stringFormat(
+        itr.locale,
+        strings.commands.quiz.nanikiru.reply.theadNameFormat,
+        currentDate,
+        nbRounds.toString()
+      ),
+      autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
+      startMessage: message.id,
+      type: 11,
+    });
+    if (thread.type !== ChannelType.PublicThread) {
+      throw new Error("Unable to create a public quiz thread.");
+    }
+    const quizHandler = new ChinitsuQuizHandler(
+      thread,
+      itr,
+      mode,
+      timeout,
+      nbRounds,
+      suit,
+      difficulty
+    );
+    await quizHandler.startQuiz();
+    return;
   } else {
-    itr.editReply({ content: "cant create a thread here!" });
+    await itr.editReply({ content: "cant create a thread here!" });
   }
 }
 

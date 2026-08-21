@@ -13,7 +13,7 @@ import { NanikiruType } from "../../resources/nanikiru/NanikiruCollections";
 import { stringFormat } from "../../stringUtils";
 import { QuizMode } from "./handlers/QuizHandler";
 import { NanikiruQuizHandler } from "./handlers/NanikiruQuizHandler";
-import { commonOptions } from "./quizCommands";
+import { commonOptions } from "./quizOptions";
 
 export const nanikiruOptions = {
   series: strings.commands.quiz.nanikiru.params.series,
@@ -72,39 +72,35 @@ export async function executeQuizNanikiru(itr: ChatInputCommandInteraction) {
       strings.commands.quiz.nanikiru.reply.threadFirstMessageFormat,
       nbRounds.toString()
     );
-    itr
-      .editReply({
-        content: `${startDisclaimer} ${timerDisclaimer}`,
-      })
-      .then((message) => {
-        threadManager
-          .create({
-            name: stringFormat(
-              itr.locale,
-              strings.commands.quiz.nanikiru.reply.theadNameFormat,
-              currentDate,
-              nbRounds.toString()
-            ),
-            autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
-            startMessage: message.id,
-            type: 11,
-          })
-          .then((thread) => {
-            if (thread.type === ChannelType.PublicThread) {
-              const quizHandler = new NanikiruQuizHandler(
-                thread,
-                itr,
-                mode,
-                timeout,
-                nbRounds,
-                series
-              );
-              quizHandler.startQuiz();
-            }
-          });
-      });
+    const message = await itr.editReply({
+      content: `${startDisclaimer} ${timerDisclaimer}`,
+    });
+    const thread = await threadManager.create({
+      name: stringFormat(
+        itr.locale,
+        strings.commands.quiz.nanikiru.reply.theadNameFormat,
+        currentDate,
+        nbRounds.toString()
+      ),
+      autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
+      startMessage: message.id,
+      type: 11,
+    });
+    if (thread.type !== ChannelType.PublicThread) {
+      throw new Error("Unable to create a public quiz thread.");
+    }
+    const quizHandler = new NanikiruQuizHandler(
+      thread,
+      itr,
+      mode,
+      timeout,
+      nbRounds,
+      series
+    );
+    await quizHandler.startQuiz();
+    return;
   } else {
-    itr.editReply({ content: "cant create a thread here!" });
+    await itr.editReply({ content: "cant create a thread here!" });
   }
 }
 
