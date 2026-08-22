@@ -1888,7 +1888,11 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             {index + 1} / {log.events.length}
           </span>
         </div>
-        <ReplayOverlayPanel overlays={overlays} onChange={setOverlays} />
+        <ReplayOverlayPanel
+          overlays={overlays}
+          onChange={setOverlays}
+          includeWallToggle
+        />
         {/* Review annotations: one passive drawing overlay per other
             reviewer (each in that reviewer's color), then the current
             user's own overlay \u2014 editable while in pen mode, otherwise
