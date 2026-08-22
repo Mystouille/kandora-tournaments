@@ -13,6 +13,7 @@ import {
   initialView,
   replayBounds,
   replayViewToMatchView,
+  rotateSeatValues,
   roundBoundaries,
 } from "~/game/replay/player";
 import type { ReplayView } from "~/game/replay/player";
@@ -1247,7 +1248,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             return;
           }
           rendererRef.current = renderer;
-          renderer.setSeatEnrichment(seatEnrichment);
+          renderer.setSeatEnrichment(
+            rotateSeatValues(seatEnrichment, focusSeat)
+          );
           const initialArgs = replayViewToMatchView(currentView, {
             index,
             mySeat: focusSeat,
@@ -1304,6 +1307,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       rendererRef.current.setShowHands(overlays.showHands);
       rendererRef.current.setShowWalls(overlays.showWalls);
       rendererRef.current.setShowNames(overlays.showNames);
+      rendererRef.current.setSeatEnrichment(
+        rotateSeatValues(seatEnrichment, focusSeat)
+      );
       rendererRef.current.setCenterLabels({
         repeat: t.match.centerRepeat,
         riichi: t.match.centerRiichi,
@@ -1338,6 +1344,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     log.seats,
     waitsByIndex,
     focusSeat,
+    seatEnrichment,
     overlays.showLayoutDebug,
     overlays.showWaits,
     overlays.showHands,
