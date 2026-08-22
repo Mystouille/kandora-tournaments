@@ -2,6 +2,7 @@ import { isGameEnabled } from "~/game/feature-gate";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { LiveGameModel } from "~/core/models/tournament/LiveGame";
 import { RelayError, startRelay } from "~/services/gameServer.server";
+import { getAuthenticatedUser } from "~/utils/jwt.server";
 
 /**
  * POST /api/game/watch  (form field `watchId`)
@@ -16,7 +17,13 @@ import { RelayError, startRelay } from "~/services/gameServer.server";
  */
 export async function action({ request }: { request: Request }) {
   if (!isGameEnabled()) {
-    return Response.json({ ok: false, error: "game_disabled" }, { status: 404 });
+    return Response.json(
+      { ok: false, error: "game_disabled" },
+      { status: 404 }
+    );
+  }
+  if (!(await getAuthenticatedUser(request))) {
+    return Response.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
   const form = await request.formData();
   const watchId = String(form.get("watchId") ?? "").trim();

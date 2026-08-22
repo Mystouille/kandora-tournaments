@@ -1,6 +1,7 @@
 import React from "react";
 import { theme } from "antd";
 import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
+import { Link } from "react-router";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { LogoDisplay } from "./LogoDisplay";
 import { LoginDropdown } from "./LoginDropdown";
@@ -136,7 +137,19 @@ export function Header({
                 justifyContent: "center",
               }}
             >
-              <LogoDisplay size="large" />
+              <Link
+                to="/"
+                aria-label="Go to home page"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <LogoDisplay size="large" />
+              </Link>
             </div>
           </div>
 
@@ -206,7 +219,19 @@ export function Header({
               justifyContent: "center",
             }}
           >
-            <LogoDisplay size="large" />
+            <Link
+              to="/"
+              aria-label="Go to home page"
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <LogoDisplay size="large" />
+            </Link>
           </div>
 
           <div

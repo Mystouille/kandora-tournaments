@@ -3,11 +3,17 @@ import { requireGameEnabled, getClientGameFlag } from "~/game/feature-gate";
 import { listPresets } from "~/game/rules/presets";
 import { ReplayLogModel } from "~/core/models/game/ReplayLog";
 import { connectToDatabase } from "~/utils/dbConnection.server";
+import { requireGameUser } from "~/utils/gameAuth.server";
 
 const RECENT_GAME_LOG_LIMIT = 100;
 
-export async function loader(): Promise<LobbyLoaderData> {
+export async function loader({
+  request,
+}: {
+  request: Request;
+}): Promise<LobbyLoaderData> {
   requireGameEnabled();
+  await requireGameUser(request);
   await connectToDatabase();
   const logs = await ReplayLogModel.find(
     { source: "ingame" },

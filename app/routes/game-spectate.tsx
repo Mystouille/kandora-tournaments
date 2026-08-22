@@ -2,8 +2,10 @@ import GameSpectate, {
   loader as loadGameSpectate,
 } from "~/game/routes/spectate";
 import type { Route } from "./+types/game-spectate";
+import { requireGameUser } from "~/utils/gameAuth.server";
 
-export function loader(args: Route.LoaderArgs) {
+export async function loader(args: Route.LoaderArgs) {
+  await requireGameUser(args.request);
   return loadGameSpectate(args);
 }
 

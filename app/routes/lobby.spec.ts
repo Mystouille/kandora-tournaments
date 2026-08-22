@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   connectToDatabase: vi.fn(),
   findReplayLogs: vi.fn(),
   requireGameEnabled: vi.fn(),
+  requireGameUser: vi.fn(),
 }));
 
 vi.mock("~/utils/dbConnection.server", () => ({
@@ -25,6 +26,9 @@ vi.mock("~/game/rules/presets", () => ({
     },
   ],
 }));
+vi.mock("~/utils/gameAuth.server", () => ({
+  requireGameUser: mocks.requireGameUser,
+}));
 
 import { loader } from "./lobby";
 
@@ -32,6 +36,7 @@ describe("game lobby loader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.connectToDatabase.mockResolvedValue(undefined);
+    mocks.requireGameUser.mockResolvedValue({ sub: "user-1" });
   });
 
   it("loads the newest in-game replay logs for browsing", async () => {
@@ -62,9 +67,11 @@ describe("game lobby loader", () => {
     const sort = vi.fn().mockReturnValue({ limit });
     mocks.findReplayLogs.mockReturnValue({ sort });
 
-    const result = await loader();
+    const request = new Request("http://app.test/lobby");
+    const result = await loader({ request });
 
     expect(mocks.requireGameEnabled).toHaveBeenCalledOnce();
+    expect(mocks.requireGameUser).toHaveBeenCalledWith(request);
     expect(mocks.connectToDatabase).toHaveBeenCalledOnce();
     expect(mocks.findReplayLogs).toHaveBeenCalledWith(
       { source: "ingame" },

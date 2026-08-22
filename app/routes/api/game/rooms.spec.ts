@@ -11,6 +11,10 @@ vi.mock("~/services/gameServer.server", () => ({
 vi.mock("~/utils/jwt.server", () => ({
   getTokenFromRequest: (request: Request) =>
     request.headers.get("x-test-token"),
+  getAuthenticatedUser: (request: Request) =>
+    request.headers.get("x-test-token")
+      ? { sub: "user-1", username: "Alice", loginMethod: "discord" }
+      : null,
 }));
 
 import { action, loader } from "./rooms";
@@ -27,8 +31,11 @@ describe("game rooms API", () => {
     fetchMock.mockResolvedValue(
       Response.json({ rooms: [{ matchId: "room-1" }] })
     );
+    const request = new Request("http://app.test/api/game/rooms", {
+      headers: { "x-test-token": "signed-token" },
+    });
 
-    const response = await loader();
+    const response = await loader({ request });
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -38,6 +45,16 @@ describe("game rooms API", () => {
       method: "GET",
       headers: { accept: "application/json" },
     });
+  });
+
+  it("rejects anonymous room listings without calling upstream", async () => {
+    const request = new Request("http://app.test/api/game/rooms");
+
+    const response = await loader({ request });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "forbidden" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("injects the authenticated token when creating a room", async () => {

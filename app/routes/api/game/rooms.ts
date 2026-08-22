@@ -1,14 +1,13 @@
 import { isGameEnabled } from "~/game/feature-gate";
 import { getGameServerHttpUrl } from "~/services/gameServer.server";
 import { getTokenFromRequest } from "~/utils/jwt.server";
+import { getAuthenticatedUser } from "~/utils/jwt.server";
 
 function errorResponse(error: string, status: number): Response {
   return Response.json({ error }, { status });
 }
 
-async function forwardToGameServer(
-  init?: RequestInit
-): Promise<Response> {
+async function forwardToGameServer(init?: RequestInit): Promise<Response> {
   const gameServerUrl = getGameServerHttpUrl();
   if (!gameServerUrl) {
     return errorResponse("game_server_not_configured", 503);
@@ -30,9 +29,16 @@ async function forwardToGameServer(
   }
 }
 
-export async function loader(): Promise<Response> {
+export async function loader({
+  request,
+}: {
+  request: Request;
+}): Promise<Response> {
   if (!isGameEnabled()) {
     return errorResponse("game_disabled", 404);
+  }
+  if (!(await getAuthenticatedUser(request))) {
+    return errorResponse("forbidden", 403);
   }
   return forwardToGameServer({
     method: "GET",
@@ -40,7 +46,11 @@ export async function loader(): Promise<Response> {
   });
 }
 
-export async function action({ request }: { request: Request }): Promise<Response> {
+export async function action({
+  request,
+}: {
+  request: Request;
+}): Promise<Response> {
   if (!isGameEnabled()) {
     return errorResponse("game_disabled", 404);
   }

@@ -18,6 +18,7 @@ import { TileSetProvider } from "./contexts/TileSetContext";
 import { GlossaryProvider } from "./contexts/GlossaryContext";
 import { FormFactorProvider } from "./contexts/FormFactorContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { HomeOutlined, LoginOutlined, LockOutlined } from "@ant-design/icons";
 import { basePath } from "./utils/basePath";
 import {
   createThemeBootstrapScript,
@@ -103,8 +104,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
   const initialTheme = (loaderData?.theme as "light" | "dark") || "dark";
   const initialLocale = (loaderData?.locale as "en" | "fr") || "fr";
   const initialIsMobile = Boolean(loaderData?.isProbablyMobile);
-  const uiPreferenceCookieDomain =
-    loaderData?.uiPreferenceCookieDomain || null;
+  const uiPreferenceCookieDomain = loaderData?.uiPreferenceCookieDomain || null;
   const antiFlickerScript = createThemeBootstrapScript(
     Boolean(uiPreferenceCookieDomain)
   );
@@ -122,18 +122,18 @@ export default function App({ loaderData }: Route.ComponentProps) {
             sharedCookieDomain={uiPreferenceCookieDomain}
             hasSharedTheme={Boolean(loaderData?.hasSharedTheme)}
           >
-          <FormFactorProvider ssrIsMobile={initialIsMobile}>
-            <TileSetProvider>
-              <GlossaryProvider>
-                <TelemetryProvider endpoint={`${basePath}/api/telemetry`}>
-                  <Navigation>
-                    <Outlet />
-                  </Navigation>
-                  <CookieConsent />
-                </TelemetryProvider>
-              </GlossaryProvider>
-            </TileSetProvider>
-          </FormFactorProvider>
+            <FormFactorProvider ssrIsMobile={initialIsMobile}>
+              <TileSetProvider>
+                <GlossaryProvider>
+                  <TelemetryProvider endpoint={`${basePath}/api/telemetry`}>
+                    <Navigation>
+                      <Outlet />
+                    </Navigation>
+                    <CookieConsent />
+                  </TelemetryProvider>
+                </GlossaryProvider>
+              </TileSetProvider>
+            </FormFactorProvider>
           </ThemeProvider>
         </LocaleProvider>
       </QueryClientProvider>
@@ -142,6 +142,9 @@ export default function App({ loaderData }: Route.ComponentProps) {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error) && error.status === 403) {
+    return <ForbiddenPage />;
+  }
   let message = "Oops!";
   let details = "An unexpected error occurred.";
   let stack: string | undefined;
@@ -166,6 +169,53 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
           <code>{stack}</code>
         </pre>
       )}
+    </main>
+  );
+}
+
+function ForbiddenPage(): React.ReactElement {
+  const signIn = (): void => {
+    void import("./utils/discord-oauth")
+      .then(({ DiscordOAuth }) => {
+        DiscordOAuth.redirectToDiscord();
+      })
+      .catch((error) => {
+        console.error("Failed to start Discord login:", error);
+      });
+  };
+
+  return (
+    <main className="min-h-screen bg-zinc-950 px-6 text-zinc-100">
+      <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center">
+        <div className="mb-6 flex h-12 w-12 items-center justify-center border border-emerald-500/40 bg-emerald-950 text-emerald-300">
+          <LockOutlined className="text-xl" aria-hidden="true" />
+        </div>
+        <p className="mb-2 text-xs font-semibold uppercase text-emerald-400">
+          403 Forbidden
+        </p>
+        <h1 className="mb-3 text-3xl font-semibold">Sign in to continue</h1>
+        <p className="mb-8 max-w-lg text-sm leading-6 text-zinc-400">
+          The game lobby, active matches, and live spectators are available to
+          signed-in members. Archived replays remain public.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={signIn}
+            className="inline-flex h-10 items-center gap-2 bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500"
+          >
+            <LoginOutlined aria-hidden="true" />
+            Sign in with Discord
+          </button>
+          <a
+            href={basePath || "/"}
+            className="inline-flex h-10 items-center gap-2 border border-zinc-700 px-4 text-sm font-semibold text-zinc-200 hover:bg-zinc-900"
+          >
+            <HomeOutlined aria-hidden="true" />
+            Back to tournaments
+          </a>
+        </div>
+      </div>
     </main>
   );
 }

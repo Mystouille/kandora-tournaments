@@ -55,6 +55,12 @@ export function WatchLiveButton({
     setLoading(true);
     const formData = new FormData();
     formData.set("watchId", watchId);
+    const returnTo = leagueSlug
+      ? `/online-tournaments/${encodeURIComponent(leagueSlug)}/statistics`
+      : "/";
+    const livePath = `/watch/live/${encodeURIComponent(
+      watchId
+    )}?returnTo=${encodeURIComponent(returnTo)}`;
     try {
       const response = await fetch(`${basePath}/api/game/watch`, {
         method: "POST",
@@ -65,13 +71,12 @@ export function WatchLiveButton({
         matchId?: string;
         error?: string;
       };
+      if (response.status === 403) {
+        void navigate(livePath);
+        return;
+      }
       if (response.ok && data.ok) {
-        const returnTo = leagueSlug
-          ? `/online-tournaments/${encodeURIComponent(leagueSlug)}/statistics`
-          : "/";
-        void navigate(
-          `/watch/live/${encodeURIComponent(watchId)}?returnTo=${encodeURIComponent(returnTo)}`
-        );
+        void navigate(livePath);
         return;
       }
       message.error(liveErrorMessage(data.error));

@@ -11,6 +11,10 @@ vi.mock("~/game/feature-gate", () => ({
 vi.mock("~/utils/jwt.server", () => ({
   getTokenFromRequest: (request: Request) =>
     request.headers.get("x-test-token"),
+  getAuthenticatedUser: (request: Request) =>
+    request.headers.get("x-test-token")
+      ? { sub: "user-1", username: "Alice", loginMethod: "discord" }
+      : null,
 }));
 
 import { loader } from "./session";
@@ -36,12 +40,12 @@ describe("game session API", () => {
     });
   });
 
-  it("keeps anonymous spectator sessions tokenless", async () => {
+  it("rejects anonymous game sessions", async () => {
     const request = new Request("http://app.test/api/game/session");
 
     const response = await loader({ request });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ token: "" });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "forbidden" });
   });
 });
