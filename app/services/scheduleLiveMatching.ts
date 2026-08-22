@@ -55,7 +55,6 @@ export function matchScheduledGamesToLiveGames(
       if (
         liveGame.platform !== "tenhou" ||
         !liveGame.watchId ||
-        !liveGame.startTime ||
         liveGame.phaseId !== scheduledGame.phaseId
       ) {
         continue;
@@ -67,9 +66,13 @@ export function matchScheduledGamesToLiveGames(
       candidates.push({
         scheduledGame,
         liveGame,
-        distance: Math.abs(
-          liveGame.startTime.getTime() - scheduledGame.scheduledAt.getTime()
-        ),
+        // Calendar time is a tie-breaker only, never an eligibility
+        // window. A game may start before or after its announced time.
+        distance: liveGame.startTime
+          ? Math.abs(
+              liveGame.startTime.getTime() - scheduledGame.scheduledAt.getTime()
+            )
+          : Number.POSITIVE_INFINITY,
       });
     }
   }

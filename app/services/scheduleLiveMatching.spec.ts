@@ -32,6 +32,60 @@ describe("matchScheduledGamesToLiveGames", () => {
     expect(matches.get("scheduled-1")?.gameId).toBe("live-1");
   });
 
+  it("matches when the game starts well before its announced time", () => {
+    const matches = matchScheduledGamesToLiveGames(
+      [
+        {
+          id: "scheduled-early-start",
+          phaseId: "regular",
+          scheduledAt: new Date("2026-08-20T20:00:00.000Z"),
+          participantIds: users,
+        },
+      ],
+      [
+        {
+          gameId: "live-early-start",
+          platform: "tenhou",
+          phaseId: "regular",
+          startTime: new Date("2026-08-20T12:00:00.000Z"),
+          participantIds: users,
+          watchId: "watch-early-start",
+        },
+      ]
+    );
+
+    expect(matches.get("scheduled-early-start")?.gameId).toBe(
+      "live-early-start"
+    );
+  });
+
+  it("matches by participants when the live start time is unavailable", () => {
+    const matches = matchScheduledGamesToLiveGames(
+      [
+        {
+          id: "scheduled-without-live-time",
+          phaseId: null,
+          scheduledAt: new Date("2026-08-20T20:00:00.000Z"),
+          participantIds: users,
+        },
+      ],
+      [
+        {
+          gameId: "live-without-time",
+          platform: "tenhou",
+          phaseId: null,
+          startTime: null,
+          participantIds: users,
+          watchId: "watch-without-time",
+        },
+      ]
+    );
+
+    expect(matches.get("scheduled-without-live-time")?.gameId).toBe(
+      "live-without-time"
+    );
+  });
+
   it("skips incomplete, unresolved, cross-phase, and non-Tenhou games", () => {
     const scheduledAt = new Date("2026-08-20T18:00:00.000Z");
     const matches = matchScheduledGamesToLiveGames(

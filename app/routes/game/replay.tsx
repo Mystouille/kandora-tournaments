@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   redirect,
   useBlocker,
@@ -75,6 +75,10 @@ import {
   setGameSoundEnabled,
   playSoundForEvent,
 } from "~/game/client/sound";
+import {
+  replaySoundTarget,
+  type ReplayNavigationKind,
+} from "~/game/client/replaySound";
 
 /**
  * `/watch/replay/:gameId` — archived replay viewer.
@@ -492,6 +496,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   }, []);
 
   const [index, setIndex] = useState<number>(initial.index);
+  const indexRef = useRef(initial.index);
   const [overlays, setOverlays] = useState<ReplayOverlayState>(
     defaultReplayOverlayState
   );
@@ -503,18 +508,18 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() =>
     isGameSoundEnabled()
   );
-  // Play SFX only on forward single-step advances (the cue mapper
-  // is meant for the next event "happening"). Jumps via slider /
-  // round-skip, backward steps, and the initial mount stay silent
-  // so the replay doesn't blast a chord on every navigation.
-  const prevIndexRef = useRef<number>(initial.index);
+  // Navigation explicitly arms one event index for sound. Numerical
+  // adjacency is not sufficient: a round/slider/comment jump may land
+  // one index ahead but must remain silent.
+  const pendingSoundIndexRef = useRef<number | null>(null);
   useEffect(() => {
-    const prev = prevIndexRef.current;
-    prevIndexRef.current = index;
+    indexRef.current = index;
+    const shouldPlay = pendingSoundIndexRef.current === index;
+    pendingSoundIndexRef.current = null;
     if (!soundEnabled) {
       return;
     }
-    if (index !== prev + 1) {
+    if (!shouldPlay) {
       return;
     }
     const ev = log.events[index];
@@ -1353,11 +1358,35 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     t,
   ]);
 
-  const clamp = (n: number): number =>
-    Math.max(bounds.min, Math.min(n, bounds.max));
-  const goto = (n: number): void => {
-    setIndex(clamp(n));
-  };
+  const clamp = useCallback(
+    (n: number): number => Math.max(bounds.min, Math.min(n, bounds.max)),
+    [bounds.max, bounds.min]
+  );
+  const navigateReplay = useCallback(
+    (n: number, kind: ReplayNavigationKind): void => {
+      const next = clamp(n);
+      pendingSoundIndexRef.current = replaySoundTarget(
+        indexRef.current,
+        next,
+        kind
+      );
+      indexRef.current = next;
+      setIndex(next);
+    },
+    [clamp]
+  );
+  const goto = useCallback(
+    (n: number): void => {
+      navigateReplay(n, "jump");
+    },
+    [navigateReplay]
+  );
+  const stepBy = useCallback(
+    (delta: -1 | 1): void => {
+      navigateReplay(indexRef.current + delta, "step");
+    },
+    [navigateReplay]
+  );
 
   // Mouse-wheel scrubbing on the canvas container: scroll down →
   // advance one event, scroll up → rewind one event. Each wheel
@@ -1430,18 +1459,18 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         // tile sliding in from a hand that didn't visibly exist
         // yet.
         rendererRef.current?.snapNextAnimation();
-        setIndex((i) => findNextDiscard(i));
+        goto(findNextDiscard(indexRef.current));
       } else if (wheelAccumRef.current <= -threshold) {
         wheelAccumRef.current = 0;
         rendererRef.current?.snapNextAnimation();
-        setIndex((i) => findPrevDiscard(i));
+        goto(findPrevDiscard(indexRef.current));
       }
     };
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       container.removeEventListener("wheel", onWheel);
     };
-  }, [bounds.min, bounds.max, log]);
+  }, [bounds.min, bounds.max, goto, log]);
 
   // Click scrubbing on the canvas container: left-click → advance
   // one event, right-click → rewind one event. `contextmenu` is
@@ -1477,8 +1506,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         return;
       }
       e.preventDefault();
-      const delta = e.button === 0 ? 1 : -1;
-      setIndex((i) => Math.max(bounds.min, Math.min(i + delta, bounds.max)));
+      stepBy(e.button === 0 ? 1 : -1);
     };
     const onContextMenu = (e: MouseEvent): void => {
       if (editingRef.current) {
@@ -1495,7 +1523,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       container.removeEventListener("mousedown", onMouseDown);
       container.removeEventListener("contextmenu", onContextMenu);
     };
-  }, [bounds.min, bounds.max]);
+  }, [stepBy]);
 
   // For the round picker label.
   const currentRound = (() => {
@@ -1766,7 +1794,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    goto(index - 1);
+                    stepBy(-1);
                   }}
                   disabled={index <= bounds.min}
                   className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
@@ -1778,7 +1806,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    goto(index + 1);
+                    stepBy(1);
                   }}
                   disabled={index >= bounds.max}
                   className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
