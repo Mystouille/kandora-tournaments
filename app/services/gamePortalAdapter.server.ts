@@ -12,7 +12,11 @@
  *   - `publishMatchEnded` is intentionally left unimplemented (optional).
  */
 import { computeUserName, UserModel } from "~/core/models/shared/User";
-import { verifyToken as verifyJwt } from "~/utils/jwt.server";
+import { gameAllowLegacyAuthTokens } from "config";
+import {
+  verifyGameToken,
+  verifyToken as verifySiteToken,
+} from "~/utils/jwt.server";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import type {
   PortalAdapter,
@@ -20,17 +24,30 @@ import type {
   VerifiedToken,
 } from "~/game/portal-adapter/types";
 
+if (gameAllowLegacyAuthTokens) {
+  console.warn(
+    "[game-auth] GAME_ALLOW_LEGACY_AUTH_TOKENS is enabled; site JWTs can access the game-server."
+  );
+}
+
 export const portalAdapter: PortalAdapter = {
   async ensureDbConnected(): Promise<void> {
     await connectToDatabase();
   },
 
   async verifyToken(token: string): Promise<VerifiedToken | null> {
-    const payload = await verifyJwt(token);
-    if (!payload) {
+    const payload = await verifyGameToken(token);
+    if (payload) {
+      return { userId: payload.sub };
+    }
+    if (!gameAllowLegacyAuthTokens) {
       return null;
     }
-    return { userId: payload.sub };
+    const legacyPayload = await verifySiteToken(token);
+    if (!legacyPayload) {
+      return null;
+    }
+    return { userId: legacyPayload.sub };
   },
 
   async getUserProfile(userId: string): Promise<PortalUserProfile | null> {

@@ -39,10 +39,17 @@ const GlossaryContext = createContext<GlossaryContextType>({
   closeTerm: () => {},
 });
 
-export function GlossaryProvider({ children }: { children: ReactNode }) {
+export function GlossaryProvider({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode;
+  enabled?: boolean;
+}) {
   const { data } = useQuery<{ terms: GlossaryTermEntry[] }>({
     queryKey: ["glossary-terms"],
     queryFn: () => fetch(`${basePath}/api/glossary`).then((res) => res.json()),
+    enabled,
   });
 
   const terms = data?.terms ?? [];

@@ -5,6 +5,9 @@ const JWT_ISSUER = "kandora-portal";
 const JWT_AUDIENCE = "kandora-portal";
 const JWT_EXPIRATION = "7d";
 const JWT_EXPIRATION_SECONDS = 7 * 24 * 60 * 60; // 7 days in seconds
+const GAME_JWT_ISSUER = "kandora-tournaments";
+const GAME_JWT_AUDIENCE = "kandora-game";
+const GAME_JWT_EXPIRATION = "12h";
 
 /**
  * Threshold (in seconds) before expiration at which we re-issue the token.
@@ -22,6 +25,11 @@ export interface JwtPayload {
   username: string;
   loginMethod: "email" | "discord";
   avatarUrl?: string;
+}
+
+export interface GameJwtPayload {
+  sub: string;
+  scope: "game";
 }
 
 /**
@@ -49,6 +57,34 @@ export async function verifyToken(token: string): Promise<JwtPayload | null> {
       audience: JWT_AUDIENCE,
     });
     return payload as unknown as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+export async function signGameToken(userId: string): Promise<string> {
+  return new SignJWT({ scope: "game" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(userId)
+    .setIssuedAt()
+    .setIssuer(GAME_JWT_ISSUER)
+    .setAudience(GAME_JWT_AUDIENCE)
+    .setExpirationTime(GAME_JWT_EXPIRATION)
+    .sign(getSecret());
+}
+
+export async function verifyGameToken(
+  token: string
+): Promise<GameJwtPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret(), {
+      issuer: GAME_JWT_ISSUER,
+      audience: GAME_JWT_AUDIENCE,
+    });
+    if (payload.scope !== "game" || typeof payload.sub !== "string") {
+      return null;
+    }
+    return payload as unknown as GameJwtPayload;
   } catch {
     return null;
   }

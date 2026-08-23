@@ -8,13 +8,16 @@ vi.mock("~/services/gameServer.server", () => ({
   getGameServerHttpUrl: () => "http://game.test",
 }));
 
+const mocks = vi.hoisted(() => ({
+  requireGameApiAccess: vi.fn(),
+}));
+
 vi.mock("~/utils/jwt.server", () => ({
-  getTokenFromRequest: (request: Request) =>
-    request.headers.get("x-test-token"),
-  getAuthenticatedUser: (request: Request) =>
-    request.headers.get("x-test-token")
-      ? { sub: "user-1", username: "Alice", loginMethod: "discord" }
-      : null,
+  signGameToken: vi.fn().mockResolvedValue("game-token"),
+}));
+
+vi.mock("~/utils/gameAuth.server", () => ({
+  requireGameApiAccess: mocks.requireGameApiAccess,
 }));
 
 import { action, loader } from "./rooms";
@@ -23,8 +26,13 @@ describe("game rooms API", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
+    mocks.requireGameApiAccess.mockResolvedValue({
+      authorized: true,
+      user: { sub: "user-1", username: "Alice", loginMethod: "discord" },
+    });
   });
 
   it("forwards room listings to the game server", async () => {
@@ -48,12 +56,21 @@ describe("game rooms API", () => {
   });
 
   it("rejects anonymous room listings without calling upstream", async () => {
+    mocks.requireGameApiAccess.mockResolvedValue({
+      authorized: false,
+      response: Response.json(
+        { error: "sign_in_required" },
+        { status: 401 }
+      ),
+    });
     const request = new Request("http://app.test/api/game/rooms");
 
     const response = await loader({ request });
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({ error: "forbidden" });
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "sign_in_required",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -75,11 +92,18 @@ describe("game rooms API", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://game.test/rooms", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ preset: "m-league", token: "signed-token" }),
+      body: JSON.stringify({ preset: "m-league", token: "game-token" }),
     });
   });
 
   it("rejects unauthenticated room creation without calling upstream", async () => {
+    mocks.requireGameApiAccess.mockResolvedValue({
+      authorized: false,
+      response: Response.json(
+        { error: "sign_in_required" },
+        { status: 401 }
+      ),
+    });
     const request = new Request("http://app.test/api/game/rooms", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -89,7 +113,9 @@ describe("game rooms API", () => {
     const response = await action({ request });
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "missing_token" });
+    await expect(response.json()).resolves.toEqual({
+      error: "sign_in_required",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -138,6 +138,33 @@ export const en: Translations = {
     authError: "Authentication Error",
   },
 
+  gameAccess: {
+    eyebrow: "Live game access",
+    signed_out: {
+      title: "Sign in to play or watch",
+      description:
+        "The game lobby, active matches, and live spectator views are available to members of the TNT Discord server.",
+    },
+    discord_unlinked: {
+      title: "Connect your Discord account",
+      description:
+        "Link Discord to your existing account so we can verify access to live games without changing your profile or game history.",
+    },
+    not_in_main_guild: {
+      title: "TNT membership required",
+      description:
+        "Your Discord account is connected, but it is not currently a member of the TNT Discord server. Live game access is unavailable.",
+    },
+    membership_unavailable: {
+      title: "Access check unavailable",
+      description:
+        "We could not verify your TNT Discord membership right now. Live game access remains closed until the check is available again.",
+    },
+    linkDiscord: "Connect Discord",
+    backToTournaments: "Back to tournaments",
+    oauthError: "Discord sign-in could not be started. Please try again.",
+  },
+
   // Verify email page
   verifyEmail: {
     verifying: "Verifying your email...",

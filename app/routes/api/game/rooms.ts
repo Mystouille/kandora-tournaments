@@ -1,7 +1,7 @@
 import { isGameEnabled } from "~/game/feature-gate";
 import { getGameServerHttpUrl } from "~/services/gameServer.server";
-import { getTokenFromRequest } from "~/utils/jwt.server";
-import { getAuthenticatedUser } from "~/utils/jwt.server";
+import { signGameToken } from "~/utils/jwt.server";
+import { requireGameApiAccess } from "~/utils/gameAuth.server";
 
 function errorResponse(error: string, status: number): Response {
   return Response.json({ error }, { status });
@@ -37,8 +37,9 @@ export async function loader({
   if (!isGameEnabled()) {
     return errorResponse("game_disabled", 404);
   }
-  if (!(await getAuthenticatedUser(request))) {
-    return errorResponse("forbidden", 403);
+  const access = await requireGameApiAccess(request);
+  if (!access.authorized) {
+    return access.response;
   }
   return forwardToGameServer({
     method: "GET",
@@ -58,10 +59,12 @@ export async function action({
     return errorResponse("method_not_allowed", 405);
   }
 
-  const token = getTokenFromRequest(request);
-  if (!token) {
-    return errorResponse("missing_token", 401);
+  const access = await requireGameApiAccess(request);
+  if (!access.authorized) {
+    return access.response;
   }
+
+  const token = await signGameToken(access.user.sub);
 
   let body: unknown;
   try {

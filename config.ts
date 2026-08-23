@@ -25,6 +25,11 @@ export const uploadDir =
 export const platformConnectorsDisabled =
   process.env.PLATFORM_CONNECTORS_DISABLED === "true";
 
+// Temporary two-service rollout escape hatch. Keep false in steady state so
+// the game-server accepts only short-lived, membership-gated game tokens.
+export const gameAllowLegacyAuthTokens =
+  process.env.GAME_ALLOW_LEGACY_AUTH_TOKENS === "true";
+
 // ---------------------------------------------------------------------------
 // Group 1 — Core (REQUIRED: app will not start without these)
 // ---------------------------------------------------------------------------

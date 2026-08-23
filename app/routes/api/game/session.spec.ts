@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   gameEnabled: true,
+  requireGameApiAccess: vi.fn(),
 }));
 
 vi.mock("~/game/feature-gate", () => ({
@@ -9,19 +10,23 @@ vi.mock("~/game/feature-gate", () => ({
 }));
 
 vi.mock("~/utils/jwt.server", () => ({
-  getTokenFromRequest: (request: Request) =>
-    request.headers.get("x-test-token"),
-  getAuthenticatedUser: (request: Request) =>
-    request.headers.get("x-test-token")
-      ? { sub: "user-1", username: "Alice", loginMethod: "discord" }
-      : null,
+  signGameToken: vi.fn().mockResolvedValue("game-token"),
+}));
+
+vi.mock("~/utils/gameAuth.server", () => ({
+  requireGameApiAccess: mocks.requireGameApiAccess,
 }));
 
 import { loader } from "./session";
 
 describe("game session API", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mocks.gameEnabled = true;
+    mocks.requireGameApiAccess.mockResolvedValue({
+      authorized: true,
+      user: { sub: "user-1", username: "Alice", loginMethod: "discord" },
+    });
     vi.stubEnv("GAME_WS_URL", "wss://game.test");
   });
 
@@ -34,18 +39,27 @@ describe("game session API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      token: "signed-token",
+      token: "game-token",
       wsUrl: "wss://game.test",
       wsPath: "/ws/game",
     });
   });
 
   it("rejects anonymous game sessions", async () => {
+    mocks.requireGameApiAccess.mockResolvedValue({
+      authorized: false,
+      response: Response.json(
+        { error: "sign_in_required" },
+        { status: 401 }
+      ),
+    });
     const request = new Request("http://app.test/api/game/session");
 
     const response = await loader({ request });
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({ error: "forbidden" });
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "sign_in_required",
+    });
   });
 });

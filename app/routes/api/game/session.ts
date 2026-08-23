@@ -1,6 +1,6 @@
 import { isGameEnabled } from "~/game/feature-gate";
-import { getTokenFromRequest } from "~/utils/jwt.server";
-import { getAuthenticatedUser } from "~/utils/jwt.server";
+import { signGameToken } from "~/utils/jwt.server";
+import { requireGameApiAccess } from "~/utils/gameAuth.server";
 
 /**
  * GET /api/game/session
@@ -19,11 +19,11 @@ export async function loader({ request }: { request: Request }) {
   if (!isGameEnabled()) {
     return new Response("Not Found", { status: 404 });
   }
-  const user = await getAuthenticatedUser(request);
-  const token = getTokenFromRequest(request);
-  if (!user || !token) {
-    return Response.json({ error: "forbidden" }, { status: 403 });
+  const access = await requireGameApiAccess(request);
+  if (!access.authorized) {
+    return access.response;
   }
+  const token = await signGameToken(access.user.sub);
   return Response.json({
     token,
     wsUrl: process.env.GAME_WS_URL ?? null, // null → client uses same-origin

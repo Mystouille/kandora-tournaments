@@ -139,6 +139,34 @@ export const fr: Translations = {
     authError: "Erreur d'authentification",
   },
 
+  gameAccess: {
+    eyebrow: "Accès aux parties en direct",
+    signed_out: {
+      title: "Connectez-vous pour jouer ou regarder",
+      description:
+        "Le lobby, les parties en cours et les vues spectateur en direct sont accessibles aux membres du serveur Discord TNT.",
+    },
+    discord_unlinked: {
+      title: "Connectez votre compte Discord",
+      description:
+        "Liez Discord à votre compte existant afin que nous puissions vérifier votre accès aux parties en direct sans modifier votre profil ni votre historique.",
+    },
+    not_in_main_guild: {
+      title: "Adhésion au Discord TNT requise",
+      description:
+        "Votre compte Discord est connecté, mais il n'est pas actuellement membre du serveur Discord TNT. L'accès aux parties en direct est indisponible.",
+    },
+    membership_unavailable: {
+      title: "Vérification d'accès indisponible",
+      description:
+        "Nous ne pouvons pas vérifier votre présence sur le Discord TNT pour le moment. L'accès aux parties en direct reste fermé jusqu'au rétablissement de la vérification.",
+    },
+    linkDiscord: "Connecter Discord",
+    backToTournaments: "Retour aux tournois",
+    oauthError:
+      "La connexion Discord n'a pas pu démarrer. Veuillez réessayer.",
+  },
+
   // Page de vérification d'e-mail
   verifyEmail: {
     verifying: "Vérification de votre e-mail...",

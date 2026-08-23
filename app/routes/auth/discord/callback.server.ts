@@ -7,6 +7,10 @@ import {
 } from "../../../utils/jwt.server";
 import { getGuildMember } from "../../../utils/discord-guilds.server";
 import { getMainServer } from "../../../config/servers";
+import {
+  normalizeLocalReturnPath,
+  stripAppBasePath,
+} from "../../../utils/gameReturnPath";
 
 /**
  * Parse a specific cookie value from a Cookie header string.
@@ -17,6 +21,17 @@ function getCookieValue(cookieHeader: string, name: string): string | null {
     .map((c) => c.trim())
     .find((c) => c.startsWith(`${name}=`));
   return match ? match.split("=")[1] : null;
+}
+
+function appendRedirectParams(
+  path: string,
+  values: Record<string, string>
+): string {
+  const url = new URL(path, "https://kandora.local");
+  for (const [key, value] of Object.entries(values)) {
+    url.searchParams.set(key, value);
+  }
+  return `${url.pathname}${url.search}`;
 }
 
 /**
@@ -65,6 +80,19 @@ export async function loader({ request }: { request: Request }) {
   }
   const basePath = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
   const redirectUri = origin + basePath + "/auth/discord/callback";
+  const returnToCookie = getCookieValue(cookieHeader, "discord_return_to");
+  let decodedReturnTo = "/";
+  if (returnToCookie) {
+    try {
+      decodedReturnTo = decodeURIComponent(returnToCookie);
+    } catch {
+      decodedReturnTo = "/";
+    }
+  }
+  const returnTo = normalizeLocalReturnPath(
+    stripAppBasePath(decodedReturnTo, basePath),
+    "/"
+  );
 
   // Exchange code for access token
   const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
@@ -120,11 +148,10 @@ export async function loader({ request }: { request: Request }) {
       headers.append("Set-Cookie", clearLinkCookie);
       headers.append("Set-Cookie", clearStateCookie);
       headers.append("Set-Cookie", clearReturnToCookie);
-      headers.set(
-        "Location",
-        "/account?discord_link=error&discord_link_error=" +
-          encodeURIComponent("You must be logged in to link a Discord account.")
-      );
+      headers.set("Location", appendRedirectParams(returnTo, {
+        discord_link: "error",
+        discord_link_error: "You must be logged in to link a Discord account.",
+      }));
       return new Response(null, { status: 302, headers });
     }
 
@@ -141,13 +168,11 @@ export async function loader({ request }: { request: Request }) {
     headers.append("Set-Cookie", clearReturnToCookie);
 
     if (!linkResult.success) {
-      headers.set(
-        "Location",
-        "/account?discord_link=error&discord_link_error=" +
-          encodeURIComponent(
-            linkResult.error || "Failed to link Discord account."
-          )
-      );
+      headers.set("Location", appendRedirectParams(returnTo, {
+        discord_link: "error",
+        discord_link_error:
+          linkResult.error || "Failed to link Discord account.",
+      }));
       return new Response(null, { status: 302, headers });
     }
 
@@ -160,11 +185,11 @@ export async function loader({ request }: { request: Request }) {
     });
     headers.append("Set-Cookie", createAuthCookie(newJwt));
 
-    const params = new URLSearchParams({ discord_link: "success" });
+    const linkParams: Record<string, string> = { discord_link: "success" };
     if (linkResult.merged) {
-      params.set("merged", "true");
+      linkParams.merged = "true";
     }
-    headers.set("Location", `/account?${params.toString()}`);
+    headers.set("Location", appendRedirectParams(returnTo, linkParams));
     return new Response(null, { status: 302, headers });
   }
 
@@ -219,24 +244,20 @@ export async function loader({ request }: { request: Request }) {
   headers.append("Set-Cookie", clearReturnToCookie);
 
   // Redirect new users to account setup; otherwise back to the page they were on
-  const returnToCookie = getCookieValue(cookieHeader, "discord_return_to");
-  let returnTo = returnToCookie ? decodeURIComponent(returnToCookie) : "/";
-  // Strip the basename prefix if present, since React Router automatically prepends it
-  if (basePath && returnTo.startsWith(basePath)) {
-    returnTo = returnTo.slice(basePath.length) || "/";
-  }
-  // Note: React Router automatically prepends the basename to redirect Location headers
-  const redirectTo = dbResult.isNewUser ? "/account?setup=true" : returnTo;
-  const resultParams = new URLSearchParams();
-  resultParams.set("username", userInfo.username);
+  const redirectTo = dbResult.isNewUser
+    ? appendRedirectParams("/account", {
+        setup: "true",
+        returnTo,
+      })
+    : returnTo;
+  const resultParams: Record<string, string> = {
+    discord_auth: "success",
+    username: userInfo.username,
+  };
   if (dbResult.isNewUser) {
-    resultParams.set("newUser", "true");
+    resultParams.newUser = "true";
   }
-
-  const finalUrl =
-    redirectTo +
-    (redirectTo.includes("?") ? "&" : "?") +
-    `discord_auth=success&${resultParams.toString()}`;
+  const finalUrl = appendRedirectParams(redirectTo, resultParams);
 
   headers.set("Location", finalUrl);
   return new Response(null, { status: 302, headers });

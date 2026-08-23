@@ -6,6 +6,7 @@ export default [
   // ---------------------------------------------------------------------
   // Auth — Discord OAuth + session
   // ---------------------------------------------------------------------
+  route("/sign-in", "routes/sign-in.tsx"),
   route("/account", "routes/account.tsx"),
   route("/auth/discord/callback", "routes/auth/discord/callback.tsx"),
   route("/api/auth/me", "routes/api/auth/me.ts"),

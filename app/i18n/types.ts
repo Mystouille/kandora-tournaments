@@ -113,6 +113,16 @@ export interface Translations extends CoreTranslations {
     notInServerDesc: string;
     authError: string;
   };
+  gameAccess: {
+    eyebrow: string;
+    signed_out: { title: string; description: string };
+    discord_unlinked: { title: string; description: string };
+    not_in_main_guild: { title: string; description: string };
+    membership_unavailable: { title: string; description: string };
+    linkDiscord: string;
+    backToTournaments: string;
+    oauthError: string;
+  };
   verifyEmail: {
     verifying: string;
     verifyingDesc: string;

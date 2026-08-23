@@ -43,6 +43,7 @@ export function Navigation({ children }: NavigationProps) {
   // as the user leaves that tournament.
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
+  const isStandaloneSignIn = location.pathname === `${basePath}/sign-in`;
   const tournamentMatch = location.pathname.match(
     /^\/online-tournaments\/([^/]+)/
   );
@@ -196,6 +197,10 @@ export function Navigation({ children }: NavigationProps) {
     window.dispatchEvent(new Event("auth-changed"));
     message.success(t.auth.logoutSuccess);
   };
+
+  if (isStandaloneSignIn) {
+    return <>{children}</>;
+  }
 
   return (
     <>

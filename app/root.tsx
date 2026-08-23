@@ -5,6 +5,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -101,6 +102,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App({ loaderData }: Route.ComponentProps) {
+  const location = useLocation();
   const initialTheme = (loaderData?.theme as "light" | "dark") || "dark";
   const initialLocale = (loaderData?.locale as "en" | "fr") || "fr";
   const initialIsMobile = Boolean(loaderData?.isProbablyMobile);
@@ -108,6 +110,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
   const antiFlickerScript = createThemeBootstrapScript(
     Boolean(uiPreferenceCookieDomain)
   );
+  const isStandaloneSignIn = location.pathname === `${basePath}/sign-in`;
 
   return (
     <>
@@ -124,12 +127,12 @@ export default function App({ loaderData }: Route.ComponentProps) {
           >
             <FormFactorProvider ssrIsMobile={initialIsMobile}>
               <TileSetProvider>
-                <GlossaryProvider>
+                <GlossaryProvider enabled={!isStandaloneSignIn}>
                   <TelemetryProvider endpoint={`${basePath}/api/telemetry`}>
                     <Navigation>
                       <Outlet />
                     </Navigation>
-                    <CookieConsent />
+                    {!isStandaloneSignIn && <CookieConsent />}
                   </TelemetryProvider>
                 </GlossaryProvider>
               </TileSetProvider>

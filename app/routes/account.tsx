@@ -1,4 +1,5 @@
 import AccountPage from "~/core/ui/AccountPage";
+import { normalizeLocalReturnPath } from "~/utils/gameReturnPath";
 
 export function meta() {
   return [
@@ -7,4 +8,20 @@ export function meta() {
   ];
 }
 
-export default AccountPage;
+export function loader({ request }: { request: Request }) {
+  const url = new URL(request.url);
+  return {
+    setupReturnTo: normalizeLocalReturnPath(
+      url.searchParams.get("returnTo"),
+      "/"
+    ),
+  };
+}
+
+export default function AccountRoute({
+  loaderData,
+}: {
+  loaderData: { setupReturnTo: string };
+}) {
+  return <AccountPage setupReturnTo={loaderData.setupReturnTo} />;
+}

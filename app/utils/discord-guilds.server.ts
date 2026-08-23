@@ -3,6 +3,11 @@ import { getServers, getMainServer, getAllServerIds } from "~/config/servers";
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 
+export type GuildMemberLookupResult =
+  | { status: "member"; member: any }
+  | { status: "not_member" }
+  | { status: "unavailable"; httpStatus?: number };
+
 /**
  * Fetch helper for the Discord bot API.
  */
@@ -130,6 +135,31 @@ export async function getGuildMember(
     return null;
   }
   return res.json();
+}
+
+/**
+ * Check membership without conflating a genuine Discord 404 with an
+ * unavailable or misconfigured membership service.
+ */
+export async function lookupGuildMember(
+  guildId: string,
+  discordUserId: string
+): Promise<GuildMemberLookupResult> {
+  try {
+    const res = await discordBotFetch(
+      `/guilds/${guildId}/members/${discordUserId}`
+    );
+    if (res.status === 404) {
+      return { status: "not_member" };
+    }
+    if (!res.ok) {
+      return { status: "unavailable", httpStatus: res.status };
+    }
+    return { status: "member", member: await res.json() };
+  } catch (error) {
+    console.error("Failed to check Discord guild membership:", error);
+    return { status: "unavailable" };
+  }
 }
 
 /** Discord permission bit for ADMINISTRATOR */
