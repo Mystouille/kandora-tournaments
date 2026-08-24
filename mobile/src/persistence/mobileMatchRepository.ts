@@ -24,6 +24,8 @@ const RecoveryRowSchema = z.object({
 export interface MobileMatchRepositoryHandle {
   repository: MatchRepository;
   storage: "sqlite" | "memory";
+  getActiveMatchId(): Promise<string | null>;
+  setActiveMatchId(matchId: string | null): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -247,6 +249,10 @@ async function initializeSchema(database: MobileSqliteDatabase) {
        payload_json TEXT NOT NULL,
        updated_at INTEGER NOT NULL,
        PRIMARY KEY (source, source_game_id)
+     );
+     CREATE TABLE IF NOT EXISTS mobile_metadata (
+       key TEXT PRIMARY KEY NOT NULL,
+       value TEXT NOT NULL
      );`,
     true
   );
@@ -260,9 +266,14 @@ export function createSqliteMatchRepository(
 
 export async function openMobileMatchRepository(): Promise<MobileMatchRepositoryHandle> {
   if (!Capacitor.isNativePlatform()) {
+    let activeMatchId: string | null = null;
     return {
       repository: createMemoryMatchRepository(),
       storage: "memory",
+      getActiveMatchId: async () => activeMatchId,
+      setActiveMatchId: async (matchId) => {
+        activeMatchId = matchId;
+      },
       close: async () => undefined,
     };
   }
@@ -290,6 +301,40 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
   return {
     repository: createSqliteMatchRepository(database),
     storage: "sqlite",
+    getActiveMatchId: async () => {
+      const metadata = await database.query(
+        "SELECT value FROM mobile_metadata WHERE key = ?",
+        ["active_match_id"]
+      );
+      const value = metadata.values?.[0];
+      const stored = z.object({ value: z.string() }).safeParse(value);
+      if (stored.success) {
+        return stored.data.value;
+      }
+      const latest = await database.query(
+        `SELECT match_id FROM match_recovery
+         WHERE terminal_at IS NULL AND checkpoint_json IS NOT NULL
+         ORDER BY updated_at DESC LIMIT 1`
+      );
+      const fallback = z
+        .object({ match_id: z.string() })
+        .safeParse(latest.values?.[0]);
+      return fallback.success ? fallback.data.match_id : null;
+    },
+    setActiveMatchId: async (matchId) => {
+      if (matchId === null) {
+        await database.run(
+          "DELETE FROM mobile_metadata WHERE key = ?",
+          ["active_match_id"]
+        );
+        return;
+      }
+      await database.run(
+        `INSERT INTO mobile_metadata (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        ["active_match_id", matchId]
+      );
+    },
     close: async () => {
       const active = await sqlite.isConnection(DATABASE_NAME, false);
       if (active.result) {

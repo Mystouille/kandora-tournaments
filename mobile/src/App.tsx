@@ -6,10 +6,11 @@ import {
   Cloud,
   History,
   LoaderCircle,
+  Pause,
+  Play,
   Radio,
   RotateCcw,
   Upload,
-  Users,
   Wifi,
 } from "lucide-react";
 import {
@@ -31,12 +32,18 @@ import {
   replayViewToMatchView,
 } from "~/game/replay/player";
 import type { MatchView } from "~/game/client/store";
+import { useMatchStore } from "~/game/client/store";
+import { findTileAction } from "~/game/client/discardActions";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import { DEMO_EVENTS, DEMO_SEAT_NAMES } from "./demoReplay";
 import {
   openMobileMatchRepository,
   type MobileMatchRepositoryHandle,
 } from "./persistence/mobileMatchRepository";
+import {
+  LocalMatchController,
+  type LocalMatchControllerState,
+} from "./local/LocalMatchController";
 
 type AppMode = "online" | "nearby" | "replays";
 
@@ -77,6 +84,12 @@ const DEMO_REPLAY: LoadedReplay = {
   seatNames: DEMO_SEAT_NAMES,
 };
 
+const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
+  status: "idle",
+  matchId: null,
+  error: null,
+};
+
 const MODES = [
   { id: "online" as const, label: "Online", Icon: Cloud },
   { id: "nearby" as const, label: "Nearby", Icon: Radio },
@@ -99,6 +112,7 @@ export function App() {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<TableRenderer | null>(null);
   const repositoryRef = useRef<MobileMatchRepositoryHandle | null>(null);
+  const localControllerRef = useRef<LocalMatchController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<AppMode>("replays");
   const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
@@ -109,12 +123,17 @@ export function App() {
   const [storageState, setStorageState] = useState<
     "loading" | "sqlite" | "memory" | "error"
   >("loading");
-  const matchView = useMemo(() => replayToMatchView(replay), [replay]);
+  const [localState, setLocalState] = useState(INITIAL_LOCAL_STATE);
+  const liveView = useMatchStore();
+  const replayView = useMemo(() => replayToMatchView(replay), [replay]);
+  const showingLocalMatch = mode === "nearby" && localState.matchId !== null;
+  const matchView = showingLocalMatch ? liveView : replayView;
   const latestViewRef = useRef(matchView);
   latestViewRef.current = matchView;
 
   useEffect(() => {
     let disposed = false;
+    let unsubscribe = (): void => undefined;
     void openMobileMatchRepository()
       .then(async (handle) => {
         if (disposed) {
@@ -122,7 +141,14 @@ export function App() {
           return;
         }
         repositoryRef.current = handle;
+        const controller = new LocalMatchController(handle);
+        localControllerRef.current = controller;
+        unsubscribe = controller.subscribe(setLocalState);
         setStorageState(handle.storage);
+        await controller.restore();
+        if (controller.getState().matchId !== null) {
+          setMode("nearby");
+        }
       })
       .catch(() => {
         if (!disposed) {
@@ -131,9 +157,14 @@ export function App() {
       });
     return () => {
       disposed = true;
+      unsubscribe();
+      const controller = localControllerRef.current;
+      localControllerRef.current = null;
       const handle = repositoryRef.current;
       repositoryRef.current = null;
-      if (handle !== null) {
+      if (controller !== null) {
+        void controller.pause().finally(() => handle?.close());
+      } else if (handle !== null) {
         void handle.close();
       }
     };
@@ -152,6 +183,10 @@ export function App() {
       document.documentElement.dataset.appState = isActive
         ? "active"
         : "background";
+      const controller = localControllerRef.current;
+      if (controller !== null) {
+        void (isActive ? controller.restore() : controller.pause());
+      }
     }).then((handle) => {
       listener = handle;
     });
@@ -176,6 +211,30 @@ export function App() {
           return;
         }
         rendererRef.current = renderer;
+        renderer.setOnTileClick(({ tile, discardSource }) => {
+          const store = useMatchStore.getState();
+          if (store.mySeat === null) {
+            return;
+          }
+          const action = findTileAction(
+            store.legalActions,
+            "discard",
+            tile,
+            discardSource
+          );
+          if (action === undefined) {
+            return;
+          }
+          store.setPendingDiscard({ seat: store.mySeat, tile });
+          void localControllerRef.current?.act(action.id);
+        });
+        renderer.setOnActionClick(({ action }) => {
+          void localControllerRef.current?.act(action.id);
+          useMatchStore.getState().setLegalActions([]);
+        });
+        renderer.setOnRenderRequest(() => {
+          renderer?.render(latestViewRef.current);
+        });
         renderer.render(latestViewRef.current);
         setRendererState("ready");
         if (Capacitor.isNativePlatform()) {
@@ -201,6 +260,25 @@ export function App() {
   useEffect(() => {
     rendererRef.current?.render(matchView);
   }, [matchView]);
+
+  const readyDeadline = liveView.readyCheck?.deadline ?? null;
+  const readySeat = liveView.mySeat;
+  useEffect(() => {
+    if (
+      localState.status !== "playing" ||
+      readyDeadline === null ||
+      readySeat === null ||
+      liveView.readyCheck?.acked[readySeat]
+    ) {
+      return;
+    }
+    void localControllerRef.current?.ready();
+  }, [
+    liveView.readyCheck,
+    localState.status,
+    readyDeadline,
+    readySeat,
+  ]);
 
   const importReplay = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -240,7 +318,9 @@ export function App() {
         <header className="app-header">
           <div>
             <strong>Kandora</strong>
-            <span>{replay.id}</span>
+            <span>
+              {showingLocalMatch ? "Local table" : replay.id}
+            </span>
           </div>
           <div className={`renderer-state renderer-state-${rendererState}`}>
             {rendererState === "loading" ? (
@@ -337,17 +417,62 @@ export function App() {
           ) : (
             <>
               <div className="mode-copy">
-                <strong>Private network</strong>
-                <span>Nearby transport not installed</span>
+                <strong>
+                  {localState.status === "playing"
+                    ? "Local match"
+                    : localState.status === "paused"
+                      ? "Match saved"
+                      : localState.status === "finished"
+                        ? "Match complete"
+                        : "Solo table"}
+                </strong>
+                <span>
+                  {localState.error ??
+                    (localState.status === "playing"
+                      ? `${liveView.wallRemaining} tiles remain`
+                      : localState.status === "paused"
+                        ? "Ready to resume"
+                        : "You and three bots")}
+                </span>
               </div>
               <div className="action-row">
-                <button type="button" className="command-button" disabled>
-                  <Users aria-hidden="true" />
-                  <span>Host</span>
-                </button>
-                <button type="button" className="command-button" disabled>
-                  <Radio aria-hidden="true" />
-                  <span>Join</span>
+                <button
+                  type="button"
+                  className="command-button"
+                  disabled={
+                    storageState === "loading" ||
+                    localState.status === "starting" ||
+                    localState.status === "pausing"
+                  }
+                  onClick={() => {
+                    const controller = localControllerRef.current;
+                    if (controller === null) {
+                      return;
+                    }
+                    if (localState.status === "playing") {
+                      void controller.pause();
+                    } else if (localState.status === "paused") {
+                      void controller.restore();
+                    } else {
+                      void controller.startSolo();
+                    }
+                  }}
+                >
+                  {localState.status === "playing" ? (
+                    <Pause aria-hidden="true" />
+                  ) : localState.status === "starting" ||
+                    localState.status === "pausing" ? (
+                    <LoaderCircle aria-hidden="true" className="spin" />
+                  ) : (
+                    <Play aria-hidden="true" />
+                  )}
+                  <span>
+                    {localState.status === "playing"
+                      ? "Pause"
+                      : localState.status === "paused"
+                        ? "Resume"
+                        : "Play solo"}
+                  </span>
                 </button>
               </div>
             </>

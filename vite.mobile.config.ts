@@ -5,14 +5,44 @@ import { defineConfig } from "vite";
 const repositoryRoot = fileURLToPath(new URL(".", import.meta.url));
 const mobileRoot = fileURLToPath(new URL("./mobile", import.meta.url));
 
+function browserSafeRiichi() {
+  return {
+    name: "browser-safe-riichi",
+    enforce: "pre" as const,
+    transform(code: string, id: string) {
+      if (!id.replaceAll("\\", "/").endsWith("/riichi/index.js")) {
+        return null;
+      }
+      return code
+        .replace(
+          "eval(this.tmpResult.oya.join('+'))",
+          "this.tmpResult.oya.reduce((total, value) => total + value, 0)"
+        )
+        .replace(
+          "eval(this.tmpResult.ko.join('+'))",
+          "this.tmpResult.ko.reduce((total, value) => total + value, 0)"
+        );
+    },
+  };
+}
+
 export default defineConfig({
   root: mobileRoot,
   base: "./",
-  plugins: [react()],
+  plugins: [browserSafeRiichi(), react()],
   resolve: {
-    alias: {
-      "~": fileURLToPath(new URL("./app", import.meta.url)),
-    },
+    alias: [
+      {
+        find: /^assert$/,
+        replacement: fileURLToPath(
+          new URL("./mobile/src/polyfills/assert.ts", import.meta.url)
+        ),
+      },
+      {
+        find: /^~\//,
+        replacement: `${fileURLToPath(new URL("./app", import.meta.url))}/`,
+      },
+    ],
   },
   server: {
     fs: {
