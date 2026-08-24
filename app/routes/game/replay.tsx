@@ -1310,6 +1310,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       rendererRef.current.setShowLayoutDebug(overlays.showLayoutDebug);
       rendererRef.current.setShowWaits(overlays.showWaits);
       rendererRef.current.setShowHands(overlays.showHands);
+      rendererRef.current.setShowTsumogiri(overlays.showTsumogiri);
       rendererRef.current.setShowWalls(overlays.showWalls);
       rendererRef.current.setShowNames(overlays.showNames);
       rendererRef.current.setSeatEnrichment(
@@ -1353,6 +1354,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     overlays.showLayoutDebug,
     overlays.showWaits,
     overlays.showHands,
+    overlays.showTsumogiri,
     overlays.showWalls,
     overlays.showNames,
     t,
