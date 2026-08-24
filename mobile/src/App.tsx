@@ -6,8 +6,8 @@ import {
   Cloud,
   History,
   LoaderCircle,
+  LogOut,
   Pause,
-  Play,
   Radio,
   RotateCcw,
   Upload,
@@ -44,6 +44,16 @@ import {
   LocalMatchController,
   type LocalMatchControllerState,
 } from "./local/LocalMatchController";
+import {
+  INITIAL_NEARBY_MATCH_STATE,
+  NearbyMatchController,
+  type NearbyIdentity,
+} from "./nearby/NearbyMatchController";
+import { NearbyLobbyPanel } from "./nearby/NearbyLobbyPanel";
+import {
+  loadNearbyIdentity,
+  updateNearbyDisplayName,
+} from "./nearby/identity";
 
 type AppMode = "online" | "nearby" | "replays";
 
@@ -113,6 +123,7 @@ export function App() {
   const rendererRef = useRef<TableRenderer | null>(null);
   const repositoryRef = useRef<MobileMatchRepositoryHandle | null>(null);
   const localControllerRef = useRef<LocalMatchController | null>(null);
+  const nearbyControllerRef = useRef<NearbyMatchController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<AppMode>("replays");
   const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
@@ -124,16 +135,28 @@ export function App() {
     "loading" | "sqlite" | "memory" | "error"
   >("loading");
   const [localState, setLocalState] = useState(INITIAL_LOCAL_STATE);
+  const [nearbyState, setNearbyState] = useState(
+    INITIAL_NEARBY_MATCH_STATE
+  );
+  const [nearbyIdentity, setNearbyIdentity] = useState<NearbyIdentity>(() =>
+    loadNearbyIdentity()
+  );
+  const nearbyIdentityRef = useRef(nearbyIdentity);
+  nearbyIdentityRef.current = nearbyIdentity;
   const liveView = useMatchStore();
   const replayView = useMemo(() => replayToMatchView(replay), [replay]);
-  const showingLocalMatch = mode === "nearby" && localState.matchId !== null;
-  const matchView = showingLocalMatch ? liveView : replayView;
+  const showingLocalMatch = localState.matchId !== null;
+  const showingNearbyMatch = nearbyState.matchId !== null;
+  const showingLiveMatch =
+    mode === "nearby" && (showingLocalMatch || showingNearbyMatch);
+  const matchView = showingLiveMatch ? liveView : replayView;
   const latestViewRef = useRef(matchView);
   latestViewRef.current = matchView;
 
   useEffect(() => {
     let disposed = false;
-    let unsubscribe = (): void => undefined;
+    let unsubscribeLocal = (): void => undefined;
+    let unsubscribeNearby = (): void => undefined;
     void openMobileMatchRepository()
       .then(async (handle) => {
         if (disposed) {
@@ -143,10 +166,22 @@ export function App() {
         repositoryRef.current = handle;
         const controller = new LocalMatchController(handle);
         localControllerRef.current = controller;
-        unsubscribe = controller.subscribe(setLocalState);
+        unsubscribeLocal = controller.subscribe(setLocalState);
+        const nearbyController = new NearbyMatchController(handle);
+        nearbyControllerRef.current = nearbyController;
+        unsubscribeNearby = nearbyController.subscribe(setNearbyState);
         setStorageState(handle.storage);
-        await controller.restore();
-        if (controller.getState().matchId !== null) {
+        await nearbyController.initialize();
+        const activeMatch = await handle.getActiveMatch();
+        if (activeMatch?.owner === "nearby-host") {
+          await nearbyController.restoreHost(nearbyIdentityRef.current);
+        } else {
+          await controller.restore();
+        }
+        if (
+          controller.getState().matchId !== null ||
+          nearbyController.getState().matchId !== null
+        ) {
           setMode("nearby");
         }
       })
@@ -157,16 +192,19 @@ export function App() {
       });
     return () => {
       disposed = true;
-      unsubscribe();
+      unsubscribeLocal();
+      unsubscribeNearby();
       const controller = localControllerRef.current;
       localControllerRef.current = null;
+      const nearbyController = nearbyControllerRef.current;
+      nearbyControllerRef.current = null;
       const handle = repositoryRef.current;
       repositoryRef.current = null;
-      if (controller !== null) {
-        void controller.pause().finally(() => handle?.close());
-      } else if (handle !== null) {
-        void handle.close();
-      }
+      const cleanup = [
+        controller?.pause() ?? Promise.resolve(),
+        nearbyController?.dispose() ?? Promise.resolve(),
+      ];
+      void Promise.allSettled(cleanup).finally(() => handle?.close());
     };
   }, []);
 
@@ -184,8 +222,20 @@ export function App() {
         ? "active"
         : "background";
       const controller = localControllerRef.current;
-      if (controller !== null) {
-        void (isActive ? controller.restore() : controller.pause());
+      const nearbyController = nearbyControllerRef.current;
+      if (!isActive) {
+        void Promise.allSettled([
+          controller?.pause() ?? Promise.resolve(),
+          nearbyController?.pause() ?? Promise.resolve(),
+        ]);
+        return;
+      }
+      if (nearbyController?.getState().role === "host") {
+        void nearbyController
+          .restoreHost(nearbyIdentityRef.current)
+          .catch(() => undefined);
+      } else if (nearbyController?.getState().role !== "guest") {
+        void controller?.restore().catch(() => undefined);
       }
     }).then((handle) => {
       listener = handle;
@@ -205,6 +255,7 @@ export function App() {
     void import("~/game/client/pixi/TableRenderer")
       .then(async ({ TableRenderer: Renderer }) => {
         renderer = new Renderer();
+        renderer.setConnectionDiagnosticsVisible(false);
         await renderer.mount(container);
         if (disposed) {
           renderer.destroy();
@@ -226,10 +277,21 @@ export function App() {
             return;
           }
           store.setPendingDiscard({ seat: store.mySeat, tile });
-          void localControllerRef.current?.act(action.id);
+          const nearbyController = nearbyControllerRef.current;
+          if (nearbyController?.getState().matchId === store.matchId) {
+            void nearbyController.act(action.id).catch(() => undefined);
+          } else {
+            void localControllerRef.current?.act(action.id);
+          }
         });
         renderer.setOnActionClick(({ action }) => {
-          void localControllerRef.current?.act(action.id);
+          const store = useMatchStore.getState();
+          const nearbyController = nearbyControllerRef.current;
+          if (nearbyController?.getState().matchId === store.matchId) {
+            void nearbyController.act(action.id).catch(() => undefined);
+          } else {
+            void localControllerRef.current?.act(action.id);
+          }
           useMatchStore.getState().setLegalActions([]);
         });
         renderer.setOnRenderRequest(() => {
@@ -265,20 +327,78 @@ export function App() {
   const readySeat = liveView.mySeat;
   useEffect(() => {
     if (
-      localState.status !== "playing" ||
+      (localState.status !== "playing" &&
+        nearbyState.status !== "playing") ||
       readyDeadline === null ||
       readySeat === null ||
       liveView.readyCheck?.acked[readySeat]
     ) {
       return;
     }
-    void localControllerRef.current?.ready();
+    if (nearbyControllerRef.current?.getState().matchId === liveView.matchId) {
+      void nearbyControllerRef.current.ready().catch(() => undefined);
+    } else {
+      void localControllerRef.current?.ready();
+    }
   }, [
     liveView.readyCheck,
     localState.status,
+    nearbyState.status,
     readyDeadline,
     readySeat,
   ]);
+
+  const nearbyBusy =
+    localState.status === "starting" ||
+    localState.status === "pausing" ||
+    nearbyState.status === "opening" ||
+    nearbyState.status === "connecting";
+
+  const currentNearbyIdentity = (): NearbyIdentity => {
+    const identity = updateNearbyDisplayName(
+      nearbyIdentityRef.current,
+      nearbyIdentityRef.current.displayName
+    );
+    nearbyIdentityRef.current = identity;
+    setNearbyIdentity(identity);
+    return identity;
+  };
+
+  const playSolo = async (): Promise<void> => {
+    const nearbyController = nearbyControllerRef.current;
+    if (nearbyController !== null && nearbyController.getState().role !== "idle") {
+      await nearbyController.leave();
+    }
+    const controller = localControllerRef.current;
+    if (controller === null) {
+      return;
+    }
+    const activeMatch = await repositoryRef.current?.getActiveMatch();
+    if (
+      controller.getState().status === "paused" &&
+      activeMatch?.owner === "solo"
+    ) {
+      await controller.restore();
+    } else {
+      await controller.startSolo();
+    }
+  };
+
+  const hostNearby = async (): Promise<void> => {
+    await localControllerRef.current?.pause();
+    await nearbyControllerRef.current?.host(currentNearbyIdentity());
+  };
+
+  const discoverNearby = async (): Promise<void> => {
+    await localControllerRef.current?.pause();
+    await nearbyControllerRef.current?.discover(currentNearbyIdentity());
+  };
+
+  const showNearbyLobby =
+    mode === "nearby" &&
+    localState.status !== "playing" &&
+    nearbyState.status !== "playing" &&
+    nearbyState.status !== "finished";
 
   const importReplay = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -319,7 +439,11 @@ export function App() {
           <div>
             <strong>Kandora</strong>
             <span>
-              {showingLocalMatch ? "Local table" : replay.id}
+              {showingNearbyMatch
+                ? "Nearby table"
+                : showingLocalMatch
+                  ? "Local table"
+                  : replay.id}
             </span>
           </div>
           <div className={`renderer-state renderer-state-${rendererState}`}>
@@ -339,6 +463,59 @@ export function App() {
             </span>
           </div>
         </header>
+        {showNearbyLobby && (
+          <NearbyLobbyPanel
+            state={nearbyState}
+            localState={localState}
+            identity={nearbyIdentity}
+            busy={nearbyBusy}
+            onDisplayNameChange={(displayName) => {
+              const identity = { ...nearbyIdentityRef.current, displayName };
+              nearbyIdentityRef.current = identity;
+              setNearbyIdentity(identity);
+              if (displayName.trim() !== "") {
+                updateNearbyDisplayName(identity, displayName);
+              }
+            }}
+            onPlaySolo={() => {
+              void playSolo().catch(() => undefined);
+            }}
+            onHost={() => {
+              void hostNearby().catch(() => undefined);
+            }}
+            onDiscover={() => {
+              void discoverNearby().catch(() => undefined);
+            }}
+            onResumeHost={() => {
+              void nearbyControllerRef.current
+                ?.restoreHost(currentNearbyIdentity())
+                .catch(() => undefined);
+            }}
+            onConnect={(endpointId) => {
+              void nearbyControllerRef.current
+                ?.requestConnection(endpointId)
+                .catch(() => undefined);
+            }}
+            onConfirmPairing={(endpointId) => {
+              void nearbyControllerRef.current
+                ?.confirmPairing(endpointId)
+                .catch(() => undefined);
+            }}
+            onRejectPairing={(endpointId) => {
+              void nearbyControllerRef.current
+                ?.rejectPairing(endpointId)
+                .catch(() => undefined);
+            }}
+            onStartMatch={() => {
+              void nearbyControllerRef.current
+                ?.startMatch()
+                .catch(() => undefined);
+            }}
+            onLeave={() => {
+              void nearbyControllerRef.current?.leave().catch(() => undefined);
+            }}
+          />
+        )}
       </section>
 
       <section className="control-dock" aria-label="Game mode controls">
@@ -418,7 +595,11 @@ export function App() {
             <>
               <div className="mode-copy">
                 <strong>
-                  {localState.status === "playing"
+                  {nearbyState.status === "playing"
+                    ? "Nearby match"
+                    : nearbyState.status === "lobby"
+                      ? "Nearby lobby"
+                      : localState.status === "playing"
                     ? "Local match"
                     : localState.status === "paused"
                       ? "Match saved"
@@ -427,53 +608,52 @@ export function App() {
                         : "Solo table"}
                 </strong>
                 <span>
-                  {localState.error ??
-                    (localState.status === "playing"
-                      ? `${liveView.wallRemaining} tiles remain`
-                      : localState.status === "paused"
-                        ? "Ready to resume"
-                        : "You and three bots")}
+                  {nearbyState.error ??
+                    localState.error ??
+                    (nearbyState.status === "playing"
+                      ? `${nearbyState.connected.length + 1} devices connected`
+                      : nearbyState.status === "lobby"
+                        ? "Pair friends or start with bots"
+                        : localState.status === "playing"
+                          ? `${liveView.wallRemaining} tiles remain`
+                          : localState.status === "paused"
+                            ? "Ready to resume"
+                            : "Host, join, or play solo")}
                 </span>
               </div>
               <div className="action-row">
-                <button
-                  type="button"
-                  className="command-button"
-                  disabled={
-                    storageState === "loading" ||
-                    localState.status === "starting" ||
-                    localState.status === "pausing"
-                  }
-                  onClick={() => {
-                    const controller = localControllerRef.current;
-                    if (controller === null) {
-                      return;
-                    }
-                    if (localState.status === "playing") {
-                      void controller.pause();
-                    } else if (localState.status === "paused") {
-                      void controller.restore();
-                    } else {
-                      void controller.startSolo();
-                    }
-                  }}
-                >
-                  {localState.status === "playing" ? (
-                    <Pause aria-hidden="true" />
-                  ) : localState.status === "starting" ||
-                    localState.status === "pausing" ? (
-                    <LoaderCircle aria-hidden="true" className="spin" />
-                  ) : (
-                    <Play aria-hidden="true" />
-                  )}
-                  <span>
-                    {localState.status === "playing"
-                      ? "Pause"
-                      : localState.status === "paused"
-                        ? "Resume"
-                        : "Play solo"}
-                  </span>
-                </button>
+                {(localState.status === "playing" ||
+                  nearbyState.status === "playing") && (
+                  <button
+                    type="button"
+                    className="command-button"
+                    disabled={nearbyBusy}
+                    onClick={() => {
+                      if (nearbyState.status === "playing") {
+                        const operation =
+                          nearbyState.role === "host"
+                            ? nearbyControllerRef.current?.pause()
+                            : nearbyControllerRef.current?.leave();
+                        void operation?.catch(() => undefined);
+                      } else {
+                        void localControllerRef.current?.pause();
+                      }
+                    }}
+                  >
+                    {nearbyState.role === "guest" &&
+                    nearbyState.status === "playing" ? (
+                      <LogOut aria-hidden="true" />
+                    ) : (
+                      <Pause aria-hidden="true" />
+                    )}
+                    <span>
+                      {nearbyState.role === "guest" &&
+                      nearbyState.status === "playing"
+                        ? "Leave"
+                        : "Pause"}
+                    </span>
+                  </button>
+                )}
               </div>
             </>
           )}

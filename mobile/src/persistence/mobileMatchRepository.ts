@@ -24,9 +24,14 @@ const RecoveryRowSchema = z.object({
 export interface MobileMatchRepositoryHandle {
   repository: MatchRepository;
   storage: "sqlite" | "memory";
-  getActiveMatchId(): Promise<string | null>;
-  setActiveMatchId(matchId: string | null): Promise<void>;
+  getActiveMatch(): Promise<MobileActiveMatch | null>;
+  setActiveMatch(activeMatch: MobileActiveMatch | null): Promise<void>;
   close(): Promise<void>;
+}
+
+export interface MobileActiveMatch {
+  matchId: string;
+  owner: "solo" | "nearby-host";
 }
 
 export interface MobileSqliteDatabase {
@@ -266,13 +271,13 @@ export function createSqliteMatchRepository(
 
 export async function openMobileMatchRepository(): Promise<MobileMatchRepositoryHandle> {
   if (!Capacitor.isNativePlatform()) {
-    let activeMatchId: string | null = null;
+    let activeMatch: MobileActiveMatch | null = null;
     return {
       repository: createMemoryMatchRepository(),
       storage: "memory",
-      getActiveMatchId: async () => activeMatchId,
-      setActiveMatchId: async (matchId) => {
-        activeMatchId = matchId;
+      getActiveMatch: async () => activeMatch,
+      setActiveMatch: async (nextActiveMatch) => {
+        activeMatch = nextActiveMatch;
       },
       close: async () => undefined,
     };
@@ -301,15 +306,30 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
   return {
     repository: createSqliteMatchRepository(database),
     storage: "sqlite",
-    getActiveMatchId: async () => {
+    getActiveMatch: async () => {
       const metadata = await database.query(
-        "SELECT value FROM mobile_metadata WHERE key = ?",
-        ["active_match_id"]
+        "SELECT key, value FROM mobile_metadata WHERE key IN (?, ?)",
+        ["active_match_id", "active_match_owner"]
       );
-      const value = metadata.values?.[0];
-      const stored = z.object({ value: z.string() }).safeParse(value);
-      if (stored.success) {
-        return stored.data.value;
+      const values = z
+        .array(z.object({ key: z.string(), value: z.string() }))
+        .safeParse(metadata.values ?? []);
+      if (values.success) {
+        const matchId = values.data.find(
+          (entry) => entry.key === "active_match_id"
+        )?.value;
+        const owner = values.data.find(
+          (entry) => entry.key === "active_match_owner"
+        )?.value;
+        if (matchId !== undefined) {
+          return {
+            matchId,
+            owner:
+              owner === "nearby-host" || matchId.startsWith("nearby-")
+                ? "nearby-host"
+                : "solo",
+          };
+        }
       }
       const latest = await database.query(
         `SELECT match_id FROM match_recovery
@@ -319,20 +339,33 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
       const fallback = z
         .object({ match_id: z.string() })
         .safeParse(latest.values?.[0]);
-      return fallback.success ? fallback.data.match_id : null;
+      if (!fallback.success) {
+        return null;
+      }
+      return {
+        matchId: fallback.data.match_id,
+        owner: fallback.data.match_id.startsWith("nearby-")
+          ? "nearby-host"
+          : "solo",
+      };
     },
-    setActiveMatchId: async (matchId) => {
-      if (matchId === null) {
+    setActiveMatch: async (activeMatch) => {
+      if (activeMatch === null) {
         await database.run(
-          "DELETE FROM mobile_metadata WHERE key = ?",
-          ["active_match_id"]
+          "DELETE FROM mobile_metadata WHERE key IN (?, ?)",
+          ["active_match_id", "active_match_owner"]
         );
         return;
       }
       await database.run(
         `INSERT INTO mobile_metadata (key, value) VALUES (?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        ["active_match_id", matchId]
+        ["active_match_id", activeMatch.matchId]
+      );
+      await database.run(
+        `INSERT INTO mobile_metadata (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        ["active_match_owner", activeMatch.owner]
       );
     },
     close: async () => {

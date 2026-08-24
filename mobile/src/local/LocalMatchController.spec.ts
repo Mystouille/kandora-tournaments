@@ -9,13 +9,15 @@ import { LocalMatchController } from "./LocalMatchController";
 import type { MobileMatchRepositoryHandle } from "../persistence/mobileMatchRepository";
 
 function memoryPersistence(): MobileMatchRepositoryHandle {
-  let activeMatchId: string | null = null;
+  let activeMatch: Awaited<
+    ReturnType<MobileMatchRepositoryHandle["getActiveMatch"]>
+  > = null;
   return {
     repository: createMemoryMatchRepository(),
     storage: "memory",
-    getActiveMatchId: async () => activeMatchId,
-    setActiveMatchId: async (matchId) => {
-      activeMatchId = matchId;
+    getActiveMatch: async () => activeMatch,
+    setActiveMatch: async (nextActiveMatch) => {
+      activeMatch = nextActiveMatch;
     },
     close: async () => undefined,
   };
@@ -40,7 +42,10 @@ describe("local mobile match controller", () => {
     const initialView = useMatchStore.getState();
     expect(started.status).toBe("playing");
     expect(started.matchId).not.toBeNull();
-    expect(await persistence.getActiveMatchId()).toBe(started.matchId);
+    expect(await persistence.getActiveMatch()).toEqual({
+      matchId: started.matchId,
+      owner: "solo",
+    });
     expect(initialView.conn).toBe("open");
     expect(initialView.mySeat).not.toBeNull();
     expect(initialView.legalActions.length).toBeGreaterThan(0);

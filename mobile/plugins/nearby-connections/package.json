@@ -1,0 +1,14 @@
+{
+  "name": "@kandora/capacitor-nearby-connections",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

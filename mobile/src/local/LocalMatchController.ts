@@ -55,7 +55,7 @@ export class LocalMatchController {
       message.type === "event" &&
       message.events.some((event) => event.type === "session_end")
     ) {
-      void this.persistence.setActiveMatchId(null);
+      void this.persistence.setActiveMatch(null);
       this.update({ status: "finished", error: null });
     }
   };
@@ -81,17 +81,18 @@ export class LocalMatchController {
       if (this.match !== null) {
         return;
       }
-      const matchId = await this.persistence.getActiveMatchId();
-      if (matchId === null) {
+      const activeMatch = await this.persistence.getActiveMatch();
+      if (activeMatch === null || activeMatch.owner !== "solo") {
         return;
       }
+      const { matchId } = activeMatch;
       this.update({ status: "starting", matchId, error: null });
       const restored = await MatchProcess.restoreSavedCheckpoint(matchId, {
         repository: this.persistence.repository,
         runtime: createSystemMatchRuntime(0),
       });
       if (restored === null) {
-        await this.persistence.setActiveMatchId(null);
+        await this.persistence.setActiveMatch(null);
         this.update({ status: "idle", matchId: null, error: null });
         return;
       }
@@ -149,7 +150,7 @@ export class LocalMatchController {
         throw new Error("Could not restore the local player seat");
       }
       this.replaceMatch(restorable, restoredSeat);
-      await this.persistence.setActiveMatchId(matchId);
+      await this.persistence.setActiveMatch({ matchId, owner: "solo" });
       const starting = restorable.fillBotsAndStart();
       await this.completeStartup(restorable, starting);
       this.syncSnapshot();
