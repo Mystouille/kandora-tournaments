@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../app/game/**/*.ts",
+    "../app/game/**/*.tsx",
+    "../capacitor.config.ts",
+    "../vite.mobile.config.ts"
+  ],
+  "compilerOptions": {
+    "rootDirs": [".."],
+    "types": ["vite/client"],
+    "noEmit": true
+  }
+}
