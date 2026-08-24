@@ -3,15 +3,20 @@ import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
+  ArrowLeft,
+  ChevronRight,
   Cloud,
+  DoorOpen,
   History,
   LoaderCircle,
+  LogIn,
   LogOut,
-  Pause,
   Radio,
   RotateCcw,
   Upload,
+  UserRound,
   Wifi,
+  WifiOff,
 } from "lucide-react";
 import {
   useEffect,
@@ -56,8 +61,17 @@ import {
   loadNearbyIdentity,
   updateNearbyDisplayName,
 } from "./nearby/identity";
+import {
+  hasPlayingMatch,
+  nearbyPageAvailable,
+  normalizeWebAppUrl,
+  retryTransientPause,
+  webAppPath,
+  type MobileShellPage,
+  type MobileStorageState,
+} from "./shell";
 
-type AppMode = "online" | "nearby" | "replays";
+type AuthChoice = "undecided" | "offline" | "web";
 
 interface LoadedReplay {
   id: string;
@@ -102,12 +116,6 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
-const MODES = [
-  { id: "online" as const, label: "Online", Icon: Cloud },
-  { id: "nearby" as const, label: "Nearby", Icon: Radio },
-  { id: "replays" as const, label: "Replays", Icon: History },
-];
-
 function replayToMatchView(replay: LoadedReplay): MatchView {
   let view = initialView();
   for (const event of replay.events) {
@@ -127,15 +135,17 @@ export function App() {
   const localControllerRef = useRef<LocalMatchController | null>(null);
   const nearbyControllerRef = useRef<NearbyMatchController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<AppMode>("replays");
+  const [page, setPage] = useState<MobileShellPage>("home");
+  const [authChoice, setAuthChoice] = useState<AuthChoice>("undecided");
+  const [controllersReady, setControllersReady] = useState(false);
+  const [shellBusy, setShellBusy] = useState(false);
   const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
   >("loading");
   const [importError, setImportError] = useState<string | null>(null);
-  const [storageState, setStorageState] = useState<
-    "loading" | "sqlite" | "memory" | "error"
-  >("loading");
+  const [storageState, setStorageState] =
+    useState<MobileStorageState>("loading");
   const [localState, setLocalState] = useState(INITIAL_LOCAL_STATE);
   const [nearbyState, setNearbyState] = useState(
     INITIAL_NEARBY_MATCH_STATE
@@ -147,13 +157,11 @@ export function App() {
   nearbyIdentityRef.current = nearbyIdentity;
   const liveView = useMatchStore();
   const replayView = useMemo(() => replayToMatchView(replay), [replay]);
-  const showingLocalMatch = localState.matchId !== null;
-  const showingNearbyMatch = nearbyState.matchId !== null;
-  const showingLiveMatch =
-    mode === "nearby" && (showingLocalMatch || showingNearbyMatch);
-  const isPlayingMatch =
-    showingLiveMatch &&
-    (localState.status === "playing" || nearbyState.status === "playing");
+  const isPlayingMatch = hasPlayingMatch(
+    localState.status,
+    nearbyState.status
+  );
+  const showsTable = page === "game" || page === "replays";
   const renderedLiveView = useMemo(
     () =>
       liveView.mySeat !== null && liveView.mySeat !== 0
@@ -161,9 +169,19 @@ export function App() {
         : liveView,
     [liveView]
   );
-  const matchView = showingLiveMatch ? renderedLiveView : replayView;
+  const matchView = page === "game" ? renderedLiveView : replayView;
   const latestViewRef = useRef(matchView);
   latestViewRef.current = matchView;
+  const webAppBaseUrl = normalizeWebAppUrl(
+    import.meta.env.VITE_APP_BASE_URL
+  );
+  const discordLoginUrl =
+    webAppBaseUrl === null
+      ? null
+      : webAppPath(webAppBaseUrl, "/sign-in?returnTo=%2Flobby");
+  const onlineLobbyUrl =
+    webAppBaseUrl === null ? null : webAppPath(webAppBaseUrl, "/lobby");
+  const canOpenNearby = nearbyPageAvailable(controllersReady, storageState);
 
   useEffect(() => {
     let disposed = false;
@@ -184,6 +202,7 @@ export function App() {
         unsubscribeNearby = nearbyController.subscribe(setNearbyState);
         setStorageState(handle.storage);
         await nearbyController.initialize();
+        setControllersReady(true);
         const activeMatch = await handle.getActiveMatch();
         if (activeMatch?.owner === "nearby-host") {
           await nearbyController.restoreHost(nearbyIdentityRef.current);
@@ -191,14 +210,22 @@ export function App() {
           await controller.restore();
         }
         if (
+          hasPlayingMatch(
+            controller.getState().status,
+            nearbyController.getState().status
+          )
+        ) {
+          setPage("game");
+        } else if (
           controller.getState().matchId !== null ||
           nearbyController.getState().matchId !== null
         ) {
-          setMode("nearby");
+          setPage("nearby");
         }
       })
       .catch(() => {
         if (!disposed) {
+          setControllersReady(false);
           setStorageState("error");
         }
       });
@@ -228,6 +255,7 @@ export function App() {
     if (Capacitor.getPlatform() === "android") {
       void StatusBar.setBackgroundColor({ color: "#0b1210" });
     }
+    void SplashScreen.hide();
     let listener: PluginListenerHandle | null = null;
     void NativeApp.addListener("appStateChange", ({ isActive }) => {
       document.documentElement.dataset.appState = isActive
@@ -258,12 +286,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!showsTable) {
+      return;
+    }
     const container = tableContainerRef.current;
     if (container === null) {
       return;
     }
     let disposed = false;
     let renderer: TableRenderer | null = null;
+    setRendererState("loading");
     void import("~/game/client/pixi/TableRenderer")
       .then(async ({ TableRenderer: Renderer }) => {
         renderer = new Renderer({
@@ -332,11 +364,17 @@ export function App() {
       rendererRef.current = null;
       renderer?.destroy();
     };
-  }, []);
+  }, [showsTable]);
 
   useEffect(() => {
     rendererRef.current?.render(matchView);
   }, [matchView]);
+
+  useEffect(() => {
+    if (isPlayingMatch) {
+      setPage("game");
+    }
+  }, [isPlayingMatch]);
 
   const readyDeadline = liveView.readyCheck?.deadline ?? null;
   const readySeat = liveView.mySeat;
@@ -364,6 +402,7 @@ export function App() {
   ]);
 
   const nearbyBusy =
+    shellBusy ||
     localState.status === "starting" ||
     localState.status === "pausing" ||
     nearbyState.status === "opening" ||
@@ -409,23 +448,51 @@ export function App() {
     await nearbyControllerRef.current?.discover(currentNearbyIdentity());
   };
 
-  const pauseOrLeaveMatch = (): void => {
-    if (nearbyState.status === "playing") {
-      const operation =
-        nearbyState.role === "host"
-          ? nearbyControllerRef.current?.pause()
-          : nearbyControllerRef.current?.leave();
-      void operation?.catch(() => undefined);
+  const quitGame = async (): Promise<void> => {
+    if (shellBusy) {
       return;
     }
-    void localControllerRef.current?.pause();
+    setShellBusy(true);
+    try {
+      if (nearbyState.status === "playing") {
+        if (nearbyState.role === "guest") {
+          await nearbyControllerRef.current?.leave();
+        } else {
+          await retryTransientPause(
+            () => nearbyControllerRef.current?.pause() ?? Promise.resolve(),
+            () => new Promise((resolve) => window.setTimeout(resolve, 50))
+          );
+        }
+      } else {
+        await retryTransientPause(
+          () => localControllerRef.current?.pause() ?? Promise.resolve(),
+          () => new Promise((resolve) => window.setTimeout(resolve, 50))
+        );
+      }
+      setPage("nearby");
+    } finally {
+      setShellBusy(false);
+    }
   };
 
-  const showNearbyLobby =
-    mode === "nearby" &&
-    localState.status !== "playing" &&
-    nearbyState.status !== "playing" &&
-    nearbyState.status !== "finished";
+  const leaveNearbyPage = async (): Promise<void> => {
+    if (nearbyState.role !== "idle") {
+      setShellBusy(true);
+      try {
+        await nearbyControllerRef.current?.leave();
+      } finally {
+        setShellBusy(false);
+      }
+    }
+    setPage("home");
+  };
+
+  const openWebPage = (url: string): void => {
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (opened === null) {
+      window.location.assign(url);
+    }
+  };
 
   const importReplay = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -452,65 +519,60 @@ export function App() {
         seatNames,
       });
       setImportError(null);
-      setMode("replays");
+      setPage("replays");
     } catch {
       setImportError("This file is not a valid Kandora replay.");
     }
   };
 
-  return (
-    <main className={`mobile-app${isPlayingMatch ? " mobile-app-ingame" : ""}`}>
-      <section className="table-stage" aria-label="Mahjong table preview">
-        <div ref={tableContainerRef} className="table-canvas" />
-        <header className="app-header">
-          <div>
-            <strong>Kandora</strong>
-            <span>
-              {showingNearbyMatch
-                ? "Nearby table"
-                : showingLocalMatch
-                  ? "Local table"
-                  : replay.id}
-            </span>
-          </div>
-          <div className={`renderer-state renderer-state-${rendererState}`}>
-            {rendererState === "loading" ? (
-              <LoaderCircle aria-hidden="true" className="spin" />
-            ) : rendererState === "ready" ? (
-              <Wifi aria-hidden="true" />
-            ) : (
-              <Radio aria-hidden="true" />
-            )}
-            <span>
-              {rendererState === "loading"
-                ? "Loading table"
-                : rendererState === "ready"
-                  ? "Table ready"
-                  : "Renderer unavailable"}
-            </span>
-          </div>
-        </header>
-        {isPlayingMatch && (
+  if (page === "game") {
+    return (
+      <main className="mobile-game-view">
+        <section className="table-stage" aria-label="Mahjong game">
+          <div ref={tableContainerRef} className="table-canvas" />
           <button
             type="button"
             className="ingame-exit-button"
-            aria-label={
-              nearbyState.role === "guest" ? "Leave match" : "Pause match"
-            }
-            title={
-              nearbyState.role === "guest" ? "Leave match" : "Pause match"
-            }
+            aria-label="Quit game"
+            title="Quit game"
             disabled={nearbyBusy}
-            onClick={pauseOrLeaveMatch}
+            onClick={() => void quitGame().catch(() => undefined)}
           >
-            {nearbyState.role === "guest" ? (
-              <LogOut aria-hidden="true" />
-            ) : (
-              <Pause aria-hidden="true" />
-            )}
+            <LogOut aria-hidden="true" />
           </button>
-        )}
-        {showNearbyLobby && (
+          {rendererState !== "ready" && (
+            <div className="renderer-loading" aria-live="polite">
+              <LoaderCircle aria-hidden="true" className="spin" />
+              <span>
+                {rendererState === "error" ? "Table unavailable" : "Loading"}
+              </span>
+            </div>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+  if (page === "nearby") {
+    return (
+      <main className="mobile-shell mobile-shell-nearby">
+        <header className="shell-topbar">
+          <button
+            type="button"
+            className="shell-icon-button"
+            aria-label="Back to home"
+            title="Back to home"
+            disabled={nearbyBusy}
+            onClick={() => void leaveNearbyPage().catch(() => undefined)}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Nearby</strong>
+            <span>{nearbyState.available ? "Device play" : "Solo play"}</span>
+          </div>
+        </header>
+        <section className="shell-nearby-content">
           <NearbyLobbyPanel
             state={nearbyState}
             localState={localState}
@@ -524,15 +586,9 @@ export function App() {
                 updateNearbyDisplayName(identity, displayName);
               }
             }}
-            onPlaySolo={() => {
-              void playSolo().catch(() => undefined);
-            }}
-            onHost={() => {
-              void hostNearby().catch(() => undefined);
-            }}
-            onDiscover={() => {
-              void discoverNearby().catch(() => undefined);
-            }}
+            onPlaySolo={() => void playSolo().catch(() => undefined)}
+            onHost={() => void hostNearby().catch(() => undefined)}
+            onDiscover={() => void discoverNearby().catch(() => undefined)}
             onResumeHost={() => {
               void nearbyControllerRef.current
                 ?.restoreHost(currentNearbyIdentity())
@@ -577,140 +633,189 @@ export function App() {
               void nearbyControllerRef.current?.leave().catch(() => undefined);
             }}
           />
-        )}
-      </section>
+        </section>
+      </main>
+    );
+  }
 
-      <section className="control-dock" aria-label="Game mode controls">
-        <nav className="mode-switcher" aria-label="Game mode">
-          {MODES.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className={mode === id ? "active" : undefined}
-              aria-pressed={mode === id}
-              onClick={() => setMode(id)}
-            >
-              <Icon aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="mode-actions">
-          {mode === "replays" ? (
-            <>
-              <div className="mode-copy">
-                <strong>{replay.events.length} events</strong>
-                <span>
-                  {importError ??
-                    (storageState === "sqlite"
-                      ? "Saved on device"
-                      : storageState === "memory"
-                        ? "Browser preview"
-                        : storageState === "error"
-                          ? "Storage unavailable"
-                          : "Opening storage")}
-                </span>
-              </div>
-              <div className="action-row">
-                <button
-                  type="button"
-                  className="command-button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload aria-hidden="true" />
-                  <span>Import</span>
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Restore demo table"
-                  title="Restore demo table"
-                  onClick={() => {
-                    setReplay(DEMO_REPLAY);
-                    setImportError(null);
-                  }}
-                >
-                  <RotateCcw aria-hidden="true" />
-                </button>
-              </div>
-              <input
-                ref={fileInputRef}
-                className="file-input"
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => void importReplay(event)}
-              />
-            </>
-          ) : mode === "online" ? (
-            <>
-              <div className="mode-copy">
-                <strong>Cloud tables</strong>
-                <span>Account connection not configured</span>
-              </div>
-              <button type="button" className="command-button" disabled>
-                <Cloud aria-hidden="true" />
-                <span>Connect</span>
+  if (page === "replays") {
+    return (
+      <main className="mobile-shell mobile-replay-shell">
+        <header className="shell-topbar">
+          <button
+            type="button"
+            className="shell-icon-button"
+            aria-label="Back to home"
+            title="Back to home"
+            onClick={() => setPage("home")}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Replays</strong>
+            <span>{replay.id}</span>
+          </div>
+          <div className={`renderer-state renderer-state-${rendererState}`}>
+            {rendererState === "loading" ? (
+              <LoaderCircle aria-hidden="true" className="spin" />
+            ) : rendererState === "ready" ? (
+              <Wifi aria-hidden="true" />
+            ) : (
+              <Radio aria-hidden="true" />
+            )}
+            <span>{rendererState === "ready" ? "Ready" : rendererState}</span>
+          </div>
+        </header>
+        <section className="replay-workspace">
+          <div className="replay-table-stage">
+            <div ref={tableContainerRef} className="table-canvas" />
+          </div>
+          <aside className="replay-tools">
+            <div className="mode-copy">
+              <strong>{replay.events.length} events</strong>
+              <span>
+                {importError ??
+                  (storageState === "sqlite"
+                    ? "Saved on device"
+                    : storageState === "memory"
+                      ? "Browser preview"
+                      : storageState === "error"
+                        ? "Storage unavailable"
+                        : "Opening storage")}
+              </span>
+            </div>
+            <div className="action-row">
+              <button
+                type="button"
+                className="command-button"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload aria-hidden="true" />
+                <span>Import replay</span>
               </button>
-            </>
-          ) : (
-            <>
-              <div className="mode-copy">
-                <strong>
-                  {nearbyState.status === "playing"
-                    ? "Nearby match"
-                    : nearbyState.status === "lobby"
-                      ? "Nearby lobby"
-                      : localState.status === "playing"
-                    ? "Local match"
-                    : localState.status === "paused"
-                      ? "Match saved"
-                      : localState.status === "finished"
-                        ? "Match complete"
-                        : "Solo table"}
-                </strong>
-                <span>
-                  {nearbyState.error ??
-                    localState.error ??
-                    (nearbyState.status === "playing"
-                      ? `${nearbyState.connected.length + 1} devices connected`
-                      : nearbyState.status === "lobby"
-                        ? "Pair friends or start with bots"
-                        : localState.status === "playing"
-                          ? `${liveView.wallRemaining} tiles remain`
-                          : localState.status === "paused"
-                            ? "Ready to resume"
-                            : "Host, join, or play solo")}
-                </span>
-              </div>
-              <div className="action-row">
-                {(localState.status === "playing" ||
-                  nearbyState.status === "playing") && (
-                  <button
-                    type="button"
-                    className="command-button"
-                    disabled={nearbyBusy}
-                    onClick={pauseOrLeaveMatch}
-                  >
-                    {nearbyState.role === "guest" &&
-                    nearbyState.status === "playing" ? (
-                      <LogOut aria-hidden="true" />
-                    ) : (
-                      <Pause aria-hidden="true" />
-                    )}
-                    <span>
-                      {nearbyState.role === "guest" &&
-                      nearbyState.status === "playing"
-                        ? "Leave"
-                        : "Pause"}
-                    </span>
-                  </button>
-                )}
-              </div>
-            </>
-          )}
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Restore demo table"
+                title="Restore demo table"
+                onClick={() => {
+                  setReplay(DEMO_REPLAY);
+                  setImportError(null);
+                }}
+              >
+                <RotateCcw aria-hidden="true" />
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              className="file-input"
+              type="file"
+              accept="application/json,.json"
+              onChange={(event) => void importReplay(event)}
+            />
+          </aside>
+        </section>
+      </main>
+    );
+  }
+
+  const onlineSelected = authChoice === "web";
+  const offlineSelected = authChoice === "offline";
+  return (
+    <main className="mobile-shell mobile-home">
+      <header className="shell-brand">
+        <span>K</span>
+        <div>
+          <h1>Kandora</h1>
+          <p>Mahjong, wherever the table is.</p>
+        </div>
+      </header>
+
+      <section className="home-account" aria-labelledby="account-heading">
+        <div className="home-section-heading">
+          <UserRound aria-hidden="true" />
+          <div>
+            <h2 id="account-heading">Player access</h2>
+            <span>
+              {offlineSelected
+                ? "Offline"
+                : onlineSelected
+                  ? "Discord web access selected"
+                  : "Choose how to continue"}
+            </span>
+          </div>
+        </div>
+        <div className="home-account-actions">
+          <button
+            type="button"
+            className="home-primary-action"
+            disabled={discordLoginUrl === null}
+            onClick={() => {
+              if (discordLoginUrl !== null) {
+                setAuthChoice("web");
+                openWebPage(discordLoginUrl);
+              }
+            }}
+          >
+            <LogIn aria-hidden="true" />
+            <span>Login with Discord</span>
+          </button>
+          <button
+            type="button"
+            className="home-secondary-action"
+            aria-pressed={offlineSelected}
+            onClick={() => setAuthChoice("offline")}
+          >
+            <WifiOff aria-hidden="true" />
+            <span>Stay offline</span>
+          </button>
         </div>
       </section>
+
+      <nav className="home-destinations" aria-label="Kandora destinations">
+        <button
+          type="button"
+          disabled={!onlineSelected || onlineLobbyUrl === null}
+          onClick={() => {
+            if (onlineLobbyUrl !== null) {
+              openWebPage(onlineLobbyUrl);
+            }
+          }}
+        >
+          <Cloud aria-hidden="true" />
+          <span>
+            <strong>Go to lobby</strong>
+            <small>{offlineSelected ? "Unavailable offline" : "Online games"}</small>
+          </span>
+          <DoorOpen aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => setPage("replays")}>
+          <History aria-hidden="true" />
+          <span>
+            <strong>Replays</strong>
+            <small>Import and review saved games</small>
+          </span>
+          <ChevronRight aria-hidden="true" className="destination-arrow" />
+        </button>
+        <button
+          type="button"
+          disabled={!canOpenNearby}
+          onClick={() => setPage("nearby")}
+        >
+          <Radio aria-hidden="true" />
+          <span>
+            <strong>Nearby</strong>
+            <small>
+              {canOpenNearby
+                ? nearbyState.available
+                  ? "Solo, host, or join"
+                  : "Solo available"
+                : "Checking device"}
+            </small>
+          </span>
+          <ChevronRight aria-hidden="true" className="destination-arrow" />
+        </button>
+      </nav>
     </main>
   );
 }
