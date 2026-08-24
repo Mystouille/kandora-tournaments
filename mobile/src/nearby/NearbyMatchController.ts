@@ -344,6 +344,29 @@ export class NearbyMatchController {
     });
   }
 
+  setWaitingRoomReady(ready: boolean): Promise<void> {
+    return this.sendClientMessage({
+      type: "set_room_ready",
+      matchId: this.requireMatchId(),
+      ready,
+    });
+  }
+
+  addWaitingRoomBot(): Promise<void> {
+    return this.sendClientMessage({
+      type: "add_bot",
+      matchId: this.requireMatchId(),
+    });
+  }
+
+  kickWaitingRoomSeat(seat: 0 | 1 | 2 | 3): Promise<void> {
+    return this.sendClientMessage({
+      type: "kick_seat",
+      matchId: this.requireMatchId(),
+      seat,
+    });
+  }
+
   act(actionId: string): Promise<void> {
     return this.sendClientMessage({
       type: "act",
@@ -383,7 +406,11 @@ export class NearbyMatchController {
           matchId: this.state.matchId,
         });
       } else if (this.state.role === "host") {
-        await this.pauseHost();
+        if (this.match?.status === "waiting" || this.match === null) {
+          await this.closeHostWaitingRoom();
+        } else {
+          await this.pauseHost();
+        }
       }
       await this.stopTransportAndDetachRemotes();
       this.match = null;
@@ -396,7 +423,11 @@ export class NearbyMatchController {
   pause(): Promise<void> {
     return this.enqueueControl(async () => {
       if (this.state.role === "host") {
-        await this.pauseHost();
+        if (this.match?.status === "waiting") {
+          await this.closeHostWaitingRoom();
+        } else {
+          await this.pauseHost();
+        }
       }
       await this.stopTransportAndDetachRemotes();
       if (this.state.role === "guest") {
@@ -549,8 +580,9 @@ export class NearbyMatchController {
     );
     if (this.state.role === "guest" && this.hostEndpointId === endpointId) {
       this.hostEndpointId = null;
-      useMatchStore.getState().setConn("reconnecting");
-      this.update({ status: "disconnected", connected });
+      useMatchStore.getState().reset();
+      this.resetSessionState();
+      void this.transport.stopAll();
       return;
     }
     this.update({ connected });
@@ -683,6 +715,14 @@ export class NearbyMatchController {
   }
 
   private handleServerMessage(message: ServerMessage): void {
+    if (message.type === "room_kicked") {
+      this.hostEndpointId = null;
+      this.match = null;
+      useMatchStore.getState().reset();
+      this.resetSessionState();
+      void this.transport.stopAll();
+      return;
+    }
     if (message.type === "room_state") {
       if (useMatchStore.getState().matchId !== message.matchId) {
         useMatchStore.getState().setMatch(message.matchId, message.mySeat);
@@ -768,6 +808,18 @@ export class NearbyMatchController {
         await match.handleReady(seat);
         return;
       }
+      case "set_room_ready": {
+        try {
+          match.setWaitingRoomReady(seat, message.ready);
+        } catch (error) {
+          send({
+            type: "error",
+            code: "ready_rejected",
+            message: errorMessage(error),
+          });
+        }
+        return;
+      }
       case "resync": {
         send(match.buildSnapshotForSeat(seat));
         return;
@@ -781,7 +833,7 @@ export class NearbyMatchController {
           });
           return;
         }
-        const starting = match.fillBotsAndStart();
+        const starting = match.startWaitingRoom(seat);
         this.matchStartPromise = starting;
         void starting
           .catch((error: unknown) => {
@@ -796,6 +848,30 @@ export class NearbyMatchController {
               this.matchStartPromise = null;
             }
           });
+        return;
+      }
+      case "add_bot": {
+        try {
+          match.addWaitingRoomBot(seat);
+        } catch (error) {
+          send({
+            type: "error",
+            code: "add_bot_rejected",
+            message: errorMessage(error),
+          });
+        }
+        return;
+      }
+      case "kick_seat": {
+        try {
+          match.kickWaitingRoomSeat(seat, message.seat);
+        } catch (error) {
+          send({
+            type: "error",
+            code: "kick_rejected",
+            message: errorMessage(error),
+          });
+        }
         return;
       }
       case "leave_seat": {
@@ -885,6 +961,34 @@ export class NearbyMatchController {
     this.match = null;
     useMatchStore.getState().setConn("closed");
     this.update({ status: "paused" });
+  }
+
+  private async closeHostWaitingRoom(): Promise<void> {
+    const match = this.match;
+    if (match !== null && match.status === "waiting") {
+      const hostSeat = match.humanSeatFor(this.localSend);
+      if (hostSeat !== null) {
+        for (const send of this.remoteSends.values()) {
+          const targetSeat = match.humanSeatFor(send);
+          if (targetSeat !== null) {
+            match.kickWaitingRoomSeat(hostSeat, targetSeat);
+          }
+        }
+        await Promise.all(this.outbound.values());
+        match.releaseSeat(hostSeat);
+      }
+      await match.deleteSavedCheckpoint();
+    } else {
+      const activeMatch = await this.persistence.getActiveMatch();
+      if (activeMatch?.owner === "nearby-host") {
+        await this.persistence.repository.deleteCheckpoint(activeMatch.matchId);
+      }
+    }
+    await this.persistence.setActiveMatch(null);
+    this.match = null;
+    this.hostEndpointId = null;
+    useMatchStore.getState().reset();
+    this.resetSessionState();
   }
 
   private async stopTransportAndDetachRemotes(): Promise<void> {

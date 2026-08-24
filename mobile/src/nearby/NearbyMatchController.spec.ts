@@ -196,6 +196,23 @@ describe("Nearby mobile match controller", () => {
     expect(
       waitingRoom?.seats.filter((seat) => seat.occupant.kind === "human")
     ).toHaveLength(2);
+    expect(waitingRoom?.canStart).toBe(false);
+
+    await controller.setWaitingRoomReady(true);
+    transport.emit("message", {
+      endpointId: "remote-endpoint",
+      data: encodeNearbyFrame({
+        version: NEARBY_PROTOCOL_VERSION,
+        kind: "client",
+        message: {
+          type: "set_room_ready",
+          matchId: waitingRoom?.matchId ?? "",
+          ready: true,
+        },
+      }),
+    });
+    await controller.waitForIdle();
+    expect(controller.getState().roomState?.canStart).toBe(true);
 
     await controller.startMatch();
     await controller.waitForIdle();
@@ -252,6 +269,8 @@ describe("Nearby mobile match controller", () => {
       matchId: "nearby-room",
       status: "waiting",
       mySeat: 1,
+      hostSeat: 0,
+      canStart: false,
       seats: [
         {
           seat: 0,
@@ -261,6 +280,7 @@ describe("Nearby mobile match controller", () => {
             displayName: "Host",
             connected: true,
           },
+          ready: false,
         },
         {
           seat: 1,
@@ -270,9 +290,10 @@ describe("Nearby mobile match controller", () => {
             displayName: "Guest",
             connected: true,
           },
+          ready: false,
         },
-        { seat: 2, occupant: { kind: "empty" } },
-        { seat: 3, occupant: { kind: "empty" } },
+        { seat: 2, occupant: { kind: "empty" }, ready: false },
+        { seat: 3, occupant: { kind: "empty" }, ready: false },
       ],
     };
     transport.emit("message", {
@@ -300,5 +321,61 @@ describe("Nearby mobile match controller", () => {
         actionId: "discard:draw:5m",
       },
     });
+
+    transport.emit("message", {
+      endpointId: "host-endpoint",
+      data: encodeNearbyFrame({
+        version: NEARBY_PROTOCOL_VERSION,
+        kind: "server",
+        message: { type: "room_kicked", matchId: "nearby-room" },
+      }),
+    });
+    await controller.waitForIdle();
+    expect(controller.getState()).toMatchObject({
+      role: "idle",
+      matchId: null,
+      roomState: null,
+    });
+  });
+
+  it("closes the table and kicks guests when the transport host leaves", async () => {
+    const transport = new FakeNearbyTransport();
+    const persistence = memoryPersistence();
+    const controller = new NearbyMatchController(persistence, transport);
+    await controller.host({
+      deviceId: "mobile:host",
+      displayName: "Host",
+    });
+    transport.emit("connectionResult", {
+      endpointId: "remote-endpoint",
+      endpointName: "Guest",
+      status: "connected",
+    });
+    transport.emit("message", {
+      endpointId: "remote-endpoint",
+      data: encodeNearbyFrame({
+        version: NEARBY_PROTOCOL_VERSION,
+        kind: "hello",
+        deviceId: "mobile:guest",
+        displayName: "Guest",
+      }),
+    });
+    await controller.waitForIdle();
+
+    await controller.leave();
+    await controller.waitForIdle();
+
+    expect(controller.getState()).toMatchObject({
+      role: "idle",
+      matchId: null,
+      roomState: null,
+    });
+    expect(await persistence.getActiveMatch()).toBeNull();
+    expect(transport.advertisingName).toBeNull();
+    expect(
+      serverFrames(transport, "remote-endpoint").some(
+        (frame) => frame.message.type === "room_kicked"
+      )
+    ).toBe(true);
   });
 });

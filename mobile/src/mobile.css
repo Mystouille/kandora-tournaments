@@ -422,7 +422,7 @@ button {
 
 .nearby-seat-list li {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 9px;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 9px;
   min-height: 42px;
@@ -443,6 +443,22 @@ button {
   white-space: nowrap;
 }
 
+.nearby-seat-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.nearby-seat-list small {
+  color: rgba(240, 244, 236, 0.42);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.nearby-seat-list small.ready {
+  color: #8fd4ad;
+}
+
 .nearby-seat-list i {
   width: 7px;
   height: 7px;
@@ -455,12 +471,36 @@ button {
   box-shadow: 0 0 0 3px rgba(99, 207, 141, 0.12);
 }
 
+.nearby-seat-kick {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(220, 91, 68, 0.45);
+  border-radius: 6px;
+  color: #f2b0a4;
+  background: rgba(91, 28, 20, 0.45);
+}
+
+.nearby-seat-kick svg {
+  color: currentColor;
+}
+
 .nearby-panel-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
   min-height: 44px;
+}
+
+.nearby-ready-button[aria-pressed="true"] {
+  border-color: rgba(99, 207, 141, 0.52);
+  color: #102018;
+  background: #63cf8d;
 }
 
 .nearby-verification {

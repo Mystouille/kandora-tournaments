@@ -506,6 +506,21 @@ export function App() {
                 ?.rejectPairing(endpointId)
                 .catch(() => undefined);
             }}
+            onReadyChange={(ready) => {
+              void nearbyControllerRef.current
+                ?.setWaitingRoomReady(ready)
+                .catch(() => undefined);
+            }}
+            onAddBot={() => {
+              void nearbyControllerRef.current
+                ?.addWaitingRoomBot()
+                .catch(() => undefined);
+            }}
+            onKick={(seat) => {
+              void nearbyControllerRef.current
+                ?.kickWaitingRoomSeat(seat)
+                .catch(() => undefined);
+            }}
             onStartMatch={() => {
               void nearbyControllerRef.current
                 ?.startMatch()

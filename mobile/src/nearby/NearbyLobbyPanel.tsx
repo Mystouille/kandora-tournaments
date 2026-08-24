@@ -8,6 +8,7 @@ import {
   Search,
   Smartphone,
   User,
+  UserMinus,
   X,
 } from "lucide-react";
 import type { LocalMatchControllerState } from "../local/LocalMatchController";
@@ -29,6 +30,9 @@ interface NearbyLobbyPanelProps {
   onConnect: (endpointId: string) => void;
   onConfirmPairing: (endpointId: string) => void;
   onRejectPairing: (endpointId: string) => void;
+  onReadyChange: (ready: boolean) => void;
+  onAddBot: () => void;
+  onKick: (seat: 0 | 1 | 2 | 3) => void;
   onStartMatch: () => void;
   onLeave: () => void;
 }
@@ -46,6 +50,9 @@ export function NearbyLobbyPanel({
   onConnect,
   onConfirmPairing,
   onRejectPairing,
+  onReadyChange,
+  onAddBot,
+  onKick,
   onStartMatch,
   onLeave,
 }: NearbyLobbyPanelProps) {
@@ -121,6 +128,12 @@ export function NearbyLobbyPanel({
     const humanCount = room.seats.filter(
       (seat) => seat.occupant.kind === "human"
     ).length;
+    const isRoomHost = room.mySeat === room.hostSeat;
+    const ownSlot = room.mySeat === null ? null : room.seats[room.mySeat];
+    const ownReady = ownSlot?.ready ?? false;
+    const hasEmptySeat = room.seats.some(
+      ({ occupant }) => occupant.kind === "empty"
+    );
     return (
       <aside className="nearby-panel" aria-label="Nearby lobby">
         <div className="nearby-panel-heading">
@@ -131,21 +144,41 @@ export function NearbyLobbyPanel({
           </div>
         </div>
         <ol className="nearby-seat-list">
-          {room.seats.map(({ seat, occupant }) => (
+          {room.seats.map(({ seat, occupant, ready }) => (
             <li key={seat}>
               {occupant.kind === "bot" ? (
                 <Bot aria-hidden="true" />
               ) : (
                 <User aria-hidden="true" />
               )}
-              <span>
-                {occupant.kind === "empty"
-                  ? "Open seat"
-                  : occupant.displayName}
-              </span>
+              <div className="nearby-seat-copy">
+                <span>
+                  {occupant.kind === "empty"
+                    ? "Open seat"
+                    : `${occupant.displayName}${seat === room.hostSeat ? " (host)" : ""}`}
+                </span>
+                {occupant.kind !== "empty" && (
+                  <small className={ready ? "ready" : undefined}>
+                    {ready ? "Ready" : "Not ready"}
+                  </small>
+                )}
+              </div>
               {occupant.kind === "human" && (
                 <i className={occupant.connected ? "online" : undefined} />
               )}
+              {isRoomHost &&
+                seat !== room.mySeat &&
+                occupant.kind !== "empty" && (
+                  <button
+                    type="button"
+                    className="nearby-seat-kick"
+                    aria-label={`Kick ${occupant.displayName}`}
+                    title={`Kick ${occupant.displayName}`}
+                    onClick={() => onKick(seat)}
+                  >
+                    <UserMinus aria-hidden="true" />
+                  </button>
+                )}
             </li>
           ))}
         </ol>
@@ -159,15 +192,35 @@ export function NearbyLobbyPanel({
           >
             <LogOut aria-hidden="true" />
           </button>
-          {state.role === "host" ? (
+          <button
+            type="button"
+            className="command-button nearby-ready-button"
+            aria-pressed={ownReady}
+            onClick={() => onReadyChange(!ownReady)}
+          >
+            <Check aria-hidden="true" />
+            <span>{ownReady ? "Ready" : "Ready up"}</span>
+          </button>
+          {isRoomHost && (
             <button
               type="button"
               className="command-button"
-              disabled={busy}
+              disabled={busy || !hasEmptySeat}
+              onClick={onAddBot}
+            >
+              <Bot aria-hidden="true" />
+              <span>Add bot</span>
+            </button>
+          )}
+          {isRoomHost ? (
+            <button
+              type="button"
+              className="command-button"
+              disabled={busy || !room.canStart}
               onClick={onStartMatch}
             >
               <Play aria-hidden="true" />
-              <span>Start with {4 - humanCount} bots</span>
+              <span>Start match</span>
             </button>
           ) : (
             <span className="nearby-waiting-label">Waiting for host</span>
