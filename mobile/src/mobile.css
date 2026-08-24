@@ -49,6 +49,15 @@ button {
   );
 }
 
+.mobile-app-ingame {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.mobile-app-ingame .app-header,
+.mobile-app-ingame .control-dock {
+  display: none;
+}
+
 .table-stage {
   position: relative;
   min-width: 0;
@@ -67,6 +76,38 @@ button {
   width: 100% !important;
   height: 100% !important;
   touch-action: none;
+}
+
+.ingame-exit-button {
+  position: absolute;
+  z-index: 30;
+  top: calc(10px + env(safe-area-inset-top));
+  left: calc(10px + env(safe-area-inset-left));
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  color: #e8eee9;
+  background: rgba(8, 15, 12, 0.82);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.ingame-exit-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ingame-exit-button:disabled {
+  color: rgba(232, 238, 233, 0.38);
+}
+
+.ingame-exit-button:not(:disabled):active {
+  transform: translateY(1px);
 }
 
 .app-header {
@@ -548,6 +589,10 @@ button {
   .mobile-app {
     grid-template-columns: minmax(0, 1fr) 320px;
     grid-template-rows: 1fr;
+  }
+
+  .mobile-app.mobile-app-ingame {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .control-dock {

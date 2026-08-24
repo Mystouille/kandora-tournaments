@@ -30,11 +30,13 @@ import {
   applyReplayEvent,
   initialView,
   replayViewToMatchView,
+  rotateMatchView,
 } from "~/game/replay/player";
 import type { MatchView } from "~/game/client/store";
 import { useMatchStore } from "~/game/client/store";
 import { findTileAction } from "~/game/client/discardActions";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
+import { mobileTableLayout } from "~/game/client/pixi/layouts/mobileTableLayout";
 import { DEMO_EVENTS, DEMO_SEAT_NAMES } from "./demoReplay";
 import {
   openMobileMatchRepository,
@@ -149,7 +151,17 @@ export function App() {
   const showingNearbyMatch = nearbyState.matchId !== null;
   const showingLiveMatch =
     mode === "nearby" && (showingLocalMatch || showingNearbyMatch);
-  const matchView = showingLiveMatch ? liveView : replayView;
+  const isPlayingMatch =
+    showingLiveMatch &&
+    (localState.status === "playing" || nearbyState.status === "playing");
+  const renderedLiveView = useMemo(
+    () =>
+      liveView.mySeat !== null && liveView.mySeat !== 0
+        ? rotateMatchView(liveView, liveView.mySeat)
+        : liveView,
+    [liveView]
+  );
+  const matchView = showingLiveMatch ? renderedLiveView : replayView;
   const latestViewRef = useRef(matchView);
   latestViewRef.current = matchView;
 
@@ -254,7 +266,10 @@ export function App() {
     let renderer: TableRenderer | null = null;
     void import("~/game/client/pixi/TableRenderer")
       .then(async ({ TableRenderer: Renderer }) => {
-        renderer = new Renderer();
+        renderer = new Renderer({
+          layoutConfig: mobileTableLayout,
+          presentation: "mobile",
+        });
         renderer.setConnectionDiagnosticsVisible(false);
         await renderer.mount(container);
         if (disposed) {
@@ -394,6 +409,18 @@ export function App() {
     await nearbyControllerRef.current?.discover(currentNearbyIdentity());
   };
 
+  const pauseOrLeaveMatch = (): void => {
+    if (nearbyState.status === "playing") {
+      const operation =
+        nearbyState.role === "host"
+          ? nearbyControllerRef.current?.pause()
+          : nearbyControllerRef.current?.leave();
+      void operation?.catch(() => undefined);
+      return;
+    }
+    void localControllerRef.current?.pause();
+  };
+
   const showNearbyLobby =
     mode === "nearby" &&
     localState.status !== "playing" &&
@@ -432,7 +459,7 @@ export function App() {
   };
 
   return (
-    <main className="mobile-app">
+    <main className={`mobile-app${isPlayingMatch ? " mobile-app-ingame" : ""}`}>
       <section className="table-stage" aria-label="Mahjong table preview">
         <div ref={tableContainerRef} className="table-canvas" />
         <header className="app-header">
@@ -463,6 +490,26 @@ export function App() {
             </span>
           </div>
         </header>
+        {isPlayingMatch && (
+          <button
+            type="button"
+            className="ingame-exit-button"
+            aria-label={
+              nearbyState.role === "guest" ? "Leave match" : "Pause match"
+            }
+            title={
+              nearbyState.role === "guest" ? "Leave match" : "Pause match"
+            }
+            disabled={nearbyBusy}
+            onClick={pauseOrLeaveMatch}
+          >
+            {nearbyState.role === "guest" ? (
+              <LogOut aria-hidden="true" />
+            ) : (
+              <Pause aria-hidden="true" />
+            )}
+          </button>
+        )}
         {showNearbyLobby && (
           <NearbyLobbyPanel
             state={nearbyState}
@@ -643,17 +690,7 @@ export function App() {
                     type="button"
                     className="command-button"
                     disabled={nearbyBusy}
-                    onClick={() => {
-                      if (nearbyState.status === "playing") {
-                        const operation =
-                          nearbyState.role === "host"
-                            ? nearbyControllerRef.current?.pause()
-                            : nearbyControllerRef.current?.leave();
-                        void operation?.catch(() => undefined);
-                      } else {
-                        void localControllerRef.current?.pause();
-                      }
-                    }}
+                    onClick={pauseOrLeaveMatch}
                   >
                     {nearbyState.role === "guest" &&
                     nearbyState.status === "playing" ? (
