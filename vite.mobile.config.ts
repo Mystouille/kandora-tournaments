@@ -28,7 +28,8 @@ function browserSafeRiichi() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, repositoryRoot, "");
-  const webAppBaseUrl = env.VITE_APP_BASE_URL || env.APP_BASE_URL || "";
+  const webAppBaseUrl =
+    env.VITE_MOBILE_APP_BASE_URL || env.VITE_APP_BASE_URL || "";
 
   return {
     root: mobileRoot,

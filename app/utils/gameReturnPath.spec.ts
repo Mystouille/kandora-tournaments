@@ -20,7 +20,11 @@ describe("game return paths", () => {
 
   it("accepts only live game entry routes", () => {
     expect(normalizeGameReturnPath("/lobby")).toBe("/lobby");
+    expect(normalizeGameReturnPath("/mobile-auth/complete")).toBe(
+      "/mobile-auth/complete"
+    );
     expect(normalizeGameReturnPath("/game/room-1")).toBe("/game/room-1");
+    expect(normalizeGameReturnPath("/mobile-auth/other")).toBe("/lobby");
     expect(normalizeGameReturnPath("/watch/replay/game-1")).toBe("/lobby");
     expect(normalizeGameReturnPath("/account")).toBe("/lobby");
   });

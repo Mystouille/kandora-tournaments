@@ -1,20 +1,38 @@
 import type { LocalMatchControllerState } from "./local/LocalMatchController";
 import type { NearbyMatchControllerState } from "./nearby/NearbyMatchController";
 
-export type MobileShellPage = "home" | "nearby" | "replays" | "game";
+export type MobileShellPage =
+  | "home"
+  | "lobby"
+  | "nearby"
+  | "replays"
+  | "game";
 export type MobileStorageState =
   | "loading"
   | "sqlite"
   | "memory"
   | "error";
 
-export function normalizeWebAppUrl(value: string | undefined): string | null {
+export function normalizeWebAppUrl(
+  value: string | undefined,
+  options: { allowLoopback?: boolean } = {}
+): string | null {
   if (value === undefined || value.trim() === "") {
     return null;
   }
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return null;
+    }
+    const hostname = url.hostname.toLowerCase();
+    const isLoopback =
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "[::1]" ||
+      hostname === "0.0.0.0" ||
+      hostname.startsWith("127.");
+    if (isLoopback && options.allowLoopback === false) {
       return null;
     }
     return url.toString().replace(/\/$/, "");
@@ -25,6 +43,15 @@ export function normalizeWebAppUrl(value: string | undefined): string | null {
 
 export function webAppPath(baseUrl: string, path: string): string {
   return new URL(path, `${baseUrl}/`).toString();
+}
+
+export function isMobileAuthCallback(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "kandora:" && url.host === "auth" && url.pathname === "/complete";
+  } catch {
+    return false;
+  }
 }
 
 export function nearbyPageAvailable(
@@ -70,4 +97,18 @@ export async function retryTransientPause(
       await wait();
     }
   }
+}
+
+export function mobileAuthCallbackResult(value: string): {
+  code: string | null;
+  error: string | null;
+} | null {
+  if (!isMobileAuthCallback(value)) {
+    return null;
+  }
+  const url = new URL(value);
+  return {
+    code: url.searchParams.get("code"),
+    error: url.searchParams.get("error"),
+  };
 }

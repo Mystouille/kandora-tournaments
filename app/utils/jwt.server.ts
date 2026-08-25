@@ -8,6 +8,7 @@ const JWT_EXPIRATION_SECONDS = 7 * 24 * 60 * 60; // 7 days in seconds
 const GAME_JWT_ISSUER = "kandora-tournaments";
 const GAME_JWT_AUDIENCE = "kandora-game";
 const GAME_JWT_EXPIRATION = "12h";
+export const GAME_JWT_EXPIRATION_SECONDS = 12 * 60 * 60;
 
 /**
  * Threshold (in seconds) before expiration at which we re-issue the token.
@@ -30,6 +31,7 @@ export interface JwtPayload {
 export interface GameJwtPayload {
   sub: string;
   scope: "game";
+  exp: number;
 }
 
 /**
@@ -81,7 +83,11 @@ export async function verifyGameToken(
       issuer: GAME_JWT_ISSUER,
       audience: GAME_JWT_AUDIENCE,
     });
-    if (payload.scope !== "game" || typeof payload.sub !== "string") {
+    if (
+      payload.scope !== "game" ||
+      typeof payload.sub !== "string" ||
+      typeof payload.exp !== "number"
+    ) {
       return null;
     }
     return payload as unknown as GameJwtPayload;

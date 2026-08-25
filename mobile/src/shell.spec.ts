@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   hasPlayingMatch,
+  isMobileAuthCallback,
   isTransientPauseError,
+  mobileAuthCallbackResult,
   nearbyPageAvailable,
   normalizeWebAppUrl,
   retryTransientPause,
@@ -18,6 +20,20 @@ describe("mobile shell policy", () => {
     expect(normalizeWebAppUrl(undefined)).toBeNull();
   });
 
+  it("rejects loopback origins for native builds", () => {
+    expect(
+      normalizeWebAppUrl("http://localhost:3000", { allowLoopback: false })
+    ).toBeNull();
+    expect(
+      normalizeWebAppUrl("http://127.0.0.1:5173", { allowLoopback: false })
+    ).toBeNull();
+    expect(
+      normalizeWebAppUrl("https://tournaments.tnt-sessions.com", {
+        allowLoopback: false,
+      })
+    ).toBe("https://tournaments.tnt-sessions.com");
+  });
+
   it("builds web sign-in and lobby links from the configured origin", () => {
     expect(webAppPath("https://play.example.com", "/lobby")).toBe(
       "https://play.example.com/lobby"
@@ -28,6 +44,21 @@ describe("mobile shell policy", () => {
         "/sign-in?returnTo=%2Flobby"
       )
     ).toBe("https://play.example.com/sign-in?returnTo=%2Flobby");
+  });
+
+  it("accepts only the exact Kandora auth completion deep link", () => {
+    expect(isMobileAuthCallback("kandora://auth/complete")).toBe(true);
+    expect(isMobileAuthCallback("kandora://auth/other")).toBe(false);
+    expect(isMobileAuthCallback("https://auth/complete")).toBe(false);
+    expect(
+      mobileAuthCallbackResult("kandora://auth/complete?code=one-time")
+    ).toEqual({ code: "one-time", error: null });
+    expect(
+      mobileAuthCallbackResult(
+        "kandora://auth/complete?error=temporarily_unavailable"
+      )
+    ).toEqual({ code: null, error: "temporarily_unavailable" });
+    expect(mobileAuthCallbackResult("https://auth/complete")).toBeNull();
   });
 
   it("unlocks Nearby only after controllers and local storage are ready", () => {

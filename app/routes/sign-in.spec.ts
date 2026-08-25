@@ -58,4 +58,15 @@ describe("sign-in route loader", () => {
     expect((thrown as Response).status).toBe(302);
     expect((thrown as Response).headers.get("Location")).toBe("/game/room-1");
   });
+
+  it("preserves the trusted mobile auth completion destination", async () => {
+    const request = new Request(
+      "http://app.test/sign-in?returnTo=%2Fmobile-auth%2Fcomplete"
+    );
+
+    await expect(loader({ request })).resolves.toEqual({
+      status: "signed_out",
+      returnTo: "/mobile-auth/complete",
+    });
+  });
 });

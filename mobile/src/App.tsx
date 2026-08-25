@@ -1,4 +1,5 @@
 import { App as NativeApp } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
@@ -61,8 +62,23 @@ import {
   loadNearbyIdentity,
   updateNearbyDisplayName,
 } from "./nearby/identity";
+import { MobileLobby } from "./online/MobileLobby";
+import {
+  clearMobileAuthSession,
+  clearPendingMobileAuth,
+  createMobileAuthRequest,
+  exchangeMobileAuthCode,
+  loadMobileAuthSession,
+  loadPendingMobileAuthVerifier,
+  MobileAuthHttpError,
+  saveMobileAuthSession,
+  savePendingMobileAuth,
+  verifyMobileAuthSession,
+  type MobileAuthSession,
+} from "./auth/mobileAuth";
 import {
   hasPlayingMatch,
+  mobileAuthCallbackResult,
   nearbyPageAvailable,
   normalizeWebAppUrl,
   retryTransientPause,
@@ -70,8 +86,6 @@ import {
   type MobileShellPage,
   type MobileStorageState,
 } from "./shell";
-
-type AuthChoice = "undecided" | "offline" | "web";
 
 interface LoadedReplay {
   id: string;
@@ -116,6 +130,15 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
+type MobileAuthStatus =
+  | "checking"
+  | "signed_out"
+  | "opening"
+  | "exchanging"
+  | "authenticated"
+  | "offline"
+  | "error";
+
 function replayToMatchView(replay: LoadedReplay): MatchView {
   let view = initialView();
   for (const event of replay.events) {
@@ -135,8 +158,15 @@ export function App() {
   const localControllerRef = useRef<LocalMatchController | null>(null);
   const nearbyControllerRef = useRef<NearbyMatchController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const authGenerationRef = useRef(0);
+  const handledAuthCallbackRef = useRef<string | null>(null);
+  const pendingVerifierRef = useRef<string | null>(null);
   const [page, setPage] = useState<MobileShellPage>("home");
-  const [authChoice, setAuthChoice] = useState<AuthChoice>("undecided");
+  const [authStatus, setAuthStatus] =
+    useState<MobileAuthStatus>("checking");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [mobileAuthSession, setMobileAuthSession] =
+    useState<MobileAuthSession | null>(null);
   const [controllersReady, setControllersReady] = useState(false);
   const [shellBusy, setShellBusy] = useState(false);
   const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
@@ -173,15 +203,67 @@ export function App() {
   const latestViewRef = useRef(matchView);
   latestViewRef.current = matchView;
   const webAppBaseUrl = normalizeWebAppUrl(
-    import.meta.env.VITE_APP_BASE_URL
+    import.meta.env.VITE_APP_BASE_URL,
+    { allowLoopback: !Capacitor.isNativePlatform() }
   );
-  const discordLoginUrl =
-    webAppBaseUrl === null
-      ? null
-      : webAppPath(webAppBaseUrl, "/sign-in?returnTo=%2Flobby");
-  const onlineLobbyUrl =
-    webAppBaseUrl === null ? null : webAppPath(webAppBaseUrl, "/lobby");
   const canOpenNearby = nearbyPageAvailable(controllersReady, storageState);
+
+  useEffect(() => {
+    window.localStorage.removeItem("kandora_mobile_auth_choice_v1");
+    const generation = ++authGenerationRef.current;
+    if (webAppBaseUrl === null) {
+      setAuthStatus("signed_out");
+      return;
+    }
+    const stored = loadMobileAuthSession(window.localStorage);
+    if (stored === null) {
+      setAuthStatus("signed_out");
+      return;
+    }
+    setAuthStatus("checking");
+    void verifyMobileAuthSession(webAppBaseUrl, stored)
+      .then((verified) => {
+        if (authGenerationRef.current !== generation) {
+          return;
+        }
+        saveMobileAuthSession(window.localStorage, verified);
+        setMobileAuthSession(verified);
+        setAuthError(null);
+        setAuthStatus("authenticated");
+      })
+      .catch((error: unknown) => {
+        if (authGenerationRef.current !== generation) {
+          return;
+        }
+        if (error instanceof MobileAuthHttpError && error.status === 401) {
+          clearMobileAuthSession(window.localStorage);
+        }
+        setMobileAuthSession(null);
+        setAuthError("Could not verify your Discord session.");
+        setAuthStatus("error");
+      });
+  }, [webAppBaseUrl]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || mobileAuthSession === null) {
+      return;
+    }
+    const remaining = mobileAuthSession.expiresAt - Date.now();
+    if (remaining <= 0) {
+      clearMobileAuthSession(window.localStorage);
+      setMobileAuthSession(null);
+      setAuthStatus("signed_out");
+      setPage("home");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      clearMobileAuthSession(window.localStorage);
+      setMobileAuthSession(null);
+      setAuthStatus("signed_out");
+      setPage("home");
+    }, Math.min(remaining, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [authStatus, mobileAuthSession]);
 
   useEffect(() => {
     let disposed = false;
@@ -256,7 +338,60 @@ export function App() {
       void StatusBar.setBackgroundColor({ color: "#0b1210" });
     }
     void SplashScreen.hide();
-    let listener: PluginListenerHandle | null = null;
+    let stateListener: PluginListenerHandle | null = null;
+    let urlListener: PluginListenerHandle | null = null;
+    const handleUrl = (url: string): void => {
+      const callback = mobileAuthCallbackResult(url);
+      if (callback === null || handledAuthCallbackRef.current === url) {
+        return;
+      }
+      handledAuthCallbackRef.current = url;
+      void Browser.close().catch(() => undefined);
+      const generation = ++authGenerationRef.current;
+      const verifier =
+        pendingVerifierRef.current ??
+        loadPendingMobileAuthVerifier(window.localStorage);
+      pendingVerifierRef.current = null;
+      clearPendingMobileAuth(window.localStorage);
+      if (
+        callback.error !== null ||
+        callback.code === null ||
+        verifier === null ||
+        webAppBaseUrl === null
+      ) {
+        setMobileAuthSession(null);
+        setAuthError("Discord login could not be completed.");
+        setAuthStatus("error");
+        setPage("home");
+        return;
+      }
+      setAuthError(null);
+      setAuthStatus("exchanging");
+      void exchangeMobileAuthCode(
+        webAppBaseUrl,
+        callback.code,
+        verifier
+      )
+        .then((session) => {
+          if (authGenerationRef.current !== generation) {
+            return;
+          }
+          saveMobileAuthSession(window.localStorage, session);
+          setMobileAuthSession(session);
+          setAuthStatus("authenticated");
+          setPage("lobby");
+        })
+        .catch(() => {
+          if (authGenerationRef.current !== generation) {
+            return;
+          }
+          clearMobileAuthSession(window.localStorage);
+          setMobileAuthSession(null);
+          setAuthError("Discord login could not be completed.");
+          setAuthStatus("error");
+          setPage("home");
+        });
+    };
     void NativeApp.addListener("appStateChange", ({ isActive }) => {
       document.documentElement.dataset.appState = isActive
         ? "active"
@@ -278,12 +413,23 @@ export function App() {
         void controller?.restore().catch(() => undefined);
       }
     }).then((handle) => {
-      listener = handle;
+      stateListener = handle;
+    });
+    void NativeApp.addListener("appUrlOpen", ({ url }) => {
+      handleUrl(url);
+    }).then((handle) => {
+      urlListener = handle;
+    });
+    void NativeApp.getLaunchUrl().then((launch) => {
+      if (launch?.url) {
+        handleUrl(launch.url);
+      }
     });
     return () => {
-      void listener?.remove();
+      void stateListener?.remove();
+      void urlListener?.remove();
     };
-  }, []);
+  }, [webAppBaseUrl]);
 
   useEffect(() => {
     if (!showsTable) {
@@ -487,10 +633,61 @@ export function App() {
     setPage("home");
   };
 
-  const openWebPage = (url: string): void => {
+  const openWebPage = async (url: string): Promise<void> => {
+    if (Capacitor.isNativePlatform()) {
+      await Browser.open({
+        url,
+        toolbarColor: "#0b1210",
+        presentationStyle: "fullscreen",
+      });
+      return;
+    }
     const opened = window.open(url, "_blank", "noopener,noreferrer");
     if (opened === null) {
       window.location.assign(url);
+    }
+  };
+
+  const startDiscordLogin = async (): Promise<void> => {
+    if (webAppBaseUrl === null) {
+      return;
+    }
+    const generation = ++authGenerationRef.current;
+    setAuthError(null);
+    setAuthStatus("opening");
+    try {
+      const request = await createMobileAuthRequest();
+      if (authGenerationRef.current !== generation) {
+        return;
+      }
+      pendingVerifierRef.current = request.verifier;
+      savePendingMobileAuth(window.localStorage, request.verifier);
+      const startUrl = webAppPath(
+        webAppBaseUrl,
+        `/mobile-auth/start?challenge=${encodeURIComponent(request.challenge)}`
+      );
+      await openWebPage(startUrl);
+    } catch {
+      if (authGenerationRef.current !== generation) {
+        return;
+      }
+      pendingVerifierRef.current = null;
+      clearPendingMobileAuth(window.localStorage);
+      setAuthError("Discord login could not be opened.");
+      setAuthStatus("error");
+    }
+  };
+
+  const useOfflineMode = (): void => {
+    authGenerationRef.current += 1;
+    pendingVerifierRef.current = null;
+    clearPendingMobileAuth(window.localStorage);
+    clearMobileAuthSession(window.localStorage);
+    setMobileAuthSession(null);
+    setAuthError(null);
+    setAuthStatus("offline");
+    if (page === "lobby") {
+      setPage("home");
     }
   };
 
@@ -638,6 +835,16 @@ export function App() {
     );
   }
 
+  if (page === "lobby" && webAppBaseUrl !== null) {
+    return (
+      <MobileLobby
+        webAppBaseUrl={webAppBaseUrl}
+        onBack={() => setPage("home")}
+        onOpenWeb={openWebPage}
+      />
+    );
+  }
+
   if (page === "replays") {
     return (
       <main className="mobile-shell mobile-replay-shell">
@@ -719,8 +926,21 @@ export function App() {
     );
   }
 
-  const onlineSelected = authChoice === "web";
-  const offlineSelected = authChoice === "offline";
+  const onlineSelected =
+    authStatus === "authenticated" && mobileAuthSession !== null;
+  const offlineSelected = authStatus === "offline";
+  const authBusy = authStatus === "checking" || authStatus === "exchanging";
+  const accountStatus = offlineSelected
+    ? "Offline"
+    : onlineSelected
+      ? `Signed in as ${mobileAuthSession.username}`
+      : authStatus === "checking"
+        ? "Checking Discord session"
+        : authStatus === "opening"
+          ? "Complete sign-in in Discord"
+          : authStatus === "exchanging"
+            ? "Verifying Discord login"
+            : (authError ?? "Choose how to continue");
   return (
     <main className="mobile-shell mobile-home">
       <header className="shell-brand">
@@ -736,35 +956,32 @@ export function App() {
           <UserRound aria-hidden="true" />
           <div>
             <h2 id="account-heading">Player access</h2>
-            <span>
-              {offlineSelected
-                ? "Offline"
-                : onlineSelected
-                  ? "Discord web access selected"
-                  : "Choose how to continue"}
-            </span>
+            <span>{accountStatus}</span>
           </div>
         </div>
         <div className="home-account-actions">
           <button
             type="button"
             className="home-primary-action"
-            disabled={discordLoginUrl === null}
-            onClick={() => {
-              if (discordLoginUrl !== null) {
-                setAuthChoice("web");
-                openWebPage(discordLoginUrl);
-              }
-            }}
+            disabled={webAppBaseUrl === null || authBusy}
+            onClick={() => void startDiscordLogin()}
           >
-            <LogIn aria-hidden="true" />
-            <span>Login with Discord</span>
+            {authBusy ? (
+              <LoaderCircle aria-hidden="true" className="spin" />
+            ) : (
+              <LogIn aria-hidden="true" />
+            )}
+            <span>
+              {authStatus === "opening"
+                ? "Open Discord again"
+                : "Login with Discord"}
+            </span>
           </button>
           <button
             type="button"
             className="home-secondary-action"
             aria-pressed={offlineSelected}
-            onClick={() => setAuthChoice("offline")}
+            onClick={useOfflineMode}
           >
             <WifiOff aria-hidden="true" />
             <span>Stay offline</span>
@@ -775,11 +992,9 @@ export function App() {
       <nav className="home-destinations" aria-label="Kandora destinations">
         <button
           type="button"
-          disabled={!onlineSelected || onlineLobbyUrl === null}
+          disabled={!onlineSelected || webAppBaseUrl === null}
           onClick={() => {
-            if (onlineLobbyUrl !== null) {
-              openWebPage(onlineLobbyUrl);
-            }
+            setPage("lobby");
           }}
         >
           <Cloud aria-hidden="true" />

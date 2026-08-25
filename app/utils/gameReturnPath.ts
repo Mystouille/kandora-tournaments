@@ -63,6 +63,7 @@ export function normalizeGameReturnPath(
   const { pathname } = new URL(normalized, LOCAL_ORIGIN);
   const isGamePath =
     pathname === "/lobby" ||
+    pathname === "/mobile-auth/complete" ||
     /^\/game\/[^/]+$/.test(pathname) ||
     /^\/spectate\/[^/]+$/.test(pathname) ||
     /^\/watch\/live\/[^/]+$/.test(pathname);

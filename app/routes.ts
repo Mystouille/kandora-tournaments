@@ -9,6 +9,8 @@ export default [
   route("/sign-in", "routes/sign-in.tsx"),
   route("/account", "routes/account.tsx"),
   route("/auth/discord/callback", "routes/auth/discord/callback.tsx"),
+  route("/mobile-auth/start", "routes/mobile-auth.start.ts"),
+  route("/mobile-auth/complete", "routes/mobile-auth.complete.ts"),
   route("/api/auth/me", "routes/api/auth/me.ts"),
   route("/api/auth/logout", "routes/api/auth/logout.ts"),
   route("/api/auth/discord-callback", "routes/api/auth/discord-callback.ts"),
@@ -50,6 +52,7 @@ export default [
   // Game lobby, replay, and live viewers
   // ---------------------------------------------------------------------
   route("/lobby", "routes/lobby.tsx"),
+  route("/mobile/game/create", "routes/mobile.game.create.tsx"),
   route("/game/:matchId", "routes/game-match.tsx"),
   route("/spectate/:matchId", "routes/game-spectate.tsx"),
 
@@ -62,6 +65,15 @@ export default [
   route("/api/game/session", "routes/api/game/session.ts"),
   route("/api/game/watch", "routes/api/game/watch.ts"),
   route("/api/game/enrichment", "routes/api/game/enrichment.ts"),
+  route("/api/mobile/lobby", "routes/api/mobile/lobby.ts"),
+  route(
+    "/api/mobile/auth/exchange",
+    "routes/api/mobile/auth.exchange.ts"
+  ),
+  route(
+    "/api/mobile/auth/session",
+    "routes/api/mobile/auth.session.ts"
+  ),
 
   // ---------------------------------------------------------------------
   // Admin — online tournaments
