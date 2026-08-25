@@ -54,13 +54,17 @@ export function roomAction(room: MobileLobbyRoom): "join" | "watch" | null {
 interface MobileLobbyProps {
   webAppBaseUrl: string;
   onBack: () => void;
-  onOpenWeb: (url: string) => Promise<void>;
+  onCreateGame: (preset: string) => void;
+  onJoinGame: (matchId: string) => void;
+  onWatchGame: (matchId: string) => void;
 }
 
 export function MobileLobby({
   webAppBaseUrl,
   onBack,
-  onOpenWeb,
+  onCreateGame,
+  onJoinGame,
+  onWatchGame,
 }: MobileLobbyProps) {
   const [presets, setPresets] = useState<MobileLobbyPreset[]>([]);
   const [rooms, setRooms] = useState<MobileLobbyRoom[]>([]);
@@ -105,21 +109,16 @@ export function MobileLobby({
     if (action === null) {
       return;
     }
-    const path =
-      action === "join"
-        ? `/game/${encodeURIComponent(room.matchId)}`
-        : `/spectate/${encodeURIComponent(room.matchId)}`;
-    void onOpenWeb(webAppPath(webAppBaseUrl, path));
+    if (action === "join") {
+      onJoinGame(room.matchId);
+    } else {
+      onWatchGame(room.matchId);
+    }
   };
 
   const createGame = (): void => {
     setCreateOpen(false);
-    void onOpenWeb(
-      webAppPath(
-        webAppBaseUrl,
-        `/mobile/game/create?preset=${encodeURIComponent(selectedPreset)}`
-      )
-    );
+    onCreateGame(selectedPreset);
   };
 
   const presetNames = new Map(
@@ -258,7 +257,6 @@ export function MobileLobby({
                   />
                   <span>
                     <strong>{preset.displayName}</strong>
-                    {preset.description && <small>{preset.description}</small>}
                   </span>
                 </label>
               ))}

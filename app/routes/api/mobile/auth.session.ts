@@ -11,6 +11,15 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: CORS_HEADERS });
 }
 
+function sessionBody(expiresAt: number) {
+  return {
+    authenticated: true as const,
+    expiresAt,
+    wsUrl: process.env.GAME_WS_URL?.trim() || null,
+    wsPath: "/ws/game",
+  };
+}
+
 export async function loader({ request }: { request: Request }): Promise<Response> {
   const authorization = request.headers.get("Authorization");
   const match = authorization?.match(/^Bearer ([^\s]+)$/);
@@ -23,7 +32,7 @@ export async function loader({ request }: { request: Request }): Promise<Respons
   if (payload === null) {
     return json({ error: "invalid_or_expired_token" }, 401);
   }
-  return json({ authenticated: true, expiresAt: payload.exp * 1000 });
+  return json(sessionBody(payload.exp * 1000));
 }
 
 export async function action({ request }: { request: Request }): Promise<Response> {
@@ -45,7 +54,7 @@ export async function action({ request }: { request: Request }): Promise<Respons
     if (payload === null) {
       return json({ error: "invalid_or_expired_token" }, 401);
     }
-    return json({ authenticated: true, expiresAt: payload.exp * 1000 });
+    return json(sessionBody(payload.exp * 1000));
   }
   return json({ error: "method_not_allowed" }, 405);
 }

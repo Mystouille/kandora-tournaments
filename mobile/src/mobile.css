@@ -319,6 +319,7 @@ button {
 
 .mobile-shell-nearby,
 .mobile-online-lobby,
+.mobile-online-room,
 .mobile-replay-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1399,16 +1400,229 @@ button {
   font-size: 13px;
 }
 
-.rule-options small {
-  color: rgba(241, 246, 242, 0.5);
-  font-size: 10px;
-  line-height: 1.3;
-}
-
 .create-confirm-button {
   background: #266447;
 }
 
 .mobile-online-lobby .shell-topbar {
   grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.mobile-online-room {
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+
+.online-room-connection {
+  display: inline-flex !important;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: end;
+  gap: 6px !important;
+  color: rgba(240, 244, 236, 0.68);
+  text-transform: capitalize;
+}
+
+.online-room-connection svg {
+  width: 16px;
+  height: 16px;
+  color: #72cf9a;
+}
+
+.online-room-opening {
+  display: grid;
+  min-height: 0;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.online-room-opening > svg {
+  width: 28px;
+  height: 28px;
+  color: #72cf9a;
+}
+
+.online-room-opening > span {
+  max-width: 420px;
+  color: #f2afa2;
+  font-size: 12px;
+}
+
+.online-waiting-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.46fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.online-seat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.online-seat-grid > li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: #132019;
+}
+
+.online-seat-grid > li.empty {
+  color: rgba(239, 245, 240, 0.44);
+  background: #101813;
+}
+
+.online-seat-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  color: #9ed6b4;
+  background: #20352a;
+}
+
+.online-seat-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.online-seat-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.online-seat-copy > span,
+.online-room-controls > div > span {
+  color: rgba(240, 244, 236, 0.5);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.online-seat-copy > strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-seat-copy > small {
+  color: #e9a092;
+  font-size: 10px;
+}
+
+.online-seat-copy > small.ready {
+  color: #72cf9a;
+}
+
+.online-host-mark {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 15px;
+  height: 15px;
+  color: #e4c46f;
+}
+
+.online-seat-kick {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(235, 117, 97, 0.28);
+  border-radius: 6px;
+  color: #eaa091;
+  background: #2b1b17;
+}
+
+.online-seat-kick svg {
+  width: 17px;
+  height: 17px;
+}
+
+.online-room-controls {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.online-room-controls > div {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.online-room-controls > div > strong {
+  font-size: 16px;
+}
+
+.online-room-controls > div > small {
+  overflow: hidden;
+  color: #f2afa2;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-room-controls .command-button {
+  width: 100%;
+  min-height: 40px;
+}
+
+.online-ready-button[aria-pressed="true"] {
+  border-color: rgba(99, 207, 141, 0.56);
+  background: #276144;
+}
+
+.online-start-button {
+  background: #276144;
+}
+
+.online-host-wait {
+  color: rgba(240, 244, 236, 0.56);
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 620px) {
+  .online-waiting-layout {
+    grid-template-columns: minmax(0, 1fr) 172px;
+  }
+
+  .online-seat-grid > li {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .online-seat-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .online-room-controls {
+    padding: 7px;
+  }
 }

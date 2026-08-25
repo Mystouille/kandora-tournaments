@@ -4,6 +4,7 @@ import type { NearbyMatchControllerState } from "./nearby/NearbyMatchController"
 export type MobileShellPage =
   | "home"
   | "lobby"
+  | "online-room"
   | "nearby"
   | "replays"
   | "game";

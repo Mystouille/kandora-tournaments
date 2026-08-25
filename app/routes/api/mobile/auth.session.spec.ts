@@ -29,6 +29,8 @@ describe("mobile auth session API", () => {
     await expect(response.json()).resolves.toEqual({
       authenticated: true,
       expiresAt: 2_000_000_000_000,
+      wsUrl: process.env.GAME_WS_URL?.trim() || null,
+      wsPath: "/ws/game",
     });
     expect(mocks.verifyGameToken).toHaveBeenCalledWith("game-token");
   });
@@ -66,6 +68,8 @@ describe("mobile auth session API", () => {
     await expect(response.json()).resolves.toEqual({
       authenticated: true,
       expiresAt: 2_000_000_000_000,
+      wsUrl: process.env.GAME_WS_URL?.trim() || null,
+      wsPath: "/ws/game",
     });
     expect(mocks.verifyGameToken).toHaveBeenCalledWith("game-token");
   });

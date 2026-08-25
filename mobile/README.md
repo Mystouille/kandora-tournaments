@@ -44,11 +44,13 @@ The shell also exposes manual Pause/Resume for the same path.
 The online Lobby is native UI: it loads public rule presets and live room
 summaries from `/api/mobile/lobby`, offers a rule-selection modal, and labels
 waiting rooms as Join and active rooms as Watch. Discord login runs in a
-Capacitor Browser tab and returns through `kandora://auth/complete`; Create,
-Join, and Watch continue into the authenticated web game surface in that tab,
-so no web JWT is copied into native storage. The production web service must be
-deployed with the mobile API/auth-completion routes before a newly built APK can
-load live rooms.
+Capacitor Browser tab and returns through `kandora://auth/complete`. Create and
+Join open a boardless native waiting room backed by the shared `GameWS`
+transport; once the server starts the match, the shell mounts the production
+mobile Pixi table and routes actions over that socket. Watch uses the same table
+with a spectator handshake. The production web service must be deployed with
+the mobile API and auth routes before a newly built APK can create or connect to
+live rooms.
 
 `@capacitor-community/sqlite` packages SQLCipher on Android and iOS even when
 database encryption is disabled. App Store release work must complete Apple's

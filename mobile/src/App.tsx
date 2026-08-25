@@ -17,7 +17,6 @@ import {
   Upload,
   UserRound,
   Wifi,
-  WifiOff,
 } from "lucide-react";
 import {
   useEffect,
@@ -63,6 +62,11 @@ import {
   updateNearbyDisplayName,
 } from "./nearby/identity";
 import { MobileLobby } from "./online/MobileLobby";
+import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
+import {
+  INITIAL_ONLINE_MATCH_STATE,
+  OnlineMatchController,
+} from "./online/OnlineMatchController";
 import {
   clearMobileAuthSession,
   clearPendingMobileAuth,
@@ -136,7 +140,6 @@ type MobileAuthStatus =
   | "opening"
   | "exchanging"
   | "authenticated"
-  | "offline"
   | "error";
 
 function replayToMatchView(replay: LoadedReplay): MatchView {
@@ -157,6 +160,7 @@ export function App() {
   const repositoryRef = useRef<MobileMatchRepositoryHandle | null>(null);
   const localControllerRef = useRef<LocalMatchController | null>(null);
   const nearbyControllerRef = useRef<NearbyMatchController | null>(null);
+  const onlineControllerRef = useRef<OnlineMatchController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const authGenerationRef = useRef(0);
   const handledAuthCallbackRef = useRef<string | null>(null);
@@ -180,6 +184,9 @@ export function App() {
   const [nearbyState, setNearbyState] = useState(
     INITIAL_NEARBY_MATCH_STATE
   );
+  const [onlineState, setOnlineState] = useState(
+    INITIAL_ONLINE_MATCH_STATE
+  );
   const [nearbyIdentity, setNearbyIdentity] = useState<NearbyIdentity>(() =>
     loadNearbyIdentity()
   );
@@ -187,10 +194,11 @@ export function App() {
   nearbyIdentityRef.current = nearbyIdentity;
   const liveView = useMatchStore();
   const replayView = useMemo(() => replayToMatchView(replay), [replay]);
-  const isPlayingMatch = hasPlayingMatch(
-    localState.status,
-    nearbyState.status
-  );
+  const isPlayingMatch =
+    hasPlayingMatch(localState.status, nearbyState.status) ||
+    onlineState.status === "playing" ||
+    onlineState.status === "spectating" ||
+    onlineState.status === "finished";
   const showsTable = page === "game" || page === "replays";
   const renderedLiveView = useMemo(
     () =>
@@ -251,6 +259,7 @@ export function App() {
     const remaining = mobileAuthSession.expiresAt - Date.now();
     if (remaining <= 0) {
       clearMobileAuthSession(window.localStorage);
+      void onlineControllerRef.current?.leave();
       setMobileAuthSession(null);
       setAuthStatus("signed_out");
       setPage("home");
@@ -258,11 +267,44 @@ export function App() {
     }
     const timer = window.setTimeout(() => {
       clearMobileAuthSession(window.localStorage);
+      void onlineControllerRef.current?.leave();
       setMobileAuthSession(null);
       setAuthStatus("signed_out");
       setPage("home");
     }, Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timer);
+  }, [authStatus, mobileAuthSession]);
+
+  useEffect(() => {
+    const controller = new OnlineMatchController();
+    onlineControllerRef.current = controller;
+    const unsubscribe = controller.subscribe(setOnlineState);
+    return () => {
+      unsubscribe();
+      controller.dispose();
+      if (onlineControllerRef.current === controller) {
+        onlineControllerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || mobileAuthSession === null) {
+      return;
+    }
+    const displayName = mobileAuthSession.username.trim().slice(0, 40);
+    if (
+      displayName === "" ||
+      nearbyIdentityRef.current.displayName === displayName
+    ) {
+      return;
+    }
+    const identity = updateNearbyDisplayName(
+      nearbyIdentityRef.current,
+      displayName
+    );
+    nearbyIdentityRef.current = identity;
+    setNearbyIdentity(identity);
   }, [authStatus, mobileAuthSession]);
 
   useEffect(() => {
@@ -470,8 +512,11 @@ export function App() {
             return;
           }
           store.setPendingDiscard({ seat: store.mySeat, tile });
+          const onlineController = onlineControllerRef.current;
           const nearbyController = nearbyControllerRef.current;
-          if (nearbyController?.getState().matchId === store.matchId) {
+          if (onlineController?.getState().matchId === store.matchId) {
+            onlineController.act(action.id);
+          } else if (nearbyController?.getState().matchId === store.matchId) {
             void nearbyController.act(action.id).catch(() => undefined);
           } else {
             void localControllerRef.current?.act(action.id);
@@ -479,8 +524,11 @@ export function App() {
         });
         renderer.setOnActionClick(({ action }) => {
           const store = useMatchStore.getState();
+          const onlineController = onlineControllerRef.current;
           const nearbyController = nearbyControllerRef.current;
-          if (nearbyController?.getState().matchId === store.matchId) {
+          if (onlineController?.getState().matchId === store.matchId) {
+            onlineController.act(action.id);
+          } else if (nearbyController?.getState().matchId === store.matchId) {
             void nearbyController.act(action.id).catch(() => undefined);
           } else {
             void localControllerRef.current?.act(action.id);
@@ -522,19 +570,35 @@ export function App() {
     }
   }, [isPlayingMatch]);
 
+  useEffect(() => {
+    if (
+      onlineState.status === "creating" ||
+      onlineState.status === "connecting" ||
+      onlineState.status === "waiting" ||
+      onlineState.status === "error"
+    ) {
+      setPage("online-room");
+    }
+  }, [onlineState.status]);
+
   const readyDeadline = liveView.readyCheck?.deadline ?? null;
   const readySeat = liveView.mySeat;
   useEffect(() => {
     if (
       (localState.status !== "playing" &&
-        nearbyState.status !== "playing") ||
+        nearbyState.status !== "playing" &&
+        onlineState.status !== "playing") ||
       readyDeadline === null ||
       readySeat === null ||
       liveView.readyCheck?.acked[readySeat]
     ) {
       return;
     }
-    if (nearbyControllerRef.current?.getState().matchId === liveView.matchId) {
+    if (onlineControllerRef.current?.getState().matchId === liveView.matchId) {
+      onlineControllerRef.current.ready();
+    } else if (
+      nearbyControllerRef.current?.getState().matchId === liveView.matchId
+    ) {
       void nearbyControllerRef.current.ready().catch(() => undefined);
     } else {
       void localControllerRef.current?.ready();
@@ -543,6 +607,7 @@ export function App() {
     liveView.readyCheck,
     localState.status,
     nearbyState.status,
+    onlineState.status,
     readyDeadline,
     readySeat,
   ]);
@@ -594,13 +659,94 @@ export function App() {
     await nearbyControllerRef.current?.discover(currentNearbyIdentity());
   };
 
+  const prepareOnlineMatch = async (): Promise<void> => {
+    if (nearbyControllerRef.current?.getState().role !== "idle") {
+      await nearbyControllerRef.current?.leave();
+    }
+    await retryTransientPause(
+      () => localControllerRef.current?.pause() ?? Promise.resolve(),
+      () => new Promise((resolve) => window.setTimeout(resolve, 50))
+    );
+  };
+
+  const createOnlineGame = async (preset: string): Promise<void> => {
+    if (
+      webAppBaseUrl === null ||
+      mobileAuthSession === null ||
+      onlineControllerRef.current === null
+    ) {
+      return;
+    }
+    setPage("online-room");
+    await prepareOnlineMatch();
+    await onlineControllerRef.current.create(
+      webAppBaseUrl,
+      mobileAuthSession,
+      preset
+    );
+  };
+
+  const joinOnlineGame = async (matchId: string): Promise<void> => {
+    if (
+      webAppBaseUrl === null ||
+      mobileAuthSession === null ||
+      onlineControllerRef.current === null
+    ) {
+      return;
+    }
+    setPage("online-room");
+    await prepareOnlineMatch();
+    onlineControllerRef.current.join(
+      webAppBaseUrl,
+      mobileAuthSession,
+      matchId
+    );
+  };
+
+  const watchOnlineGame = async (matchId: string): Promise<void> => {
+    if (
+      webAppBaseUrl === null ||
+      mobileAuthSession === null ||
+      onlineControllerRef.current === null
+    ) {
+      return;
+    }
+    setPage("online-room");
+    await prepareOnlineMatch();
+    onlineControllerRef.current.watch(
+      webAppBaseUrl,
+      mobileAuthSession,
+      matchId
+    );
+  };
+
+  const leaveOnlineRoom = async (): Promise<void> => {
+    if (shellBusy) {
+      return;
+    }
+    setShellBusy(true);
+    try {
+      await onlineControllerRef.current?.leave();
+      setPage("lobby");
+    } finally {
+      setShellBusy(false);
+    }
+  };
+
   const quitGame = async (): Promise<void> => {
     if (shellBusy) {
       return;
     }
     setShellBusy(true);
     try {
-      if (nearbyState.status === "playing") {
+      if (
+        onlineState.status === "playing" ||
+        onlineState.status === "spectating" ||
+        onlineState.status === "finished"
+      ) {
+        await onlineControllerRef.current?.leave();
+        setPage("lobby");
+      } else if (nearbyState.status === "playing") {
         if (nearbyState.role === "guest") {
           await nearbyControllerRef.current?.leave();
         } else {
@@ -609,13 +755,15 @@ export function App() {
             () => new Promise((resolve) => window.setTimeout(resolve, 50))
           );
         }
-      } else {
+      } else if (localState.status === "playing") {
         await retryTransientPause(
           () => localControllerRef.current?.pause() ?? Promise.resolve(),
           () => new Promise((resolve) => window.setTimeout(resolve, 50))
         );
       }
-      setPage("nearby");
+      if (onlineState.mode === null) {
+        setPage("nearby");
+      }
     } finally {
       setShellBusy(false);
     }
@@ -675,19 +823,6 @@ export function App() {
       clearPendingMobileAuth(window.localStorage);
       setAuthError("Discord login could not be opened.");
       setAuthStatus("error");
-    }
-  };
-
-  const useOfflineMode = (): void => {
-    authGenerationRef.current += 1;
-    pendingVerifierRef.current = null;
-    clearPendingMobileAuth(window.localStorage);
-    clearMobileAuthSession(window.localStorage);
-    setMobileAuthSession(null);
-    setAuthError(null);
-    setAuthStatus("offline");
-    if (page === "lobby") {
-      setPage("home");
     }
   };
 
@@ -835,12 +970,38 @@ export function App() {
     );
   }
 
+  if (page === "online-room") {
+    return (
+      <MobileOnlineRoom
+        state={onlineState}
+        onBack={() => void leaveOnlineRoom()}
+        onReconnect={() => onlineControllerRef.current?.reconnect()}
+        onReadyChange={(ready) =>
+          onlineControllerRef.current?.setWaitingRoomReady(ready)
+        }
+        onAddBot={() => onlineControllerRef.current?.addWaitingRoomBot()}
+        onKick={(seat) =>
+          onlineControllerRef.current?.kickWaitingRoomSeat(seat)
+        }
+        onStart={() => onlineControllerRef.current?.startMatch()}
+      />
+    );
+  }
+
   if (page === "lobby" && webAppBaseUrl !== null) {
     return (
       <MobileLobby
         webAppBaseUrl={webAppBaseUrl}
         onBack={() => setPage("home")}
-        onOpenWeb={openWebPage}
+        onCreateGame={(preset) =>
+          void createOnlineGame(preset).catch(() => setPage("lobby"))
+        }
+        onJoinGame={(matchId) =>
+          void joinOnlineGame(matchId).catch(() => setPage("lobby"))
+        }
+        onWatchGame={(matchId) =>
+          void watchOnlineGame(matchId).catch(() => setPage("lobby"))
+        }
       />
     );
   }
@@ -928,19 +1089,16 @@ export function App() {
 
   const onlineSelected =
     authStatus === "authenticated" && mobileAuthSession !== null;
-  const offlineSelected = authStatus === "offline";
   const authBusy = authStatus === "checking" || authStatus === "exchanging";
-  const accountStatus = offlineSelected
-    ? "Offline"
-    : onlineSelected
-      ? `Signed in as ${mobileAuthSession.username}`
-      : authStatus === "checking"
-        ? "Checking Discord session"
-        : authStatus === "opening"
-          ? "Complete sign-in in Discord"
-          : authStatus === "exchanging"
-            ? "Verifying Discord login"
-            : (authError ?? "Choose how to continue");
+  const accountStatus = onlineSelected
+    ? `Signed in as ${mobileAuthSession.username}`
+    : authStatus === "checking"
+      ? "Checking Discord session"
+      : authStatus === "opening"
+        ? "Complete sign-in in Discord"
+        : authStatus === "exchanging"
+          ? "Verifying Discord login"
+          : (authError ?? "Sign in for online games");
   return (
     <main className="mobile-shell mobile-home">
       <header className="shell-brand">
@@ -959,34 +1117,27 @@ export function App() {
             <span>{accountStatus}</span>
           </div>
         </div>
-        <div className="home-account-actions">
-          <button
-            type="button"
-            className="home-primary-action"
-            disabled={webAppBaseUrl === null || authBusy}
-            onClick={() => void startDiscordLogin()}
-          >
-            {authBusy ? (
-              <LoaderCircle aria-hidden="true" className="spin" />
-            ) : (
-              <LogIn aria-hidden="true" />
-            )}
-            <span>
-              {authStatus === "opening"
-                ? "Open Discord again"
-                : "Login with Discord"}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="home-secondary-action"
-            aria-pressed={offlineSelected}
-            onClick={useOfflineMode}
-          >
-            <WifiOff aria-hidden="true" />
-            <span>Stay offline</span>
-          </button>
-        </div>
+        {!onlineSelected && (
+          <div className="home-account-actions">
+            <button
+              type="button"
+              className="home-primary-action"
+              disabled={webAppBaseUrl === null || authBusy}
+              onClick={() => void startDiscordLogin()}
+            >
+              {authBusy ? (
+                <LoaderCircle aria-hidden="true" className="spin" />
+              ) : (
+                <LogIn aria-hidden="true" />
+              )}
+              <span>
+                {authStatus === "opening"
+                  ? "Open Discord again"
+                  : "Login with Discord"}
+              </span>
+            </button>
+          </div>
+        )}
       </section>
 
       <nav className="home-destinations" aria-label="Kandora destinations">
@@ -1000,7 +1151,7 @@ export function App() {
           <Cloud aria-hidden="true" />
           <span>
             <strong>Go to lobby</strong>
-            <small>{offlineSelected ? "Unavailable offline" : "Online games"}</small>
+            <small>Online games</small>
           </span>
           <DoorOpen aria-hidden="true" />
         </button>
