@@ -475,6 +475,129 @@ button {
   transform: translateY(1px);
 }
 
+.mobile-game-menu {
+  position: absolute;
+  z-index: 35;
+  right: calc(4px + env(safe-area-inset-right));
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.mobile-game-menu-options {
+  display: grid;
+  grid-template-columns: repeat(2, 82px);
+  gap: 3px;
+  pointer-events: auto;
+}
+
+.mobile-game-option,
+.mobile-game-menu-toggle {
+  min-width: 0;
+  height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 3px;
+  color: #f2f4ef;
+  background: rgba(2, 5, 4, 0.92);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.mobile-game-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  padding: 7px 8px 7px 0;
+  color: rgba(242, 244, 239, 0.66);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mobile-game-option[aria-pressed="true"] {
+  border-color: rgba(99, 207, 141, 0.62);
+  color: #f5fff8;
+  background: rgba(26, 75, 51, 0.94);
+}
+
+.mobile-game-option > i,
+.mobile-game-option > i > svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mobile-game-option > i {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 3px;
+  color: #dff8e8;
+  font-style: normal;
+}
+
+.mobile-game-option > i > svg {
+  stroke-width: 3;
+}
+
+.mobile-game-option > span {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-game-menu-toggle {
+  display: grid;
+  width: 52px;
+  flex: 0 0 52px;
+  place-items: center;
+  padding: 0;
+}
+
+.mobile-game-menu-toggle svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mobile-game-option:active,
+.mobile-game-menu-toggle:active {
+  transform: translateY(1px);
+}
+
+@media (max-height: 330px) {
+  .mobile-game-menu {
+    bottom: calc(48px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-game-menu-options {
+    grid-template-columns: repeat(2, 82px);
+  }
+
+  .mobile-game-option,
+  .mobile-game-menu-toggle {
+    height: 44px;
+  }
+
+  .mobile-game-menu-toggle {
+    width: 44px;
+    flex-basis: 44px;
+  }
+
+  .mobile-game-option {
+    grid-template-columns: minmax(0, 1fr) 15px;
+    padding: 5px 6px 5px 0;
+    font-size: 11px;
+  }
+
+  .mobile-game-option > i,
+  .mobile-game-option > i > svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
 .app-header {
   position: absolute;
   z-index: 10;

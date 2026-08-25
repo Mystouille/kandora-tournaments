@@ -16,7 +16,7 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     StatusBar: {
-      style: "LIGHT",
+      style: "DARK",
       backgroundColor: "#0b1210",
     },
     CapacitorSQLite: {

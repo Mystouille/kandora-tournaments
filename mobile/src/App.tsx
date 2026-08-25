@@ -39,7 +39,15 @@ import {
 } from "~/game/replay/player";
 import type { MatchView } from "~/game/client/store";
 import { useMatchStore } from "~/game/client/store";
+import { findNoCallAutoPass } from "~/game/client/callPrompt";
 import { findTileAction } from "~/game/client/discardActions";
+import {
+  buildInitialLivePlayMenuFlags,
+  resetEphemeralFlags,
+  writePersistedAutoSort,
+  type LivePlayMenuFlags,
+  type LivePlayMenuOptionKey,
+} from "~/game/client/LivePlayMenu";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import { mobileTableLayout } from "~/game/client/pixi/layouts/mobileTableLayout";
 import { DEMO_EVENTS, DEMO_SEAT_NAMES } from "./demoReplay";
@@ -63,6 +71,7 @@ import {
 } from "./nearby/identity";
 import { MobileLobby } from "./online/MobileLobby";
 import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
+import { MobileGameMenu } from "./game/MobileGameMenu";
 import {
   INITIAL_ONLINE_MATCH_STATE,
   OnlineMatchController,
@@ -134,6 +143,8 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
+const DRAW_TO_DISCARD_DELAY_MS = 700;
+
 type MobileAuthStatus =
   | "checking"
   | "signed_out"
@@ -161,6 +172,13 @@ export function App() {
   const localControllerRef = useRef<LocalMatchController | null>(null);
   const nearbyControllerRef = useRef<NearbyMatchController | null>(null);
   const onlineControllerRef = useRef<OnlineMatchController | null>(null);
+  const liveActionDispatcherRef = useRef<(actionId: string) => void>(
+    () => undefined
+  );
+  const lastAutoActedIdRef = useRef<string | null>(null);
+  const autoDiscardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const authGenerationRef = useRef(0);
   const handledAuthCallbackRef = useRef<string | null>(null);
@@ -173,6 +191,10 @@ export function App() {
     useState<MobileAuthSession | null>(null);
   const [controllersReady, setControllersReady] = useState(false);
   const [shellBusy, setShellBusy] = useState(false);
+  const [gameMenuExpanded, setGameMenuExpanded] = useState(false);
+  const [liveMenuFlags, setLiveMenuFlags] = useState<LivePlayMenuFlags>(
+    buildInitialLivePlayMenuFlags
+  );
   const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
@@ -210,6 +232,20 @@ export function App() {
   const matchView = page === "game" ? renderedLiveView : replayView;
   const latestViewRef = useRef(matchView);
   latestViewRef.current = matchView;
+  liveActionDispatcherRef.current = (actionId) => {
+    const matchId = useMatchStore.getState().matchId;
+    const onlineController = onlineControllerRef.current;
+    if (onlineController?.getState().matchId === matchId) {
+      onlineController.act(actionId);
+      return;
+    }
+    const nearbyController = nearbyControllerRef.current;
+    if (nearbyController?.getState().matchId === matchId) {
+      void nearbyController.act(actionId).catch(() => undefined);
+      return;
+    }
+    void localControllerRef.current?.act(actionId);
+  };
   const webAppBaseUrl = normalizeWebAppUrl(
     import.meta.env.VITE_APP_BASE_URL,
     { allowLoopback: !Capacitor.isNativePlatform() }
@@ -375,7 +411,7 @@ export function App() {
     if (!Capacitor.isNativePlatform()) {
       return;
     }
-    void StatusBar.setStyle({ style: Style.Light });
+    void StatusBar.setStyle({ style: Style.Dark });
     if (Capacitor.getPlatform() === "android") {
       void StatusBar.setBackgroundColor({ color: "#0b1210" });
     }
@@ -497,6 +533,17 @@ export function App() {
           return;
         }
         rendererRef.current = renderer;
+        renderer.setOnAutoSortChange((autoSort) => {
+          writePersistedAutoSort(autoSort);
+          setLiveMenuFlags((current) =>
+            current.autoSort === autoSort
+              ? current
+              : { ...current, autoSort }
+          );
+        });
+        renderer.setAutoSort(liveMenuFlags.autoSort);
+        renderer.setAutoWinEnabled(liveMenuFlags.autoWin);
+        renderer.setNoCallEnabled(liveMenuFlags.noCall);
         renderer.setOnTileClick(({ tile, discardSource }) => {
           const store = useMatchStore.getState();
           if (store.mySeat === null) {
@@ -512,27 +559,10 @@ export function App() {
             return;
           }
           store.setPendingDiscard({ seat: store.mySeat, tile });
-          const onlineController = onlineControllerRef.current;
-          const nearbyController = nearbyControllerRef.current;
-          if (onlineController?.getState().matchId === store.matchId) {
-            onlineController.act(action.id);
-          } else if (nearbyController?.getState().matchId === store.matchId) {
-            void nearbyController.act(action.id).catch(() => undefined);
-          } else {
-            void localControllerRef.current?.act(action.id);
-          }
+          liveActionDispatcherRef.current(action.id);
         });
         renderer.setOnActionClick(({ action }) => {
-          const store = useMatchStore.getState();
-          const onlineController = onlineControllerRef.current;
-          const nearbyController = nearbyControllerRef.current;
-          if (onlineController?.getState().matchId === store.matchId) {
-            onlineController.act(action.id);
-          } else if (nearbyController?.getState().matchId === store.matchId) {
-            void nearbyController.act(action.id).catch(() => undefined);
-          } else {
-            void localControllerRef.current?.act(action.id);
-          }
+          liveActionDispatcherRef.current(action.id);
           useMatchStore.getState().setLegalActions([]);
         });
         renderer.setOnRenderRequest(() => {
@@ -556,6 +586,7 @@ export function App() {
     return () => {
       disposed = true;
       rendererRef.current = null;
+      renderer?.setOnAutoSortChange(null);
       renderer?.destroy();
     };
   }, [showsTable]);
@@ -563,6 +594,132 @@ export function App() {
   useEffect(() => {
     rendererRef.current?.render(matchView);
   }, [matchView]);
+
+  useEffect(() => {
+    rendererRef.current?.setAutoSort(liveMenuFlags.autoSort);
+  }, [liveMenuFlags.autoSort]);
+
+  useEffect(() => {
+    rendererRef.current?.setAutoWinEnabled(liveMenuFlags.autoWin);
+  }, [liveMenuFlags.autoWin]);
+
+  useEffect(() => {
+    rendererRef.current?.setNoCallEnabled(liveMenuFlags.noCall);
+  }, [liveMenuFlags.noCall]);
+
+  const handKey = `${liveView.matchId ?? "none"}:${liveView.roundWind}:${liveView.roundNumber}:${liveView.honba}:${liveView.dealer}`;
+  useEffect(() => {
+    setLiveMenuFlags((current) => resetEphemeralFlags(current));
+  }, [handKey]);
+
+  useEffect(() => {
+    if (page !== "game") {
+      setGameMenuExpanded(false);
+    }
+  }, [page]);
+
+  useEffect(() => {
+    if (page !== "game" || liveView.mySeat === null) {
+      return;
+    }
+    const actions = liveView.legalActions;
+    if (actions.length === 0) {
+      lastAutoActedIdRef.current = null;
+      if (autoDiscardTimerRef.current !== null) {
+        clearTimeout(autoDiscardTimerRef.current);
+        autoDiscardTimerRef.current = null;
+      }
+      return;
+    }
+    const fire = (actionId: string): void => {
+      if (lastAutoActedIdRef.current === actionId) {
+        return;
+      }
+      lastAutoActedIdRef.current = actionId;
+      liveActionDispatcherRef.current(actionId);
+    };
+    const hasWin = actions.some(
+      (action) => action.type === "ron" || action.type === "tsumo"
+    );
+    if (liveMenuFlags.autoWin) {
+      const win = actions.find(
+        (action) => action.type === "ron" || action.type === "tsumo"
+      );
+      if (win !== undefined) {
+        fire(win.id);
+        return;
+      }
+    }
+    const noCallPass = findNoCallAutoPass(actions, liveMenuFlags.noCall);
+    if (noCallPass !== undefined) {
+      fire(noCallPass.id);
+      return;
+    }
+    const mySeat = liveView.mySeat;
+    const inRiichi = liveView.riichiDeclared[mySeat];
+    const hasAnkan = actions.some(
+      (action) => action.type === "kan" && action.kanKind === "ankan"
+    );
+    if (
+      (!liveMenuFlags.autoDiscard && !inRiichi) ||
+      hasWin ||
+      hasAnkan ||
+      liveView.freshlyDrawnSeat !== mySeat
+    ) {
+      return;
+    }
+    const hand = liveView.hands[mySeat] ?? [];
+    const drawn = hand[hand.length - 1];
+    if (drawn === null || drawn === undefined) {
+      return;
+    }
+    const discard = findTileAction(actions, "discard", drawn, "draw");
+    if (
+      discard === undefined ||
+      lastAutoActedIdRef.current === discard.id
+    ) {
+      return;
+    }
+    if (autoDiscardTimerRef.current !== null) {
+      clearTimeout(autoDiscardTimerRef.current);
+    }
+    autoDiscardTimerRef.current = setTimeout(() => {
+      autoDiscardTimerRef.current = null;
+      const current = useMatchStore.getState();
+      if (
+        current.mySeat !== mySeat ||
+        !current.legalActions.some((action) => action.id === discard.id)
+      ) {
+        return;
+      }
+      current.setPendingDiscard({ seat: mySeat, tile: drawn });
+      fire(discard.id);
+    }, DRAW_TO_DISCARD_DELAY_MS);
+    return () => {
+      if (autoDiscardTimerRef.current !== null) {
+        clearTimeout(autoDiscardTimerRef.current);
+        autoDiscardTimerRef.current = null;
+      }
+    };
+  }, [
+    page,
+    liveView.legalActions,
+    liveView.mySeat,
+    liveView.hands,
+    liveView.freshlyDrawnSeat,
+    liveView.riichiDeclared,
+    liveMenuFlags.autoWin,
+    liveMenuFlags.noCall,
+    liveMenuFlags.autoDiscard,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (autoDiscardTimerRef.current !== null) {
+        clearTimeout(autoDiscardTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (isPlayingMatch) {
@@ -826,6 +983,16 @@ export function App() {
     }
   };
 
+  const toggleLiveMenuOption = (key: LivePlayMenuOptionKey): void => {
+    setLiveMenuFlags((current) => {
+      const next = { ...current, [key]: !current[key] };
+      if (key === "autoSort") {
+        writePersistedAutoSort(next.autoSort);
+      }
+      return next;
+    });
+  };
+
   const importReplay = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -872,6 +1039,14 @@ export function App() {
           >
             <LogOut aria-hidden="true" />
           </button>
+          {liveView.mySeat !== null && (
+            <MobileGameMenu
+              expanded={gameMenuExpanded}
+              flags={liveMenuFlags}
+              onExpandedChange={setGameMenuExpanded}
+              onToggle={toggleLiveMenuOption}
+            />
+          )}
           {rendererState !== "ready" && (
             <div className="renderer-loading" aria-live="polite">
               <LoaderCircle aria-hidden="true" className="spin" />
