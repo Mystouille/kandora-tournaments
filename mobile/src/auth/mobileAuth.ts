@@ -168,8 +168,7 @@ export async function exchangeMobileAuthCode(
     webAppPath(baseUrl, "/api/mobile/auth/exchange"),
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code, verifier }),
+      body: new URLSearchParams({ code, verifier }),
     }
   );
   const session = ExchangeResponseSchema.parse(await checkedJson(response));
@@ -186,7 +185,10 @@ export async function verifyMobileAuthSession(
 ): Promise<MobileAuthSession> {
   const response = await fetcher(
     webAppPath(baseUrl, "/api/mobile/auth/session"),
-    { headers: { Authorization: `Bearer ${session.token}` } }
+    {
+      method: "POST",
+      body: new URLSearchParams({ token: session.token }),
+    }
   );
   const result = SessionResponseSchema.parse(await checkedJson(response));
   if (result.expiresAt <= Date.now()) {

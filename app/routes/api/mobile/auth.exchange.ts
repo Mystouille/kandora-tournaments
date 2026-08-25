@@ -23,16 +23,14 @@ export async function action({ request }: { request: Request }): Promise<Respons
     return json({ error: "method_not_allowed" }, 405);
   }
 
-  let body: unknown;
+  let form: FormData;
   try {
-    body = await request.json();
+    form = await request.formData();
   } catch {
     return json({ error: "invalid_body" }, 400);
   }
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return json({ error: "invalid_body" }, 400);
-  }
-  const { code, verifier } = body as Record<string, unknown>;
+  const code = form.get("code");
+  const verifier = form.get("verifier");
   if (typeof code !== "string" || typeof verifier !== "string") {
     return json({ error: "invalid_body" }, 400);
   }

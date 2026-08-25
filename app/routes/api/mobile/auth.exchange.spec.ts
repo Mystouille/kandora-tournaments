@@ -31,8 +31,7 @@ describe("mobile auth exchange API", () => {
     const response = await action({
       request: new Request("https://app.test/api/mobile/auth/exchange", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: "code", verifier: "verifier" }),
+        body: new URLSearchParams({ code: "code", verifier: "verifier" }),
       }),
     });
 
@@ -50,8 +49,7 @@ describe("mobile auth exchange API", () => {
     const response = await action({
       request: new Request("https://app.test/api/mobile/auth/exchange", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: "code", verifier: "verifier" }),
+        body: new URLSearchParams({ code: "code", verifier: "verifier" }),
       }),
     });
 
@@ -65,8 +63,7 @@ describe("mobile auth exchange API", () => {
     const response = await action({
       request: new Request("https://app.test/api/mobile/auth/exchange", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: "code", verifier: "verifier" }),
+        body: new URLSearchParams({ code: "code", verifier: "verifier" }),
       }),
     });
 

@@ -78,6 +78,14 @@ describe("native mobile authentication", () => {
       "verifier",
       fetcher
     );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      "https://play.example.com/api/mobile/auth/exchange",
+      {
+        method: "POST",
+        body: expect.any(URLSearchParams),
+      }
+    );
     await expect(
       verifyMobileAuthSession(
         "https://play.example.com",
@@ -88,7 +96,10 @@ describe("native mobile authentication", () => {
     expect(fetcher).toHaveBeenNthCalledWith(
       2,
       "https://play.example.com/api/mobile/auth/session",
-      { headers: { Authorization: "Bearer game-token" } }
+      {
+        method: "POST",
+        body: expect.any(URLSearchParams),
+      }
     );
   });
 

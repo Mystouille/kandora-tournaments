@@ -48,6 +48,28 @@ describe("mobile auth session API", () => {
     expect(invalid.status).toBe(401);
   });
 
+  it("verifies a token from a CORS-simple form POST", async () => {
+    mocks.verifyGameToken.mockResolvedValue({
+      sub: "user-1",
+      scope: "game",
+      exp: 2_000_000_000,
+    });
+
+    const response = await action({
+      request: new Request("https://app.test/api/mobile/auth/session", {
+        method: "POST",
+        body: new URLSearchParams({ token: "game-token" }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      authenticated: true,
+      expiresAt: 2_000_000_000_000,
+    });
+    expect(mocks.verifyGameToken).toHaveBeenCalledWith("game-token");
+  });
+
   it("answers native CORS preflight", async () => {
     const response = await action({
       request: new Request("https://app.test/api/mobile/auth/session", {

@@ -2,8 +2,8 @@ import { verifyGameToken } from "~/utils/jwt.server";
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
-  "access-control-allow-headers": "authorization",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
   "cache-control": "no-store",
 } as const;
 
@@ -29,6 +29,23 @@ export async function loader({ request }: { request: Request }): Promise<Respons
 export async function action({ request }: { request: Request }): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+  if (request.method === "POST") {
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return json({ error: "invalid_body" }, 400);
+    }
+    const token = form.get("token");
+    if (typeof token !== "string") {
+      return json({ error: "invalid_body" }, 400);
+    }
+    const payload = await verifyGameToken(token);
+    if (payload === null) {
+      return json({ error: "invalid_or_expired_token" }, 401);
+    }
+    return json({ authenticated: true, expiresAt: payload.exp * 1000 });
   }
   return json({ error: "method_not_allowed" }, 405);
 }
