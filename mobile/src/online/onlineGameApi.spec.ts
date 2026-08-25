@@ -26,7 +26,7 @@ describe("mobile online game API", () => {
       )
     ).resolves.toBe("room 1");
     expect(fetcher).toHaveBeenCalledWith(
-      "https://play.example.com/api/mobile/game/rooms",
+      "https://play.example.com/api/game/rooms",
       { method: "POST", body: expect.any(URLSearchParams) }
     );
   });
@@ -36,8 +36,7 @@ describe("mobile online game API", () => {
       .fn<typeof fetch>()
       .mockResolvedValue(
         Response.json({
-          authenticated: true,
-          expiresAt: Date.now() + 60_000,
+          token: "game-token",
           wsUrl: "wss://game.example.com/",
           wsPath: "/ws/game",
         })
@@ -58,8 +57,7 @@ describe("mobile online game API", () => {
       .fn<typeof fetch>()
       .mockResolvedValue(
         Response.json({
-          authenticated: true,
-          expiresAt: Date.now() + 60_000,
+          token: "game-token",
           wsUrl: null,
           wsPath: "/ws/game",
         })

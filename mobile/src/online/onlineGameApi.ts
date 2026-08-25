@@ -5,8 +5,7 @@ import { webAppPath } from "../shell";
 
 const CreateRoomResponseSchema = z.object({ matchId: z.string().min(1) });
 const GameSessionResponseSchema = z.object({
-  authenticated: z.literal(true),
-  expiresAt: z.number().finite(),
+  token: z.string().min(1),
   wsUrl: z.string().nullable(),
   wsPath: z.string().startsWith("/"),
 });
@@ -38,7 +37,7 @@ export async function createOnlineRoom(
   fetcher: typeof fetch = fetch
 ): Promise<string> {
   const response = await fetcher(
-    webAppPath(baseUrl, "/api/mobile/game/rooms"),
+    webAppPath(baseUrl, "/api/game/rooms"),
     {
       method: "POST",
       body: new URLSearchParams({ token: session.token, preset }),
@@ -54,7 +53,7 @@ export async function getOnlineGameConnectionDetails(
   fetcher: typeof fetch = fetch
 ): Promise<GameWSConnectionDetails> {
   const response = await fetcher(
-    webAppPath(baseUrl, "/api/mobile/auth/session"),
+    webAppPath(baseUrl, "/api/game/session"),
     {
       method: "POST",
       body: new URLSearchParams({ token: session.token }),
@@ -66,7 +65,7 @@ export async function getOnlineGameConnectionDetails(
   const fallbackOrigin = `${appUrl.protocol}//${appUrl.host}${appUrl.pathname.replace(/\/$/, "")}`;
   const wsOrigin = (details.wsUrl ?? fallbackOrigin).replace(/\/$/, "");
   return {
-    token: session.token,
+    token: details.token,
     wsUrl: `${wsOrigin}${details.wsPath}/${encodeURIComponent(matchId)}`,
   };
 }

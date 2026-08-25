@@ -1,16 +1,34 @@
 import { isGameEnabled } from "~/game/feature-gate";
+import { listPresetIds } from "~/game/rules/presets";
 import { getGameServerHttpUrl } from "~/services/gameServer.server";
-import { signGameToken } from "~/utils/jwt.server";
+import { signGameToken, verifyGameToken } from "~/utils/jwt.server";
 import { requireGameApiAccess } from "~/utils/gameAuth.server";
 
-function errorResponse(error: string, status: number): Response {
-  return Response.json({ error }, { status });
+const MOBILE_CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "access-control-allow-headers": "content-type",
+  "cache-control": "no-store",
+} as const;
+
+function errorResponse(
+  error: string,
+  status: number,
+  mobile = false
+): Response {
+  return Response.json(
+    { error },
+    { status, headers: mobile ? MOBILE_CORS_HEADERS : undefined }
+  );
 }
 
-async function forwardToGameServer(init?: RequestInit): Promise<Response> {
+async function forwardToGameServer(
+  init?: RequestInit,
+  mobile = false
+): Promise<Response> {
   const gameServerUrl = getGameServerHttpUrl();
   if (!gameServerUrl) {
-    return errorResponse("game_server_not_configured", 503);
+    return errorResponse("game_server_not_configured", 503, mobile);
   }
 
   try {
@@ -19,13 +37,14 @@ async function forwardToGameServer(init?: RequestInit): Promise<Response> {
     return new Response(body, {
       status: upstream.status,
       headers: {
+        ...(mobile ? MOBILE_CORS_HEADERS : {}),
         "content-type":
           upstream.headers.get("content-type") ?? "application/json",
       },
     });
   } catch (error) {
     console.error("Failed to reach game server rooms endpoint:", error);
-    return errorResponse("game_server_unreachable", 502);
+    return errorResponse("game_server_unreachable", 502, mobile);
   }
 }
 
@@ -34,6 +53,9 @@ export async function loader({
 }: {
   request: Request;
 }): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: MOBILE_CORS_HEADERS });
+  }
   if (!isGameEnabled()) {
     return errorResponse("game_disabled", 404);
   }
@@ -57,6 +79,36 @@ export async function action({
   }
   if (request.method !== "POST") {
     return errorResponse("method_not_allowed", 405);
+  }
+
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.startsWith("application/x-www-form-urlencoded")) {
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return errorResponse("invalid_body", 400, true);
+    }
+    const token = form.get("token");
+    const preset = form.get("preset");
+    if (
+      typeof token !== "string" ||
+      typeof preset !== "string" ||
+      !listPresetIds().includes(preset)
+    ) {
+      return errorResponse("invalid_body", 400, true);
+    }
+    if ((await verifyGameToken(token)) === null) {
+      return errorResponse("invalid_or_expired_token", 401, true);
+    }
+    return forwardToGameServer(
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ preset, token }),
+      },
+      true
+    );
   }
 
   const access = await requireGameApiAccess(request);

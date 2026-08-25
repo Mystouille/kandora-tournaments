@@ -74,10 +74,6 @@ export default [
     "/api/mobile/auth/session",
     "routes/api/mobile/auth.session.ts"
   ),
-  route(
-    "/api/mobile/game/rooms",
-    "routes/api/mobile/game.rooms.ts"
-  ),
 
   // ---------------------------------------------------------------------
   // Admin — online tournaments

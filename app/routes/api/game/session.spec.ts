@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   gameEnabled: true,
   requireGameApiAccess: vi.fn(),
+  verifyGameToken: vi.fn(),
 }));
 
 vi.mock("~/game/feature-gate", () => ({
@@ -11,13 +12,14 @@ vi.mock("~/game/feature-gate", () => ({
 
 vi.mock("~/utils/jwt.server", () => ({
   signGameToken: vi.fn().mockResolvedValue("game-token"),
+  verifyGameToken: mocks.verifyGameToken,
 }));
 
 vi.mock("~/utils/gameAuth.server", () => ({
   requireGameApiAccess: mocks.requireGameApiAccess,
 }));
 
-import { loader } from "./session";
+import { action, loader } from "./session";
 
 describe("game session API", () => {
   beforeEach(() => {
@@ -26,6 +28,11 @@ describe("game session API", () => {
     mocks.requireGameApiAccess.mockResolvedValue({
       authorized: true,
       user: { sub: "user-1", username: "Alice", loginMethod: "discord" },
+    });
+    mocks.verifyGameToken.mockResolvedValue({
+      sub: "user-1",
+      scope: "game",
+      exp: 2_000_000_000,
     });
     vi.stubEnv("GAME_WS_URL", "wss://game.test");
   });
@@ -61,5 +68,22 @@ describe("game session API", () => {
     await expect(response.json()).resolves.toEqual({
       error: "sign_in_required",
     });
+  });
+
+  it("returns the same session contract for a native game token", async () => {
+    const response = await action({
+      request: new Request("http://app.test/api/game/session", {
+        method: "POST",
+        body: new URLSearchParams({ token: "native-game-token" }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      token: "native-game-token",
+      wsUrl: "wss://game.test",
+      wsPath: "/ws/game",
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
   });
 });

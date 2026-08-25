@@ -10,10 +10,12 @@ vi.mock("~/services/gameServer.server", () => ({
 
 const mocks = vi.hoisted(() => ({
   requireGameApiAccess: vi.fn(),
+  verifyGameToken: vi.fn(),
 }));
 
 vi.mock("~/utils/jwt.server", () => ({
   signGameToken: vi.fn().mockResolvedValue("game-token"),
+  verifyGameToken: mocks.verifyGameToken,
 }));
 
 vi.mock("~/utils/gameAuth.server", () => ({
@@ -32,6 +34,11 @@ describe("game rooms API", () => {
     mocks.requireGameApiAccess.mockResolvedValue({
       authorized: true,
       user: { sub: "user-1", username: "Alice", loginMethod: "discord" },
+    });
+    mocks.verifyGameToken.mockResolvedValue({
+      sub: "user-1",
+      scope: "game",
+      exp: 2_000_000_000,
     });
   });
 
@@ -117,5 +124,32 @@ describe("game rooms API", () => {
       error: "sign_in_required",
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the same room contract for a native game token", async () => {
+    fetchMock.mockResolvedValue(Response.json({ matchId: "room-mobile" }));
+    const response = await action({
+      request: new Request("http://app.test/api/game/rooms", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: "native-game-token",
+          preset: "m-league",
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      matchId: "room-mobile",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("http://game.test/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        preset: "m-league",
+        token: "native-game-token",
+      }),
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
   });
 });
