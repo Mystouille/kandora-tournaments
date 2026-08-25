@@ -80,7 +80,16 @@ function oracleEvents(frames: Record<string, unknown>[]): GameEvent[] {
       elements.push(...bucket);
     }
   }
-  let events = parseTenhouReplayElements(elements, "tenhou-live").events;
+  let events = parseTenhouReplayElements(elements, "tenhou-live").events.map(
+    (event) => {
+      if (event.type !== "hand_start") {
+        return event;
+      }
+      const handStart = { ...event };
+      delete handStart.liveDrawSchedule;
+      return handStart;
+    }
+  );
   const owari = elements.some(
     (element) =>
       (element.tag === "AGARI" || element.tag === "RYUUKYOKU") &&
@@ -132,6 +141,72 @@ describe("TenhouSpectateDecoder", () => {
       schemaVersion: 2,
     };
     expect(() => replayReducer(log, streamed.length - 1)).not.toThrow();
+  });
+
+  it("marks the live draw after a kan as a dead-wall replacement", () => {
+    const decoder = new TenhouSpectateDecoder("tenhou-live");
+    const streamed: GameEvent[] = [];
+    streamed.push(
+      ...decoder.ingest({
+        tag: "UN",
+        n0: "East",
+        n1: "South",
+        n2: "West",
+        n3: "North",
+      })
+    );
+    streamed.push(
+      ...decoder.ingest({
+        tag: "INITBYLOG",
+        childNodes: [
+          {
+            tag: "INIT",
+            seed: "0,0,0,0,0,1",
+            ten: "250,250,250,250",
+            oya: 0,
+            hai0: "0,4,8,12,16,20,24,28,32,36,40,44,48",
+            hai1: "52,56,60,64,68,72,76,80,84,92,93,94,95",
+            hai2: "1,5,9,13,17,21,25,29,33,37,41,45,49",
+            hai3: "2,6,10,14,18,22,26,30,34,38,42,46,50",
+          },
+        ],
+      })
+    );
+    streamed.push(
+      ...decoder.ingest({
+        tag: "WGC",
+        childNodes: [
+          { tag: "N", who: 1, m: 23552 },
+          { tag: "DORA", hai: 65 },
+        ],
+      })
+    );
+    streamed.push(
+      ...decoder.ingest({
+        tag: "WGC",
+        childNodes: [{ tag: "U108" }],
+      })
+    );
+
+    expect(streamed.at(-1)).toMatchObject({
+      type: "draw",
+      seat: 1,
+      fromDeadWall: true,
+    });
+
+    const log = {
+      source: "tenhou" as const,
+      sourceGameId: "tenhou-live",
+      ruleSet: "tenhou",
+      startedAt: 0,
+      endedAt: 0,
+      seats: [],
+      events: streamed,
+      schemaVersion: 2,
+    };
+    const view = replayReducer(log, streamed.length - 1);
+    expect(view.drawsTaken).toBe(1);
+    expect(view.liveDrawsTaken).toBe(0);
   });
 
   it("dedupes reconnect catch-ups (one hand_start per INIT seed)", () => {
