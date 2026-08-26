@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { coreConfig } from "config";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { type League, LeagueModel, ongoingLeagueFilter } from "~/core/models/tournament/League";
 import { GameModel, type Game } from "~/core/models/tournament/Game";
@@ -17,6 +18,7 @@ import { createConnectorForLeague } from "~/services/connectors/createConnectorF
 import type { ILeagueTournamentConnector } from "~/services/connectors/ILeagueTournamentConnector.server";
 import { syncOngoingGameMessages } from "~/services/ongoingGameMessageService.server";
 import { syncLiveGames } from "~/services/liveGameService.server";
+import { buildLeagueStatisticsUrl } from "~/services/leagueStatisticsUrl";
 import {
   buildUserToTeamMap,
   computeNonTeamRankingData,
@@ -53,7 +55,6 @@ import {
 } from "~/services/league-configs";
 import { computeMultiPhaseStandings } from "~/services/league-strategies/multiPhaseStrategies";
 import { getLeagueQueue } from "~/services/queue.server";
-import { slugify } from "~/utils/slugify";
 import {
   getLeaguePlatform,
   resolvePlayerDisplay,
@@ -85,9 +86,12 @@ function getLeagueStatisticsText(league: League) {
 }
 
 function getLeagueStatisticsUrl(league: League, slug?: string): string {
-  const localeSegment = getLeagueLocale(league) === "en" ? "/en" : "";
-  const leagueSlug = slug ?? slugify(league.name);
-  return `https://www.tnt-sessions.com${localeSegment}/online-tournaments/${leagueSlug}/statistics`;
+  return buildLeagueStatisticsUrl({
+    baseUrl: coreConfig.APP_BASE_URL,
+    leagueName: league.name,
+    locale: getLeagueLocale(league),
+    slug,
+  });
 }
 
 /**
