@@ -66,6 +66,7 @@ import {
   ReplayReviewCartridge,
   type ReviewDraft,
 } from "./ReplayReviewCartridge";
+import { buildReplayViewerShareUrl } from "./replayShareUrl";
 import { useLocale } from "~/contexts/LocaleContext";
 import { useTelemetry } from "~/contexts/TelemetryContext";
 import { FixedTileSetProvider } from "~/contexts/TileSetContext";
@@ -1025,15 +1026,15 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     if (typeof window === "undefined" || !shortId) {
       return "";
     }
-    const params = new URLSearchParams();
-    params.set("review", shortId);
     // Pin the share link to the current playhead so the viewer
     // lands on the same frame the author was looking at when they
     // hit Publish. Drawings/text are attached to a specific event
     // index — without this the viewer would have to scrub to find
     // them.
-    params.set("event", String(index));
-    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    return buildReplayViewerShareUrl(window.location.href, {
+      event: index,
+      review: shortId,
+    });
   };
 
   /**
@@ -1674,25 +1675,20 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 roundOrdinal = i + 1;
               }
             }
-            const params = new URLSearchParams();
-            params.set("seat", String(focusSeat));
-            if (roundOrdinal > 0) {
-              params.set("round", String(roundOrdinal));
-            }
-            params.set("event", String(index));
             // Preserve the active review so the deeplink keeps
             // surfacing the author's annotations. Without this
             // the share button strips them and the recipient
             // sees a clean replay even though the URL bar still
             // shows `?review=…`.
-            if (review?.shortId) {
-              params.set("review", review.shortId);
-            }
-            const base =
+            const url =
               typeof window !== "undefined"
-                ? `${window.location.origin}${window.location.pathname}`
+                ? buildReplayViewerShareUrl(window.location.href, {
+                    seat: focusSeat,
+                    round: roundOrdinal > 0 ? roundOrdinal : undefined,
+                    event: index,
+                    review: review?.shortId,
+                  })
                 : "";
-            const url = `${base}?${params.toString()}`;
             copyToClipboard(url, flashCopied);
             }}
             disabled={publishing}

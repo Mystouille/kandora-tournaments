@@ -184,6 +184,8 @@ export function App() {
   const handledAuthCallbackRef = useRef<string | null>(null);
   const pendingVerifierRef = useRef<string | null>(null);
   const [page, setPage] = useState<MobileShellPage>("home");
+  const pageRef = useRef(page);
+  pageRef.current = page;
   const [authStatus, setAuthStatus] =
     useState<MobileAuthStatus>("checking");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -526,6 +528,9 @@ export function App() {
           layoutConfig: mobileTableLayout,
           presentation: "mobile",
         });
+        renderer.setMinimumDrawToDiscardDelayEnabled(
+          pageRef.current === "game"
+        );
         renderer.setConnectionDiagnosticsVisible(false);
         await renderer.mount(container);
         if (disposed) {
@@ -544,7 +549,7 @@ export function App() {
         renderer.setAutoSort(liveMenuFlags.autoSort);
         renderer.setAutoWinEnabled(liveMenuFlags.autoWin);
         renderer.setNoCallEnabled(liveMenuFlags.noCall);
-        renderer.setOnTileClick(({ tile, discardSource }) => {
+        renderer.setOnTileClick(({ index, tile, discardSource }) => {
           const store = useMatchStore.getState();
           if (store.mySeat === null) {
             return;
@@ -558,7 +563,11 @@ export function App() {
           if (action === undefined) {
             return;
           }
-          store.setPendingDiscard({ seat: store.mySeat, tile });
+          store.setPendingDiscard({
+            seat: store.mySeat,
+            tile,
+            displayIndex: index,
+          });
           liveActionDispatcherRef.current(action.id);
         });
         renderer.setOnActionClick(({ action }) => {
@@ -592,8 +601,10 @@ export function App() {
   }, [showsTable]);
 
   useEffect(() => {
-    rendererRef.current?.render(matchView);
-  }, [matchView]);
+    const renderer = rendererRef.current;
+    renderer?.setMinimumDrawToDiscardDelayEnabled(page === "game");
+    renderer?.render(matchView);
+  }, [matchView, page]);
 
   useEffect(() => {
     rendererRef.current?.setAutoSort(liveMenuFlags.autoSort);
@@ -692,7 +703,11 @@ export function App() {
       ) {
         return;
       }
-      current.setPendingDiscard({ seat: mySeat, tile: drawn });
+      current.setPendingDiscard({
+        seat: mySeat,
+        tile: drawn,
+        displayIndex: hand.length - 1,
+      });
       fire(discard.id);
     }, DRAW_TO_DISCARD_DELAY_MS);
     return () => {
