@@ -1055,6 +1055,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       // can still surface a copyable link.
       return buildShareUrlFor(review?.shortId ?? null);
     }
+    const hasPublishedAnnotation = entries.some(([, patch]) => patch !== null);
     setPublishing(true);
     try {
       const shortId = await ensureReview();
@@ -1073,11 +1074,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       // … and the reviewer roster (with color order), refreshed so a
       // brand-new contributor immediately shows in their color.
       let latestReviewers: SerializedReviewer[] | null = null;
-      for (const [idxStr, patch] of entries) {
+      for (const [entryPosition, [idxStr, patch]] of entries.entries()) {
         const eventIndex = Number(idxStr);
+        const completesPublish =
+          hasPublishedAnnotation && entryPosition === entries.length - 1;
+        const notificationFields = completesPublish
+          ? { notifyReviewers: true, notificationEventIndex: index }
+          : {};
         const body =
           patch === null
-            ? { eventIndex, delete: true }
+            ? { eventIndex, delete: true, ...notificationFields }
             : {
                 eventIndex,
                 text: patch.text,
@@ -1087,6 +1093,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 // to a single seat). Subsequent PUTs simply echo
                 // it back; the locked seat wins.
                 seat: focusSeat,
+                ...notificationFields,
               };
         const res = await fetch(
           `${basePath}/api/replay-reviews/${encodeURIComponent(shortId)}`,

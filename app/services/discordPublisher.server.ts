@@ -92,6 +92,29 @@ export async function sendChannelMessage(
   return res.json() as Promise<{ id: string }>;
 }
 
+export async function sendDirectMessage(
+  discordUserId: string,
+  content: string
+): Promise<{ id: string }> {
+  const res = await discordFetch("/users/@me/channels", {
+    method: "POST",
+    body: JSON.stringify({ recipient_id: discordUserId }),
+  });
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to open direct message channel for user ${discordUserId}: ${res.status} ${errorBody}`
+    );
+  }
+  const channel = (await res.json()) as { id?: string };
+  if (!channel.id) {
+    throw new Error(
+      `Discord returned no direct message channel for user ${discordUserId}`
+    );
+  }
+  return sendChannelMessage(channel.id, content);
+}
+
 export async function editChannelMessage(
   channelId: string,
   messageId: string,

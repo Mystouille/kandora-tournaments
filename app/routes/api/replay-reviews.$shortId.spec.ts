@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getAuthenticatedUser: vi.fn(),
   findReview: vi.fn(),
   findUser: vi.fn(),
+  notifyReviewContributors: vi.fn(),
 }));
 
 vi.mock("../../utils/dbConnection.server", () => ({
@@ -19,6 +20,9 @@ vi.mock("../../core/models/game/ReplayReview", () => ({
 }));
 vi.mock("../../core/models/shared/User", () => ({
   UserModel: { findById: mocks.findUser },
+}));
+vi.mock("../../services/replayReviewNotification.server", () => ({
+  notifyReviewContributors: mocks.notifyReviewContributors,
 }));
 
 import { action, loader } from "./replay-reviews.$shortId";
@@ -102,6 +106,7 @@ describe("replay review collaboration", () => {
         lean: async () => ({ name: "Creator" }),
       }),
     });
+    mocks.notifyReviewContributors.mockResolvedValue(undefined);
   });
 
   it("lets anonymous viewers read a shared review with author metadata", async () => {
@@ -211,6 +216,152 @@ describe("replay review collaboration", () => {
     expect(response.status).toBe(200);
     expect(review.edits[0].text).toBe("Creator note");
     expect(review.edits[1].text).toBe("Updated contributor note");
+  });
+
+  it("notifies contributors once when the final publish request changes an annotation", async () => {
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CREATOR_ID),
+          text: "Creator note",
+        },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 12,
+      text: "Contributor note",
+      seat: 0,
+      notifyReviewers: true,
+      notificationEventIndex: 12,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.notifyReviewContributors).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyReviewContributors).toHaveBeenCalledWith({
+      review,
+      publisherId: CONTRIBUTOR_ID,
+      publisherName: "Contributor",
+      eventIndex: 12,
+    });
+  });
+
+  it("notifies contributors for a drawing-only annotation", async () => {
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CREATOR_ID),
+          text: "Creator note",
+        },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 12,
+      drawingBase64: "AQID",
+      seat: 0,
+      notifyReviewers: true,
+      notificationEventIndex: 12,
+    });
+
+    expect(response.status).toBe(200);
+    expect(review.edits[1].drawing).toEqual(Buffer.from([1, 2, 3]));
+    expect(mocks.notifyReviewContributors).toHaveBeenCalledOnce();
+  });
+
+  it("does not notify when a marked request repeats identical content", async () => {
+    const updatedAt = new Date("2026-08-26T10:00:00.000Z");
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Unchanged note",
+          updatedAt,
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 10,
+      text: "Unchanged note",
+      seat: 0,
+      notifyReviewers: true,
+      notificationEventIndex: 10,
+    });
+
+    expect(response.status).toBe(200);
+    expect(review.edits[0].updatedAt).toBe(updatedAt);
+    expect(mocks.notifyReviewContributors).not.toHaveBeenCalled();
+  });
+
+  it("does not notify for an unmarked deletion-only publish", async () => {
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Contributor note",
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 10,
+      delete: true,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.notifyReviewContributors).not.toHaveBeenCalled();
+  });
+
+  it("lets a changed final deletion complete a mixed publish notification", async () => {
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CREATOR_ID),
+          text: "Creator note",
+        },
+        {
+          eventIndex: 12,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Contributor note",
+        },
+      ],
+      reviewers: [
+        { user: objectId(CREATOR_ID), name: "Creator" },
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 12,
+      delete: true,
+      notifyReviewers: true,
+      notificationEventIndex: 14,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.notifyReviewContributors).toHaveBeenCalledWith({
+      review,
+      publisherId: CONTRIBUTOR_ID,
+      publisherName: "Contributor",
+      eventIndex: 14,
+    });
   });
 
   it("deletes only the authenticated user's edit and retains the seat", async () => {

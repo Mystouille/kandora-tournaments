@@ -9,6 +9,7 @@ import {
   serializeReview,
   serializeReviewEdit,
 } from "../../services/replayReview.server";
+import { notifyReviewContributors } from "../../services/replayReviewNotification.server";
 import type { SerializedReviewer } from "../../types/replayReview";
 
 /**
@@ -71,6 +72,8 @@ export async function action({
     drawingBase64?: string | null;
     delete?: boolean;
     seat?: number;
+    notifyReviewers?: boolean;
+    notificationEventIndex?: number;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -81,6 +84,27 @@ export async function action({
   if (typeof eventIndex !== "number" || eventIndex < 0) {
     return Response.json(
       { ok: false, error: "bad-event-index" },
+      { status: 400 }
+    );
+  }
+  const notifyReviewers = body.notifyReviewers === true;
+  if (
+    body.notifyReviewers !== undefined &&
+    typeof body.notifyReviewers !== "boolean"
+  ) {
+    return Response.json(
+      { ok: false, error: "bad-notification-marker" },
+      { status: 400 }
+    );
+  }
+  if (
+    notifyReviewers &&
+    (typeof body.notificationEventIndex !== "number" ||
+      !Number.isInteger(body.notificationEventIndex) ||
+      body.notificationEventIndex < 0)
+  ) {
+    return Response.json(
+      { ok: false, error: "bad-notification-event-index" },
       { status: 400 }
     );
   }
@@ -125,12 +149,22 @@ export async function action({
     resolveReviewersForDoc(doc);
 
   if (body.delete) {
+    let deleted = false;
     if (existingIdx >= 0) {
       doc.edits.splice(existingIdx, 1);
       if (doc.edits.length === 0) {
         setSeat(null);
       }
       await doc.save();
+      deleted = true;
+    }
+    if (notifyReviewers && deleted) {
+      await notifyReviewContributors({
+        review: doc,
+        publisherId: authorId,
+        publisherName: jwtPayload.username,
+        eventIndex: body.notificationEventIndex as number,
+      });
     }
     return Response.json({
       ok: true,
@@ -184,18 +218,35 @@ export async function action({
   }
 
   let contributed = false;
+  let annotationChanged = false;
   if (existingIdx >= 0) {
     const edit = doc.edits[existingIdx];
     if (edit.author === undefined || edit.author === null) {
       edit.author = authorObjectId;
     }
-    if (text !== undefined) {
+    if (text !== undefined && text !== (edit.text ?? "")) {
       edit.text = text;
+      annotationChanged = true;
     }
     if (drawingBuffer !== undefined) {
-      edit.drawing = drawingBuffer ?? undefined;
+      const currentDrawing = edit.drawing?.length
+        ? Buffer.from(edit.drawing)
+        : null;
+      const nextDrawing = drawingBuffer?.length
+        ? Buffer.from(drawingBuffer)
+        : null;
+      const drawingChanged =
+        currentDrawing === null
+          ? nextDrawing !== null
+          : nextDrawing === null || !currentDrawing.equals(nextDrawing);
+      if (drawingChanged) {
+        edit.drawing = drawingBuffer ?? undefined;
+        annotationChanged = true;
+      }
     }
-    edit.updatedAt = new Date();
+    if (annotationChanged) {
+      edit.updatedAt = new Date();
+    }
     // If both fields are empty, drop the edit entirely.
     const isEmpty =
       (edit.text ?? "").length === 0 &&
@@ -236,6 +287,7 @@ export async function action({
       updatedAt: new Date(),
     });
     contributed = true;
+    annotationChanged = true;
   }
 
   if (doc.edits.length === 0) {
@@ -266,6 +318,15 @@ export async function action({
   }
 
   await doc.save();
+
+  if (notifyReviewers && contributed && annotationChanged) {
+    await notifyReviewContributors({
+      review: doc,
+      publisherId: authorId,
+      publisherName: jwtPayload.username,
+      eventIndex: body.notificationEventIndex as number,
+    });
+  }
 
   const reviewers = await responseReviewers();
   const stored = doc.edits.find(
