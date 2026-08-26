@@ -47,6 +47,14 @@ import type {
 } from "~/types/replayReview";
 import { getAuthenticatedUser } from "~/utils/jwt.server";
 import { basePath } from "~/utils/basePath";
+import {
+  readWebTableLayoutMode,
+  writeWebTableLayoutMode,
+} from "~/game/client/webTableLayoutPreference";
+import {
+  WebTableTopControls,
+  WEB_TABLE_TOP_CONTROL_CLASS,
+} from "~/game/client/WebTableTopControls";
 import type { Route } from "./+types/replay";
 import {
   ReplayOverlayPanel,
@@ -497,9 +505,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
   const [index, setIndex] = useState<number>(initial.index);
   const indexRef = useRef(initial.index);
-  const [overlays, setOverlays] = useState<ReplayOverlayState>(
-    defaultReplayOverlayState
-  );
+  const [overlays, setOverlays] = useState<ReplayOverlayState>(() => ({
+    ...defaultReplayOverlayState,
+    compactLayout: readWebTableLayoutMode() === "compact",
+  }));
+  const handleOverlayChange = (next: ReplayOverlayState): void => {
+    if (next.compactLayout !== overlays.compactLayout) {
+      writeWebTableLayoutMode(next.compactLayout ? "compact" : "standard");
+    }
+    setOverlays(next);
+  };
   const [focusSeat, setFocusSeat] = useState<Seat>(initial.seat);
   const [copied, setCopied] = useState<boolean>(false);
   // Audio toggle: persisted via the same `kandora.game.sound.enabled`
@@ -1223,7 +1238,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         if (cancelled) {
           return;
         }
-        const renderer = new TableRenderer();
+        const renderer = new TableRenderer({
+          webTableLayoutMode: overlays.compactLayout ? "compact" : "standard",
+        });
         // Wire the resize hook BEFORE mount so the
         // ResizeObserver / Pixi auto-resize installed inside
         // `mount()` can dispatch its first events into a live
@@ -1308,6 +1325,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     if (rendererRef.current) {
       rendererRef.current.setShowLayoutDebug(overlays.showLayoutDebug);
+      rendererRef.current.setWebTableLayoutMode(
+        overlays.compactLayout ? "compact" : "standard"
+      );
       rendererRef.current.setShowWaits(overlays.showWaits);
       rendererRef.current.setShowHands(overlays.showHands);
       rendererRef.current.setShowTsumogiri(overlays.showTsumogiri);
@@ -1580,26 +1600,34 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           </a>
           , C-Egg
         </div>
-        {/* Top-right: share / publish + close icons.
+        {/* Top-right: sound, share / publish, parameters, and quit.
             When the editor has unpublished local edits the same
             slot turns into a "Publish" button that pushes them
             to the server before copying the share link. */}
-        <button
-          type="button"
-          onClick={() => {
-            const next = !soundEnabled;
-            setSoundEnabled(next);
-            setGameSoundEnabled(next);
+        <WebTableTopControls
+          compactLayout={overlays.compactLayout}
+          onCompactLayoutChange={(compactLayout) => {
+            handleOverlayChange({ ...overlays, compactLayout });
           }}
-          aria-label={soundEnabled ? "Mute sound" : "Unmute sound"}
-          title={soundEnabled ? "Mute sound" : "Unmute sound"}
-          className="absolute top-2 right-[13rem] z-30 h-11 w-11 flex items-center justify-center rounded bg-black/70 hover:bg-emerald-800 text-emerald-100 hover:text-white text-xl transition-colors"
+          onQuit={handleClose}
+          quitLabel="Close replay"
         >
-          {soundEnabled ? <SoundOutlined /> : <AudioMutedOutlined />}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
+          <button
+            type="button"
+            onClick={() => {
+              const next = !soundEnabled;
+              setSoundEnabled(next);
+              setGameSoundEnabled(next);
+            }}
+            aria-label={soundEnabled ? "Mute sound" : "Unmute sound"}
+            title={soundEnabled ? "Mute sound" : "Unmute sound"}
+            className={`${WEB_TABLE_TOP_CONTROL_CLASS} w-11 text-xl`}
+          >
+            {soundEnabled ? <SoundOutlined /> : <AudioMutedOutlined />}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
             const copyToClipboard = (url: string, done: () => void): void => {
               if (navigator.clipboard?.writeText) {
                 void navigator.clipboard.writeText(url).then(done, done);
@@ -1666,37 +1694,29 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 : "";
             const url = `${base}?${params.toString()}`;
             copyToClipboard(url, flashCopied);
-          }}
-          disabled={publishing}
-          aria-label={
-            canContributeToReview && pendingCount > 0
-              ? t.review.cartridge.publishTooltip
-              : t.review.cartridge.copyShareLink
-          }
-          title={
-            canContributeToReview && pendingCount > 0
-              ? t.review.cartridge.publishTooltip
+            }}
+            disabled={publishing}
+            aria-label={
+              canContributeToReview && pendingCount > 0
+                ? t.review.cartridge.publishTooltip
+                : t.review.cartridge.copyShareLink
+            }
+            title={
+              canContributeToReview && pendingCount > 0
+                ? t.review.cartridge.publishTooltip
+                : copied
+                  ? t.review.cartridge.shareCopied
+                  : t.review.cartridge.copyShareLink
+            }
+            className={`${WEB_TABLE_TOP_CONTROL_CLASS} min-w-[5.5rem] gap-1 px-4 disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            {canContributeToReview && pendingCount > 0
+              ? `${t.review.cartridge.publish} (${pendingCount})`
               : copied
                 ? t.review.cartridge.shareCopied
-                : t.review.cartridge.copyShareLink
-          }
-          className="absolute top-2 right-[7rem] z-30 h-11 min-w-[5.5rem] px-4 flex items-center justify-center gap-1 rounded bg-black/70 hover:bg-emerald-800 text-emerald-100 hover:text-white text-base font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {canContributeToReview && pendingCount > 0
-            ? `${t.review.cartridge.publish} (${pendingCount})`
-            : copied
-              ? t.review.cartridge.shareCopied
-              : t.review.cartridge.share}
-        </button>
-        <button
-          type="button"
-          onClick={handleClose}
-          aria-label="Close replay"
-          className="absolute top-2 right-2 z-30 h-11 min-w-[5.5rem] px-4 inline-flex items-center justify-center gap-1 rounded bg-black/70 hover:bg-emerald-800 text-emerald-100 hover:text-white text-base font-medium no-underline transition-colors"
-          style={{ backgroundColor: "rgba(0, 0, 0, 0.7)", color: "#d1fae5" }}
-        >
-          ✕
-        </button>
+                : t.review.cartridge.share}
+          </button>
+        </WebTableTopControls>
         {/* Right-side: seat / round selectors + nav buttons. */}
         <div className="absolute top-1/2 right-2 -translate-y-1/2 z-30 flex flex-col items-stretch gap-3 text-emerald-100 text-base">
           {/* Row 1: seat selection, then round selection. */}
@@ -1892,7 +1912,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         </div>
         <ReplayOverlayPanel
           overlays={overlays}
-          onChange={setOverlays}
+          onChange={handleOverlayChange}
           includeWallToggle
         />
         {/* Review annotations: one passive drawing overlay per other
