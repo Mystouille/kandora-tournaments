@@ -568,6 +568,7 @@ export const en: Translations = {
     scheduleTbd: "TBD",
     scheduleLive: "Live",
     scheduleWatchLive: "Watch live",
+    schedulePastGames: "Past games",
     scheduleEmpty: "No games have been scheduled yet.",
     scheduleError: "The schedule could not be loaded.",
     scheduleRefreshError: "Live schedule updates are temporarily unavailable.",

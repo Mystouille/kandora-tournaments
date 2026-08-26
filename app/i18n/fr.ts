@@ -579,6 +579,7 @@ export const fr: Translations = {
     scheduleTbd: "À déterminer",
     scheduleLive: "En direct",
     scheduleWatchLive: "Voir en direct",
+    schedulePastGames: "Parties passées",
     scheduleEmpty: "Aucune partie n'est encore programmée.",
     scheduleError: "Impossible de charger le calendrier.",
     scheduleRefreshError:

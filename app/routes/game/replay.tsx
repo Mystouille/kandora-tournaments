@@ -512,7 +512,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   }));
   const handleOverlayChange = (next: ReplayOverlayState): void => {
     if (next.compactLayout !== overlays.compactLayout) {
-      writeWebTableLayoutMode(next.compactLayout ? "compact" : "standard");
+      const mode = next.compactLayout ? "compact" : "standard";
+      writeWebTableLayoutMode(mode);
+      rendererRef.current?.setWebTableLayoutMode(mode);
     }
     setOverlays(next);
   };

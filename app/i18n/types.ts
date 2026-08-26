@@ -469,6 +469,7 @@ export interface Translations extends CoreTranslations {
     scheduleTbd: string;
     scheduleLive: string;
     scheduleWatchLive: string;
+    schedulePastGames: string;
     scheduleEmpty: string;
     scheduleError: string;
     scheduleRefreshError: string;
