@@ -3,6 +3,7 @@ import { Layout, Menu, Drawer } from "antd";
 import type { MenuProps } from "antd";
 import {
   BarChartOutlined,
+  PlayCircleOutlined,
   SettingOutlined,
   TrophyOutlined,
   InfoCircleOutlined,
@@ -56,6 +57,15 @@ export function Sidebar({
     collapsed && !isMobile ? undefined : { paddingInlineStart: 40 };
   const items: MenuItem[] = [
     getItem(<Link to="/">{t.nav.tournaments}</Link>, "/", <TrophyOutlined />),
+    ...(currentUser
+      ? [
+          getItem(
+            <Link to="/lobby">{t.nav.gameLobby}</Link>,
+            "/lobby",
+            <PlayCircleOutlined />
+          ),
+        ]
+      : []),
     ...(tournamentSlug
       ? [
           getItem(
@@ -91,6 +101,8 @@ export function Sidebar({
       : `/online-tournaments/${tournamentSlug}`
     : location.pathname === "/" || location.pathname === "/online-tournaments"
       ? "/"
+      : location.pathname === "/lobby"
+        ? "/lobby"
       : location.pathname === "/review"
         ? "/review"
         : "";

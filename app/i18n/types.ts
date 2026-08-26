@@ -25,6 +25,7 @@ export interface Translations extends CoreTranslations {
     inPersonCategory: string;
     clubSessions: string;
     tournaments: string;
+    gameLobby: string;
     clubEvents: string;
     onlineTournaments: string;
     palmares: string;

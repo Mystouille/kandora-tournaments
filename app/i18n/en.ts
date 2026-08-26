@@ -31,6 +31,7 @@ export const en: Translations = {
     inPersonCategory: "In Person",
     clubSessions: "Club Sessions",
     tournaments: "Tournaments",
+    gameLobby: "Game lobby",
     clubEvents: "Club Events",
     onlineTournaments: "Online Tournaments",
     palmares: "Achievements",
