@@ -93,6 +93,14 @@ body {
   font-size: inherit;
 }
 
+.rich-text-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  color: #8c8c8c;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 /* Responsive 16:9 wrapper for YouTube/Vimeo embeds */
 .rich-text-editor-content .ProseMirror .rich-text-embed,
 .rich-text-content .rich-text-embed {

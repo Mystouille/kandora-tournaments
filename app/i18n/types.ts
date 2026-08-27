@@ -942,9 +942,11 @@ export interface Translations extends CoreTranslations {
     cartridge: {
       addTextTooltip: string;
       drawTooltip: string;
-      eraseTooltip: string;
+      removeDrawingTooltip: string;
+      deleteTextTooltip: string;
       exportTooltip: string;
       textPlaceholder: string;
+      hideEditor: string;
       save: string;
       cancel: string;
       undoAll: string;
@@ -960,8 +962,6 @@ export interface Translations extends CoreTranslations {
       publishTooltip: string;
       publishedToast: string;
       publishFailed: string;
-      discardAll: string;
-      discardAllTooltip: string;
       pendingBadge: string;
       noPendingChanges: string;
       seatLockedTooltip: string;

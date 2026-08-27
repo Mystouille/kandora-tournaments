@@ -1,6 +1,7 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import Placeholder from "@tiptap/extension-placeholder";
 import { MahjongTileExtension } from "./MahjongTileExtension";
 import { MahjongHandExtension } from "./MahjongHandExtension";
 import { VideoExtension } from "./VideoExtension";
@@ -57,6 +58,7 @@ interface RichTextEditorProps {
    */
   modalZIndex?: number;
   config?: RichTextConfig;
+  placeholder?: string;
 }
 
 export function RichTextEditor({
@@ -64,6 +66,7 @@ export function RichTextEditor({
   onChange,
   modalZIndex,
   config = DEFAULT_RICH_TEXT_CONFIG,
+  placeholder,
 }: RichTextEditorProps) {
   const { t } = useLocale();
   const te = t.news.admin.editor;
@@ -100,6 +103,7 @@ export function RichTextEditor({
           openOnClick: false,
         },
       }),
+      ...(placeholder ? [Placeholder.configure({ placeholder })] : []),
       Image,
       MahjongTileExtension.configure({
         sizeFactor: INLINE_TILE_TO_FONT_RATIO,

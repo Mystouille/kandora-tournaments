@@ -20,9 +20,8 @@ FROM alpine/git:latest AS submodules
 # layer cache so each deploy re-clones the latest submodule `main` (otherwise the
 # clone layer is cached indefinitely and never picks up submodule updates).
 ARG RAILWAY_GIT_COMMIT_SHA=local
-COPY GAME_SERVER_VERSION /tmp/GAME_SERVER_VERSION
 WORKDIR /submodules
-RUN echo "submodule cache-bust: ${RAILWAY_GIT_COMMIT_SHA} $(cat /tmp/GAME_SERVER_VERSION)" \
+RUN echo "submodule cache-bust: ${RAILWAY_GIT_COMMIT_SHA}" \
     && git clone --depth 1 --branch main https://github.com/Mystouille/kandora-core.git core \
     && git clone --depth 1 --branch main https://github.com/Mystouille/kandora-game.git game \
     && rm -rf core/.git game/.git

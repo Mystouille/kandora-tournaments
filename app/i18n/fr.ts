@@ -1051,9 +1051,12 @@ export const fr: Translations = {
     cartridge: {
       addTextTooltip: "Ajouter un commentaire",
       drawTooltip: "Dessiner à main levée",
-      eraseTooltip: "Effacer les annotations de cet événement",
+      removeDrawingTooltip: "Supprimer les dessins de cet événement",
+      deleteTextTooltip: "Supprimer cette annotation textuelle",
       exportTooltip: "Exporter la revue",
-      textPlaceholder: "Écrivez un commentaire pour cet événement\u2026",
+      textPlaceholder:
+        "Écrivez votre commentaire ici. Pour insérer des images de tuiles, saisissez leur notation compacte suivie d’une espace, par exemple « 1234s » puis espace.",
+      hideEditor: "Masquer",
       save: "Enregistrer",
       cancel: "Quitter",
       undoAll: "Annuler",
@@ -1070,8 +1073,6 @@ export const fr: Translations = {
       publishTooltip: "Publier toutes les annotations en attente",
       publishedToast: "Annotations publiées",
       publishFailed: "Échec de la publication des annotations",
-      discardAll: "Abandonner",
-      discardAllTooltip: "Abandonner toutes les annotations non publiées",
       pendingBadge: "{n} non enregistrée(s)",
       noPendingChanges: "Aucune modification en attente",
       seatLockedTooltip:

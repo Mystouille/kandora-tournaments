@@ -218,6 +218,63 @@ describe("replay review collaboration", () => {
     expect(review.edits[1].text).toBe("Updated contributor note");
   });
 
+  it("removes text without removing the authenticated user's drawing", async () => {
+    const drawing = Buffer.from([1, 2, 3]);
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Contributor note",
+          drawing,
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 10,
+      text: "",
+      seat: 0,
+    });
+
+    expect(response.status).toBe(200);
+    expect(review.edits).toHaveLength(1);
+    expect(review.edits[0].text).toBe("");
+    expect(review.edits[0].drawing).toEqual(drawing);
+  });
+
+  it("removes a drawing without removing the authenticated user's text", async () => {
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Contributor note",
+          drawing: Buffer.from([1, 2, 3]),
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 10,
+      drawingBase64: null,
+      seat: 0,
+    });
+
+    expect(response.status).toBe(200);
+    expect(review.edits).toHaveLength(1);
+    expect(review.edits[0].text).toBe("Contributor note");
+    expect(review.edits[0].drawing).toBeUndefined();
+  });
+
   it("notifies contributors once when the final publish request changes an annotation", async () => {
     const review = makeReview({
       edits: [

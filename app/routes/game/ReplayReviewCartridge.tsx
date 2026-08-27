@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Button, ConfigProvider, Tooltip, message, theme } from "antd";
 import {
   ClearOutlined,
-  DeleteOutlined,
   EditOutlined,
   FontSizeOutlined,
   HighlightOutlined,
@@ -45,26 +44,18 @@ interface ReplayReviewCartridgeProps {
   /** Submit the current draft to local pending state. */
   onSubmitText: (text: string) => Promise<void> | void;
   onSubmitDrawing: (strokes: Stroke[]) => Promise<void> | void;
-  /** Clear all edits at the current event (text + drawing). */
-  onErase: () => Promise<void> | void;
-  /**
-   * Number of edits awaiting publish (i.e. local-only changes
-   * that have not yet been pushed to the server). Used to
-   * gate the Discard button.
-   */
-  pendingCount: number;
+  /** Remove only the current user's drawing at this event. */
+  onRemoveDrawing: () => Promise<void> | void;
   /**
    * `true` while the parent is pushing edits to the server. Used
-   * to disable the Discard button mid-publish.
+    * to disable destructive controls mid-publish.
    */
   publishing: boolean;
-  /** Drop all pending edits without pushing them. */
-  onDiscardAll: () => void;
   /**
    * `true` when the review is locked to a seat that differs from
    * the currently focused seat. Adding new annotations is
    * forbidden in this state (text + freehand buttons are
-   * disabled) but Clear remains available so the author can
+  * disabled) but drawing removal remains available so the author can
    * still wrap up the review.
    */
   seatMismatch: boolean;
@@ -87,7 +78,7 @@ interface ReplayReviewCartridgeProps {
  * via the export modal.
  *
  * The cartridge is purely presentational about persistence: it
- * raises `onSubmitText` / `onSubmitDrawing` / `onErase` callbacks
+ * raises `onSubmitText` / `onSubmitDrawing` / `onRemoveDrawing` callbacks
  * and leaves the actual network calls to `replay.tsx`.
  */
 export function ReplayReviewCartridge({
@@ -99,10 +90,8 @@ export function ReplayReviewCartridge({
   onDraftChange,
   onSubmitText,
   onSubmitDrawing,
-  onErase,
-  pendingCount,
+  onRemoveDrawing,
   publishing,
-  onDiscardAll,
   seatMismatch,
   reviewSeatName,
   annotationBottom,
@@ -111,12 +100,28 @@ export function ReplayReviewCartridge({
   const { t } = useLocale();
   const tr = t.review.cartridge;
   const [submitting, setSubmitting] = useState(false);
+  const [textEditorHidden, setTextEditorHidden] = useState(false);
   const textEditorRef = useRef<HTMLDivElement>(null);
   const inText = draft.mode === "text";
   const inPen = draft.mode === "pen";
 
   useEffect(() => {
+    const revealTextEditor = () => {
+      setTextEditorHidden(false);
+    };
+    window.addEventListener("pointerup", revealTextEditor);
+    window.addEventListener("pointercancel", revealTextEditor);
+    window.addEventListener("blur", revealTextEditor);
+    return () => {
+      window.removeEventListener("pointerup", revealTextEditor);
+      window.removeEventListener("pointercancel", revealTextEditor);
+      window.removeEventListener("blur", revealTextEditor);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!canEdit || !inText) {
+      setTextEditorHidden(false);
       onTextEditorHeightChange(0);
       return;
     }
@@ -194,18 +199,15 @@ export function ReplayReviewCartridge({
       setSubmitting(false);
     }
   };
-  const erase = async () => {
+  const removeDrawing = async () => {
     setSubmitting(true);
     try {
-      await onErase();
+      await onRemoveDrawing();
       onDraftChange({ mode: null, text: "", strokes: [] });
     } finally {
       setSubmitting(false);
     }
   };
-
-  const hasSaved =
-    (savedText && savedText.length > 0) || savedHasDrawing === true;
 
   const seatLockTooltip = seatMismatch
     ? tr.seatLockedTooltip.replace("{name}", reviewSeatName)
@@ -217,11 +219,15 @@ export function ReplayReviewCartridge({
         <FixedTileSetProvider tileSet={TileSetName.Tenhou}>
           <div
             ref={textEditorRef}
-            className="absolute left-14 z-50 flex flex-col items-stretch gap-3 rounded p-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 pointer-events-auto"
+            className={`absolute left-2 z-50 flex flex-col items-stretch gap-3 rounded p-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 ${
+              textEditorHidden
+                ? "pointer-events-none opacity-0"
+                : "pointer-events-auto opacity-100"
+            }`}
             style={{
               bottom: annotationBottom,
               width: 820,
-              maxWidth: "calc(100vw - 72px)",
+              maxWidth: "calc(100vw - 16px)",
             }}
           >
             <div className="rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 overflow-hidden">
@@ -229,6 +235,7 @@ export function ReplayReviewCartridge({
                 content={draft.text}
                 onChange={(html) => onDraftChange({ ...draft, text: html })}
                 config={REPLAY_REVIEW_RICH_TEXT_CONFIG}
+                placeholder={tr.textPlaceholder}
                 // Replay page wrapper sits at z-[9999]; bump the
                 // toolbar pickers above it so they don't get
                 // hidden behind the canvas.
@@ -236,6 +243,20 @@ export function ReplayReviewCartridge({
               />
             </div>
             <div className="flex justify-end gap-2">
+              <Button
+                size="middle"
+                aria-pressed={textEditorHidden}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setTextEditorHidden(true);
+                }}
+              >
+                {tr.hideEditor}
+              </Button>
               <Button size="middle" onClick={cancel}>
                 {tr.cancel}
               </Button>
@@ -265,7 +286,7 @@ export function ReplayReviewCartridge({
             near-black icons on the dark cartridge in light mode. */}
         <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
           <div
-            className="flex items-center gap-2 rounded px-3 py-2 text-emerald-100 text-base"
+            className="flex max-w-[calc(100vw-16px)] flex-wrap items-center gap-2 rounded px-3 py-2 text-emerald-100 text-base"
             style={{
               // Tint the cartridge red when the review is locked to
               // a different seat, so the disabled edit buttons read
@@ -290,7 +311,11 @@ export function ReplayReviewCartridge({
                 T
               </Button>
             </Tooltip>
-            <Tooltip title={seatLockTooltip ?? tr.drawTooltip} zIndex={10001}>
+            <div className="w-px h-7 bg-emerald-700/60 mx-1" />
+            <Tooltip
+              title={seatLockTooltip ?? tr.drawTooltip}
+              zIndex={10001}
+            >
               <Button
                 type={inPen ? "primary" : "text"}
                 size="middle"
@@ -300,25 +325,19 @@ export function ReplayReviewCartridge({
                 aria-label={tr.drawTooltip}
               />
             </Tooltip>
-            <Tooltip title={tr.eraseTooltip} zIndex={10001}>
+            <Tooltip title={tr.removeDrawingTooltip} zIndex={10001}>
               <Button
                 type="text"
+                danger
                 size="middle"
                 icon={<ClearOutlined />}
-                onClick={erase}
-                disabled={!hasSaved || submitting}
-                aria-label={tr.eraseTooltip}
-              />
-            </Tooltip>
-            <div className="w-px h-7 bg-emerald-700/60 mx-1" />
-            <Tooltip title={tr.discardAllTooltip} zIndex={10001}>
-              <Button
-                type="text"
-                size="middle"
-                icon={<DeleteOutlined />}
-                onClick={onDiscardAll}
-                disabled={pendingCount === 0 || submitting || publishing}
-                aria-label={tr.discardAllTooltip}
+                onClick={removeDrawing}
+                disabled={
+                  (!savedHasDrawing && draft.strokes.length === 0) ||
+                  submitting ||
+                  publishing
+                }
+                aria-label={tr.removeDrawingTooltip}
               />
             </Tooltip>
           </div>

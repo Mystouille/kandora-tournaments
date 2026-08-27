@@ -1027,9 +1027,12 @@ export const en: Translations = {
     cartridge: {
       addTextTooltip: "Add text comment",
       drawTooltip: "Freehand draw",
-      eraseTooltip: "Erase this event's annotations",
+      removeDrawingTooltip: "Remove drawings from this event",
+      deleteTextTooltip: "Delete this text annotation",
       exportTooltip: "Export review",
-      textPlaceholder: "Write a comment for this event\u2026",
+      textPlaceholder:
+        'Write your comment here. To insert tile images, type their compact notation followed by a space, for example "1234s ".',
+      hideEditor: "Hide",
       save: "Save",
       cancel: "Exit",
       undoAll: "Cancel",
@@ -1046,8 +1049,6 @@ export const en: Translations = {
       publishTooltip: "Publish all pending annotations",
       publishedToast: "Annotations published",
       publishFailed: "Failed to publish annotations",
-      discardAll: "Discard",
-      discardAllTooltip: "Discard all non-published annotations",
       pendingBadge: "{n} unsaved",
       noPendingChanges: "No unsaved changes",
       seatLockedTooltip:

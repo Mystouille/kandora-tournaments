@@ -66,6 +66,7 @@ import {
   ReplayReviewCartridge,
   type ReviewDraft,
 } from "./ReplayReviewCartridge";
+import { formatReviewEditTimestamp } from "./reviewEditTimestamp";
 import { buildReplayViewerShareUrl } from "./replayShareUrl";
 import { useLocale } from "~/contexts/LocaleContext";
 import { useTelemetry } from "~/contexts/TelemetryContext";
@@ -73,8 +74,9 @@ import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
 import { ArticleContent } from "~/components/ArticleContent";
 import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConfig";
-import { Modal, Tooltip, message } from "antd";
+import { Button, Modal, Tooltip, message } from "antd";
 import {
+  DeleteOutlined,
   QuestionOutlined,
   SoundOutlined,
   AudioMutedOutlined,
@@ -375,7 +377,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     currentUserName,
     seatEnrichment,
   } = loaderData;
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { track } = useTelemetry();
   // Spectating telemetry: replay open + leave (with dwell time).
   useEffect(() => {
@@ -1202,11 +1204,6 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     }
   };
 
-  /** Drop all staged edits without contacting the server. */
-  const discardAll = (): void => {
-    setLocalEdits({});
-  };
-
   // Incremental fold: we keep prefix views in a ref so a "next"
   // click is O(1) instead of O(index). Whole-fold path on seek.
   const viewCacheRef = useRef<{
@@ -1995,18 +1992,64 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 >
                   {textEdits.map((e) => {
                     const color = reviewerColor(e.colorIndex);
+                    const updatedAt = formatReviewEditTimestamp(
+                      e.updatedAt,
+                      locale
+                    );
                     return (
                       <div
                         key={`bubble-${e.author}`}
-                        className="rounded-lg shadow-lg overflow-hidden bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700"
+                        className="relative rounded-lg shadow-lg overflow-hidden bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700"
                         style={{ borderLeft: `4px solid ${color}` }}
                       >
-                        {e.authorName ? (
-                          <div
-                            className="px-5 pt-3 pb-1 font-bold text-sm"
-                            style={{ color }}
-                          >
-                            {e.authorName}
+                        {e.authorName ||
+                        updatedAt ||
+                        (e.author === currentUserId &&
+                          canContributeToReview) ? (
+                          <div className="flex items-center gap-3 px-5 pt-3 pb-1">
+                            <div
+                              className="min-w-0 flex-1 truncate font-bold text-sm"
+                              style={{ color }}
+                            >
+                              {e.authorName}
+                            </div>
+                            {updatedAt ? (
+                              <time
+                                dateTime={e.updatedAt}
+                                className="shrink-0 whitespace-nowrap text-xs font-normal text-neutral-500 dark:text-neutral-400"
+                              >
+                                {updatedAt}
+                              </time>
+                            ) : null}
+                            {e.author === currentUserId &&
+                            canContributeToReview ? (
+                              <Tooltip
+                                title={t.review.cartridge.deleteTextTooltip}
+                                zIndex={10001}
+                              >
+                                <Button
+                                  type="text"
+                                  danger
+                                  size="small"
+                                  icon={<DeleteOutlined />}
+                                  className="shrink-0"
+                                  disabled={publishing}
+                                  aria-label={
+                                    t.review.cartridge.deleteTextTooltip
+                                  }
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    commitEditLocally({ text: "" });
+                                  }}
+                                  onMouseDown={(event) => {
+                                    event.stopPropagation();
+                                  }}
+                                  onTouchStart={(event) => {
+                                    event.stopPropagation();
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : null}
                           </div>
                         ) : null}
                         <div
@@ -2083,12 +2126,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             const bytes = encodeDrawing(drawing);
             commitEditLocally({ drawingBase64: bytesToBase64(bytes) });
           }}
-          onErase={() => {
-            commitEditLocally({ delete: true });
+          onRemoveDrawing={() => {
+            commitEditLocally({ drawingBase64: null });
           }}
-          pendingCount={pendingCount}
           publishing={publishing}
-          onDiscardAll={discardAll}
           seatMismatch={seatMismatch}
           reviewSeatName={
             effectiveReviewSeat !== null

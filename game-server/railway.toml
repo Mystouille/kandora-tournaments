@@ -25,7 +25,6 @@ dockerfilePath = "game-server/Dockerfile"
 # import closure of `game-server/index.ts`.
 watchPatterns = [
     # Root files baked into the image.
-    "GAME_SERVER_VERSION",
     "package.json",
     "package-lock.json",
     "tsconfig.json",
