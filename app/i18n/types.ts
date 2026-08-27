@@ -973,6 +973,22 @@ export interface Translations extends CoreTranslations {
       shareCopied: string;
       copyShareLink: string;
     };
+    recovery: {
+      title: string;
+      found: string;
+      recoverable: string;
+      openText: string;
+      openDrawing: string;
+      conflicts: string;
+      invalidEvents: string;
+      localOnly: string;
+      restore: string;
+      discard: string;
+      restored: string;
+      discarded: string;
+      storageUnavailable: string;
+      publishConflict: string;
+    };
     leaveGuard: {
       title: string;
       body: string;

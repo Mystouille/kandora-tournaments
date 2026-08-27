@@ -1086,9 +1086,31 @@ export const fr: Translations = {
       shareCopied: "Copié",
       copyShareLink: "Copier le lien de partage",
     },
+    recovery: {
+      title: "Restaurer l’analyse non publiée\u00a0?",
+      found:
+        "Une analyse non publiée, enregistrée le {time}, a été trouvée dans ce navigateur.",
+      recoverable: "Éléments récupérables\u00a0: {n}",
+      openText: "Elle contient un commentaire textuel inachevé.",
+      openDrawing: "Elle contient un dessin inachevé.",
+      conflicts:
+        "Des annotations plus récentes existent sur le serveur aux événements {events}. Les anciennes versions locales ne seront pas restaurées.",
+      invalidEvents:
+        "La partie ne contient plus les événements {events}. Ces éléments locaux ne peuvent pas être restaurés.",
+      localOnly:
+        "La récupération est disponible uniquement dans ce navigateur et expire après 30 jours.",
+      restore: "Restaurer les éléments sûrs",
+      discard: "Supprimer le brouillon local",
+      restored: "Analyse non publiée restaurée",
+      discarded: "Brouillon local supprimé",
+      storageUnavailable:
+        "Ce navigateur ne peut pas enregistrer les données de récupération. Gardez cette page ouverte jusqu’à la publication.",
+      publishConflict:
+        "Une version plus récente de cette annotation a été publiée ailleurs. Votre travail local a été conservé et n’a pas été publié.",
+    },
     leaveGuard: {
       title: "Quitter sans publier\u00a0?",
-      body: "Vous avez {n} annotation(s) non enregistrée(s). Si vous quittez cette page maintenant, elles seront perdues. Publiez-les d'abord pour conserver votre travail.",
+      body: "Vous avez {n} élément(s) d’analyse non publié(s). Une copie de récupération restera dans ce navigateur pendant 30 jours au maximum, mais elle n’est ni publiée ni disponible sur un autre appareil.",
       stay: "Rester sur la page",
       leave: "Quitter quand même",
     },

@@ -218,6 +218,98 @@ describe("replay review collaboration", () => {
     expect(review.edits[1].text).toBe("Updated contributor note");
   });
 
+  it("updates when the expected timestamp matches", async () => {
+    const updatedAt = new Date("2026-08-26T10:00:00.000Z");
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Original",
+          updatedAt,
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response } = await mutate({
+      eventIndex: 10,
+      text: "Recovered change",
+      seat: 0,
+      expectedUpdatedAt: updatedAt.toISOString(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(review.edits[0].text).toBe("Recovered change");
+  });
+
+  it("rejects a stale timestamp and returns the current edit", async () => {
+    const updatedAt = new Date("2026-08-26T10:05:00.000Z");
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Newer server note",
+          updatedAt,
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response, data } = await mutate({
+      eventIndex: 10,
+      text: "Recovered stale note",
+      seat: 0,
+      expectedUpdatedAt: "2026-08-26T10:00:00.000Z",
+    });
+
+    expect(response.status).toBe(409);
+    expect(data.error).toBe("edit-conflict");
+    expect(data.edit).toMatchObject({
+      eventIndex: 10,
+      text: "Newer server note",
+      updatedAt: updatedAt.toISOString(),
+    });
+    expect(review.edits[0].text).toBe("Newer server note");
+    expect(review.save).not.toHaveBeenCalled();
+  });
+
+  it("treats an exact stale retry as already applied", async () => {
+    const updatedAt = new Date("2026-08-26T10:05:00.000Z");
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Recovered note",
+          updatedAt,
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response, data } = await mutate({
+      eventIndex: 10,
+      text: "Recovered note",
+      seat: 0,
+      expectedUpdatedAt: "2026-08-26T10:00:00.000Z",
+    });
+
+    expect(response.status).toBe(200);
+    expect(data.edit).toMatchObject({ text: "Recovered note" });
+    expect(review.save).not.toHaveBeenCalled();
+  });
+
   it("removes text without removing the authenticated user's drawing", async () => {
     const drawing = Buffer.from([1, 2, 3]);
     const review = makeReview({
@@ -479,6 +571,34 @@ describe("replay review collaboration", () => {
     expect(review.edits).toHaveLength(0);
     expect(review.seat).toBeNull();
     expect(data.seat).toBeNull();
+  });
+
+  it("rejects a stale deletion without removing the newer edit", async () => {
+    const review = makeReview({
+      edits: [
+        {
+          eventIndex: 10,
+          author: objectId(CONTRIBUTOR_ID),
+          text: "Newer server note",
+          updatedAt: new Date("2026-08-26T10:05:00.000Z"),
+        },
+      ],
+      reviewers: [
+        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
+      ],
+    });
+    mocks.findReview.mockResolvedValue(review);
+
+    const { response, data } = await mutate({
+      eventIndex: 10,
+      delete: true,
+      expectedUpdatedAt: "2026-08-26T10:00:00.000Z",
+    });
+
+    expect(response.status).toBe(409);
+    expect(data.error).toBe("edit-conflict");
+    expect(review.edits).toHaveLength(1);
+    expect(review.save).not.toHaveBeenCalled();
   });
 
   it("rejects contributions from a different player perspective", async () => {

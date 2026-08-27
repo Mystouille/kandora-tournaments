@@ -39,6 +39,18 @@ import {
   type Drawing,
   type Stroke,
 } from "~/game/replay/reviewDrawing";
+import {
+  hasReviewDraftWork,
+  moveReviewDraft,
+  readReviewDraft,
+  reconcileReviewDraft,
+  removeReviewDraft,
+  writeReviewDraft,
+  type ReviewDraftIdentity,
+  type ReviewDraftReconciliation,
+  type ReviewDraftSnapshot,
+  type StoredActiveReviewDraft,
+} from "./reviewDraftStorage";
 import type { ReplayLog, ReplaySource } from "~/game/replay/types";
 import type {
   SerializedReview,
@@ -90,6 +102,19 @@ import {
   replaySoundTarget,
   type ReplayNavigationKind,
 } from "~/game/client/replaySound";
+
+function normalizeReviewDraftText(html: string): string {
+  const stripped = html.replace(/<[^>]+>/g, "").trim();
+  const hasEmbeds = /<(img|mahjong-tile|mahjong-hand|video|iframe)\b/i.test(
+    html
+  );
+  return stripped.length === 0 && !hasEmbeds ? "" : html;
+}
+
+interface ReviewRecoveryPrompt {
+  snapshot: ReviewDraftSnapshot;
+  reconciliation: ReviewDraftReconciliation;
+}
 
 /**
  * `/watch/replay/:gameId` — archived replay viewer.
@@ -568,53 +593,63 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     text: string;
     drawingBase64: string | null;
   } | null;
-  const [localEdits, setLocalEdits] = useState<Record<number, LocalEditPatch>>(
-    {}
-  );
+  interface LocalReviewState {
+    edits: Record<number, LocalEditPatch>;
+    baselines: Record<number, string | null>;
+  }
+  const [localReviewState, setLocalReviewState] = useState<LocalReviewState>({
+    edits: {},
+    baselines: {},
+  });
+  const localEdits = localReviewState.edits;
+  const localEditBaselines = localReviewState.baselines;
   const [publishing, setPublishing] = useState<boolean>(false);
+  const publishConflictRef = useRef(false);
+  const reviewDraftIdentity = useMemo<ReviewDraftIdentity | null>(() => {
+    if (currentUserId === null) {
+      return null;
+    }
+    return {
+      userId: currentUserId,
+      source: log.source,
+      sourceGameId: log.sourceGameId,
+      reviewShortId: review?.shortId ?? null,
+    };
+  }, [currentUserId, log.source, log.sourceGameId, review?.shortId]);
+  const [recoveryPrompt, setRecoveryPrompt] =
+    useState<ReviewRecoveryPrompt | null>(null);
+  const [recoveryReady, setRecoveryReady] = useState(
+    currentUserId === null
+  );
+  const recoveryStartedRef = useRef(false);
+  const latestReviewDraftSnapshotRef = useRef<ReviewDraftSnapshot | null>(null);
+  const storageWarningShownRef = useRef(false);
   const [draft, setDraft] = useState<ReviewDraft>({
     mode: null,
     text: "",
     strokes: [],
   });
+  const [draftDrawingTouched, setDraftDrawingTouched] =
+    useState<boolean>(false);
+  const [draftBaseUpdatedAt, setDraftBaseUpdatedAt] = useState<string | null>(
+    null
+  );
+  const preserveDraftForIndexRef = useRef<number | null>(null);
   // Discard in-progress edits whenever the playhead moves.
   useEffect(() => {
+    if (preserveDraftForIndexRef.current === index) {
+      preserveDraftForIndexRef.current = null;
+      return;
+    }
     setDraft({ mode: null, text: "", strokes: [] });
+    setDraftDrawingTouched(false);
+    setDraftBaseUpdatedAt(null);
   }, [index]);
   const canContributeToReview = currentUserId !== null;
   const pendingCount = useMemo(
     () => Object.keys(localEdits).length,
     [localEdits]
   );
-  // ── Unsaved-work navigation guard ───────────────────────
-  // Locally-saved annotations live only in React state until the
-  // reviewer clicks "Publish". An accidental Back (browser button,
-  // swipe-back gesture, or the ✕ close button — all of which
-  // navigate) would silently discard them. Block the navigation and
-  // surface a confirmation modal whenever there are unpublished
-  // edits. `useBlocker` covers client-side navigations (including
-  // browser Back/Forward within the app).
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      pendingCount > 0 && currentLocation.pathname !== nextLocation.pathname
-  );
-  // Full-page unloads (tab close, refresh, hard navigation) can't be
-  // intercepted by the router blocker — fall back to the browser's
-  // native "leave site?" prompt while edits are pending.
-  useEffect(() => {
-    if (pendingCount === 0) {
-      return;
-    }
-    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
-      e.preventDefault();
-      // Legacy browsers require a returnValue to trigger the prompt.
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-    };
-  }, [pendingCount]);
   // The current user's stable color slot in this review. Reviewers are
   // colored by first-contribution order; someone who hasn't
   // contributed yet takes the next free slot so their live draft
@@ -730,6 +765,336 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     }
     return own;
   }, [review, index, localEdits, currentUserId, myName, myColorIndex]);
+  const currentServerEdit = useMemo<SerializedReviewEdit | null>(() => {
+    if (!review || currentUserId === null) {
+      return null;
+    }
+    return (
+      review.edits.find(
+        (edit) =>
+          edit.eventIndex === index && edit.author === currentUserId
+      ) ?? null
+    );
+  }, [review, currentUserId, index]);
+  const currentDraftBaseline = Object.prototype.hasOwnProperty.call(
+    localEdits,
+    index
+  )
+    ? (localEditBaselines[index] ?? null)
+    : (currentServerEdit?.updatedAt ?? null);
+  const handleDraftChange = (next: ReviewDraft): void => {
+    if (next.mode === null) {
+      setDraftDrawingTouched(false);
+      setDraftBaseUpdatedAt(null);
+    } else {
+      if (draft.mode === null) {
+        setDraftBaseUpdatedAt(currentDraftBaseline);
+      }
+      if (
+        draft.mode === "pen" &&
+        next.mode === "pen" &&
+        next.strokes !== draft.strokes
+      ) {
+        setDraftDrawingTouched(true);
+      }
+    }
+    setDraft(next);
+  };
+  const activeReviewDraft = useMemo<StoredActiveReviewDraft | null>(() => {
+    if (draft.mode === null) {
+      return null;
+    }
+    const active: StoredActiveReviewDraft = {
+      eventIndex: index,
+      mode: draft.mode,
+      baseUpdatedAt: draftBaseUpdatedAt,
+    };
+    const normalizedText = normalizeReviewDraftText(draft.text);
+    if (normalizedText !== (currentUserEdit?.text ?? "")) {
+      active.text = normalizedText;
+    }
+    if (draftDrawingTouched) {
+      const drawingBase64 =
+        draft.strokes.length > 0
+          ? bytesToBase64(encodeDrawing({ strokes: draft.strokes }))
+          : null;
+      if (drawingBase64 !== (currentUserEdit?.drawingBase64 ?? null)) {
+        active.drawingBase64 = drawingBase64;
+      }
+    }
+    const hasText = Object.prototype.hasOwnProperty.call(active, "text");
+    const hasDrawing = Object.prototype.hasOwnProperty.call(
+      active,
+      "drawingBase64"
+    );
+    return hasText || hasDrawing ? active : null;
+  }, [
+    currentUserEdit,
+    draft.mode,
+    draft.strokes,
+    draft.text,
+    draftBaseUpdatedAt,
+    draftDrawingTouched,
+    index,
+  ]);
+  const unpublishedItemCount = useMemo(() => {
+    const eventIndices = new Set(Object.keys(localEdits).map(Number));
+    if (activeReviewDraft) {
+      eventIndices.add(activeReviewDraft.eventIndex);
+    }
+    return eventIndices.size;
+  }, [activeReviewDraft, localEdits]);
+  const hasUnpublishedWork = unpublishedItemCount > 0;
+  // Keep navigation protection even though a local recovery copy is
+  // available: leaving still abandons the current editing context and
+  // the work remains unpublished.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      hasUnpublishedWork &&
+      currentLocation.pathname !== nextLocation.pathname
+  );
+  useEffect(() => {
+    if (!hasUnpublishedWork) {
+      return;
+    }
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [hasUnpublishedWork]);
+  const reviewDraftSnapshot = useMemo<ReviewDraftSnapshot | null>(() => {
+    if (!reviewDraftIdentity) {
+      return null;
+    }
+    const pending = Object.keys(localEdits)
+      .map(Number)
+      .sort((left, right) => left - right)
+      .map((eventIndex) => ({
+        eventIndex,
+        patch: localEdits[eventIndex],
+        baseUpdatedAt: localEditBaselines[eventIndex] ?? null,
+      }));
+    return {
+      version: 1,
+      identity: reviewDraftIdentity,
+      seat: effectiveReviewSeat ?? focusSeat,
+      updatedAt: 0,
+      pending,
+      active: activeReviewDraft,
+    };
+  }, [
+    activeReviewDraft,
+    effectiveReviewSeat,
+    focusSeat,
+    localEditBaselines,
+    localEdits,
+    reviewDraftIdentity,
+  ]);
+  const persistReviewDraftSnapshot = useCallback(
+    (snapshot: ReviewDraftSnapshot): void => {
+      const result = writeReviewDraft(snapshot);
+      if (
+        result === "unavailable" &&
+        hasReviewDraftWork(snapshot) &&
+        !storageWarningShownRef.current
+      ) {
+        storageWarningShownRef.current = true;
+        message.warning(t.review.recovery.storageUnavailable);
+      }
+    },
+    [t.review.recovery.storageUnavailable]
+  );
+
+  // Check storage before enabling autosave. Otherwise the initial empty
+  // React state would remove a recoverable snapshot during hydration.
+  useEffect(() => {
+    if (recoveryStartedRef.current) {
+      return;
+    }
+    recoveryStartedRef.current = true;
+    if (!reviewDraftIdentity || currentUserId === null) {
+      setRecoveryReady(true);
+      return;
+    }
+    const stored = readReviewDraft(reviewDraftIdentity);
+    if (!stored) {
+      setRecoveryReady(true);
+      return;
+    }
+    const reconciliation = reconcileReviewDraft(
+      stored,
+      review,
+      currentUserId,
+      log.events.length
+    );
+    const needsDecision =
+      reconciliation.pending.length > 0 ||
+      reconciliation.active !== null ||
+      reconciliation.conflictEventIndices.length > 0 ||
+      reconciliation.invalidEventIndices.length > 0 ||
+      reconciliation.seatConflict;
+    if (!needsDecision) {
+      removeReviewDraft(reviewDraftIdentity);
+      setRecoveryReady(true);
+      return;
+    }
+    setRecoveryPrompt({ snapshot: stored, reconciliation });
+  }, [currentUserId, log.events.length, review, reviewDraftIdentity]);
+
+  useEffect(() => {
+    if (!recoveryReady || !reviewDraftSnapshot) {
+      return;
+    }
+    const snapshot = {
+      ...reviewDraftSnapshot,
+      updatedAt: Date.now(),
+    };
+    latestReviewDraftSnapshotRef.current = snapshot;
+    const delay =
+      snapshot.active &&
+      Object.prototype.hasOwnProperty.call(snapshot.active, "text")
+        ? 300
+        : 0;
+    const timeout = window.setTimeout(() => {
+      if (latestReviewDraftSnapshotRef.current === snapshot) {
+        persistReviewDraftSnapshot(snapshot);
+      }
+    }, delay);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [persistReviewDraftSnapshot, recoveryReady, reviewDraftSnapshot]);
+
+  useEffect(() => {
+    const flush = (): void => {
+      const snapshot = latestReviewDraftSnapshotRef.current;
+      if (snapshot) {
+        persistReviewDraftSnapshot(snapshot);
+      }
+    };
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === "hidden") {
+        flush();
+      }
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      flush();
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [persistReviewDraftSnapshot]);
+
+  const restoreLocalReviewDraft = (): void => {
+    if (!recoveryPrompt || !reviewDraftIdentity) {
+      return;
+    }
+    const { snapshot, reconciliation } = recoveryPrompt;
+    const edits: Record<number, LocalEditPatch> = {};
+    const baselines: Record<number, string | null> = {};
+    for (const stored of reconciliation.pending) {
+      edits[stored.eventIndex] = stored.patch;
+      baselines[stored.eventIndex] = stored.baseUpdatedAt;
+    }
+    setLocalReviewState({ edits, baselines });
+    if (
+      reconciliation.pending.length > 0 &&
+      typeof review?.seat !== "number" &&
+      snapshot.seat !== null
+    ) {
+      setLocalFirstEditSeat(clampSeat(snapshot.seat));
+    }
+    if (snapshot.seat !== null) {
+      setFocusSeat(clampSeat(snapshot.seat));
+    }
+
+    const active = reconciliation.active;
+    if (active) {
+      const restoredPending = reconciliation.pending.find(
+        (stored) => stored.eventIndex === active.eventIndex
+      );
+      const serverEdit =
+        review && currentUserId !== null
+          ? (review.edits.find(
+              (edit) =>
+                edit.eventIndex === active.eventIndex &&
+                edit.author === currentUserId
+            ) ?? null)
+          : null;
+      const effectivePatch = restoredPending
+        ? restoredPending.patch
+        : serverEdit
+          ? {
+              text: serverEdit.text,
+              drawingBase64: serverEdit.drawingBase64,
+            }
+          : null;
+      const hasActiveText = Object.prototype.hasOwnProperty.call(
+        active,
+        "text"
+      );
+      const hasActiveDrawing = Object.prototype.hasOwnProperty.call(
+        active,
+        "drawingBase64"
+      );
+      const text = hasActiveText
+        ? (active.text ?? "")
+        : (effectivePatch?.text ?? "");
+      const drawingBase64 = hasActiveDrawing
+        ? (active.drawingBase64 ?? null)
+        : (effectivePatch?.drawingBase64 ?? null);
+      let strokes: Stroke[] = [];
+      if (drawingBase64) {
+        try {
+          strokes = decodeDrawing(base64ToBytes(drawingBase64)).strokes;
+        } catch {
+          strokes = [];
+        }
+      }
+      if (active.eventIndex !== index) {
+        preserveDraftForIndexRef.current = active.eventIndex;
+        indexRef.current = active.eventIndex;
+        pendingSoundIndexRef.current = null;
+        setIndex(active.eventIndex);
+      }
+      setDraft({ mode: active.mode, text, strokes });
+      setDraftDrawingTouched(hasActiveDrawing);
+      setDraftBaseUpdatedAt(active.baseUpdatedAt);
+    }
+
+    removeReviewDraft(reviewDraftIdentity);
+    latestReviewDraftSnapshotRef.current = null;
+    setRecoveryPrompt(null);
+    setRecoveryReady(true);
+    message.success(t.review.recovery.restored);
+  };
+
+  const discardLocalReviewDraft = (): void => {
+    if (reviewDraftIdentity) {
+      removeReviewDraft(reviewDraftIdentity);
+    }
+    latestReviewDraftSnapshotRef.current = null;
+    setRecoveryPrompt(null);
+    setRecoveryReady(true);
+    message.info(t.review.recovery.discarded);
+  };
+  const recoverableItemCount = (() => {
+    if (!recoveryPrompt) {
+      return 0;
+    }
+    const eventIndices = new Set(
+      recoveryPrompt.reconciliation.pending.map((item) => item.eventIndex)
+    );
+    if (recoveryPrompt.reconciliation.active) {
+      eventIndices.add(recoveryPrompt.reconciliation.active.eventIndex);
+    }
+    return eventIndices.size;
+  })();
   // Every reviewer's edit at this event (the current user's own
   // reflects their local override), ordered by color slot. Drives the
   // read-only drawings of other reviewers and the stacked bubbles.
@@ -906,6 +1271,31 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     if (!data.ok || !data.shortId) {
       return null;
     }
+    const currentSnapshot = latestReviewDraftSnapshotRef.current;
+    if (
+      currentSnapshot &&
+      currentUserId !== null &&
+      currentSnapshot.identity.reviewShortId === null
+    ) {
+      const nextIdentity: ReviewDraftIdentity = {
+        ...currentSnapshot.identity,
+        reviewShortId: data.shortId,
+      };
+      const nextSnapshot: ReviewDraftSnapshot = {
+        ...currentSnapshot,
+        identity: nextIdentity,
+      };
+      const moveResult = moveReviewDraft(currentSnapshot, nextIdentity);
+      latestReviewDraftSnapshotRef.current = nextSnapshot;
+      if (
+        moveResult === "unavailable" &&
+        hasReviewDraftWork(currentSnapshot) &&
+        !storageWarningShownRef.current
+      ) {
+        storageWarningShownRef.current = true;
+        message.warning(t.review.recovery.storageUnavailable);
+      }
+    }
     const created: SerializedReview = {
       shortId: data.shortId,
       source: log.source,
@@ -946,12 +1336,17 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     ) {
       setLocalFirstEditSeat(focusSeat);
     }
-    setLocalEdits((prev) => {
-      const next: Record<number, LocalEditPatch> = { ...prev };
+    setLocalReviewState((prev) => {
+      const nextEdits: Record<number, LocalEditPatch> = { ...prev.edits };
+      const nextBaselines = { ...prev.baselines };
       // Resolve the "current effective edit" so a partial patch
       // preserves the field we aren't touching.
-      const existingLocal = Object.prototype.hasOwnProperty.call(prev, index)
-        ? prev[index]
+      const hasExistingLocal = Object.prototype.hasOwnProperty.call(
+        prev.edits,
+        index
+      );
+      const existingLocal = hasExistingLocal
+        ? prev.edits[index]
         : undefined;
       // Only the CURRENT user's own edit is a valid base — otherwise a
       // partial patch (e.g. adding text) would absorb another
@@ -971,16 +1366,29 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         existingLocal === null
           ? null
           : (existingLocal?.drawingBase64 ?? serverEdit?.drawingBase64 ?? null);
+      const baseUpdatedAt = hasExistingLocal
+        ? (prev.baselines[index] ?? null)
+        : (serverEdit?.updatedAt ?? null);
+
+      const dropLocalEdit = (): LocalReviewState => {
+        delete nextEdits[index];
+        delete nextBaselines[index];
+        return { edits: nextEdits, baselines: nextBaselines };
+      };
+
+      const keepLocalEdit = (nextPatch: LocalEditPatch): LocalReviewState => {
+        nextEdits[index] = nextPatch;
+        nextBaselines[index] = baseUpdatedAt;
+        return { edits: nextEdits, baselines: nextBaselines };
+      };
 
       if (patch.delete) {
         if (serverEdit) {
           // Server has something to remove → mark as pending delete.
-          next[index] = null;
-        } else {
-          // No server edit — just drop any local override.
-          delete next[index];
+          return keepLocalEdit(null);
         }
-        return next;
+        // No server edit — just drop any local override.
+        return dropLocalEdit();
       }
 
       const nextText = patch.text !== undefined ? patch.text : baseText;
@@ -999,23 +1407,19 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         (serverEdit?.text ?? "") === nextText &&
         (serverEdit?.drawingBase64 ?? null) === nextDrawing;
       if (matchesServer) {
-        delete next[index];
-        return next;
+        return dropLocalEdit();
       }
 
       // If the resulting edit is empty AND there is nothing on the
       // server, just drop the local entry.
       if ((!nextText || nextText.length === 0) && !nextDrawing) {
         if (serverEdit) {
-          next[index] = null;
-        } else {
-          delete next[index];
+          return keepLocalEdit(null);
         }
-        return next;
+        return dropLocalEdit();
       }
 
-      next[index] = { text: nextText, drawingBase64: nextDrawing };
-      return next;
+      return keepLocalEdit({ text: nextText, drawingBase64: nextDrawing });
     });
   };
 
@@ -1051,6 +1455,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
    * confirmations on first publish.
    */
   const publish = async (): Promise<string | null> => {
+    publishConflictRef.current = false;
     const entries = Object.entries(localEdits);
     if (entries.length === 0) {
       // Nothing staged — either the review is already published
@@ -1096,9 +1501,15 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                 // edit lands on the document (to lock the review
                 // to a single seat). Subsequent PUTs simply echo
                 // it back; the locked seat wins.
-                seat: focusSeat,
+                seat: effectiveReviewSeat ?? focusSeat,
+                expectedUpdatedAt: localEditBaselines[eventIndex] ?? null,
                 ...notificationFields,
               };
+        if (patch === null) {
+          Object.assign(body, {
+            expectedUpdatedAt: localEditBaselines[eventIndex] ?? null,
+          });
+        }
         const res = await fetch(
           `${basePath}/api/replay-reviews/${encodeURIComponent(shortId)}`,
           {
@@ -1120,6 +1531,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             res.status,
             errBody
           );
+          if (
+            res.status === 409 &&
+            errBody !== null &&
+            typeof errBody === "object" &&
+            "error" in errBody &&
+            errBody.error === "edit-conflict"
+          ) {
+            publishConflictRef.current = true;
+            message.error(t.review.recovery.publishConflict);
+          }
           return null;
         }
         if (patch === null) {
@@ -1194,7 +1615,19 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           edits: Array.from(byKey.values()),
         };
       });
-      setLocalEdits({});
+      if (draft.mode !== null) {
+        const activeApplied = applied.find(
+          (entry) => entry.eventIndex === index
+        );
+        if (activeApplied) {
+          setDraftBaseUpdatedAt(
+            activeApplied.kind === "upsert"
+              ? activeApplied.edit.updatedAt
+              : null
+          );
+        }
+      }
+      setLocalReviewState({ edits: {}, baselines: {} });
       // Resolve the share URL synchronously from the freshly-known
       // shortId so the caller doesn't have to wait for the parent
       // to re-render with the updated `review` state.
@@ -1666,7 +2099,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             if (canContributeToReview && pendingCount > 0) {
               void publish().then((url) => {
                 if (!url) {
-                  message.error(t.review.cartridge.publishFailed);
+                  if (!publishConflictRef.current) {
+                    message.error(t.review.cartridge.publishFailed);
+                  }
                   return;
                 }
                 message.success(t.review.cartridge.publishedToast);
@@ -1936,7 +2371,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           drawing={draft.mode === "pen"}
           color={myColor}
           onStrokesChange={(next) => {
-            setDraft((d) => ({ ...d, strokes: next }));
+            handleDraftChange({ ...draft, strokes: next });
           }}
         />
         {/* Saved-text bubbles: one stacked bubble per reviewer who
@@ -2117,7 +2552,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           savedHasDrawing={Boolean(currentUserEdit?.drawingBase64)}
           savedStrokes={savedDrawing?.strokes ?? []}
           draft={draft}
-          onDraftChange={setDraft}
+          onDraftChange={handleDraftChange}
           onSubmitText={(text) => {
             commitEditLocally({ text });
           }}
@@ -2141,6 +2576,76 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           onTextEditorHeightChange={setTextEditorHeight}
         />
         <Modal
+          open={recoveryPrompt !== null}
+          title={t.review.recovery.title}
+          onOk={restoreLocalReviewDraft}
+          onCancel={discardLocalReviewDraft}
+          okText={t.review.recovery.restore}
+          cancelText={t.review.recovery.discard}
+          closable={false}
+          mask={{ closable: false }}
+          keyboard={false}
+          centered
+          zIndex={10060}
+        >
+          {recoveryPrompt ? (
+            <div className="flex flex-col gap-3">
+              <p className="m-0">
+                {t.review.recovery.found.replace(
+                  "{time}",
+                  new Date(recoveryPrompt.snapshot.updatedAt).toLocaleString(
+                    locale
+                  )
+                )}
+              </p>
+              <p className="m-0 font-medium">
+                {t.review.recovery.recoverable.replace(
+                  "{n}",
+                  String(recoverableItemCount)
+                )}
+              </p>
+              {recoveryPrompt.reconciliation.active &&
+              Object.prototype.hasOwnProperty.call(
+                recoveryPrompt.reconciliation.active,
+                "text"
+              ) ? (
+                <p className="m-0">{t.review.recovery.openText}</p>
+              ) : null}
+              {recoveryPrompt.reconciliation.active &&
+              Object.prototype.hasOwnProperty.call(
+                recoveryPrompt.reconciliation.active,
+                "drawingBase64"
+              ) ? (
+                <p className="m-0">{t.review.recovery.openDrawing}</p>
+              ) : null}
+              {recoveryPrompt.reconciliation.conflictEventIndices.length >
+              0 ? (
+                <p className="m-0 text-amber-700 dark:text-amber-300">
+                  {t.review.recovery.conflicts.replace(
+                    "{events}",
+                    recoveryPrompt.reconciliation.conflictEventIndices
+                      .map((eventIndex) => eventIndex + 1)
+                      .join(", ")
+                  )}
+                </p>
+              ) : null}
+              {recoveryPrompt.reconciliation.invalidEventIndices.length > 0 ? (
+                <p className="m-0 text-amber-700 dark:text-amber-300">
+                  {t.review.recovery.invalidEvents.replace(
+                    "{events}",
+                    recoveryPrompt.reconciliation.invalidEventIndices
+                      .map((eventIndex) => eventIndex + 1)
+                      .join(", ")
+                  )}
+                </p>
+              ) : null}
+              <p className="m-0 text-sm text-neutral-500 dark:text-neutral-400">
+                {t.review.recovery.localOnly}
+              </p>
+            </div>
+          ) : null}
+        </Modal>
+        <Modal
           open={blocker.state === "blocked"}
           title={t.review.leaveGuard.title}
           onOk={() => blocker.proceed?.()}
@@ -2152,7 +2657,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           zIndex={10050}
         >
           <p className="m-0">
-            {t.review.leaveGuard.body.replace("{n}", String(pendingCount))}
+            {t.review.leaveGuard.body.replace(
+              "{n}",
+              String(unpublishedItemCount)
+            )}
           </p>
         </Modal>
       </div>

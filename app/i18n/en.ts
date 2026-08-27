@@ -1062,9 +1062,30 @@ export const en: Translations = {
       shareCopied: "Copied",
       copyShareLink: "Copy share link",
     },
+    recovery: {
+      title: "Restore unpublished review?",
+      found: "Unpublished review work saved {time} was found in this browser.",
+      recoverable: "Recoverable items: {n}",
+      openText: "This includes an unfinished text comment.",
+      openDrawing: "This includes an unfinished drawing.",
+      conflicts:
+        "Newer server annotations exist at event(s) {events}. The older local versions will not be restored.",
+      invalidEvents:
+        "The replay no longer contains event(s) {events}. Those local items cannot be restored.",
+      localOnly:
+        "Recovery is available only in this browser and expires after 30 days.",
+      restore: "Restore safe items",
+      discard: "Discard local draft",
+      restored: "Unpublished review restored",
+      discarded: "Local review draft discarded",
+      storageUnavailable:
+        "This browser cannot save review recovery data. Keep this page open until you publish.",
+      publishConflict:
+        "A newer version of this annotation was published elsewhere. Your local work was kept and was not published.",
+    },
     leaveGuard: {
       title: "Leave without publishing?",
-      body: "You have {n} unsaved annotation(s). If you leave this page now, they will be lost. Publish them first to keep your work.",
+      body: "You have {n} unpublished review item(s). A recovery copy will remain in this browser for up to 30 days, but it is not published or available on another device.",
       stay: "Stay on page",
       leave: "Leave anyway",
     },

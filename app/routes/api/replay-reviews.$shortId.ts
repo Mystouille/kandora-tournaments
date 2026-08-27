@@ -74,6 +74,7 @@ export async function action({
     seat?: number;
     notifyReviewers?: boolean;
     notificationEventIndex?: number;
+    expectedUpdatedAt?: string | null;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -105,6 +106,23 @@ export async function action({
   ) {
     return Response.json(
       { ok: false, error: "bad-notification-event-index" },
+      { status: 400 }
+    );
+  }
+  const hasExpectedUpdatedAt = Object.prototype.hasOwnProperty.call(
+    body,
+    "expectedUpdatedAt"
+  );
+  if (
+    hasExpectedUpdatedAt &&
+    !(
+      body.expectedUpdatedAt === null ||
+      (typeof body.expectedUpdatedAt === "string" &&
+        Number.isFinite(Date.parse(body.expectedUpdatedAt)))
+    )
+  ) {
+    return Response.json(
+      { ok: false, error: "bad-expected-updated-at" },
       { status: 400 }
     );
   }
@@ -148,7 +166,41 @@ export async function action({
   const responseReviewers = async (): Promise<SerializedReviewer[]> =>
     resolveReviewersForDoc(doc);
 
+  const currentEdit = existingIdx >= 0 ? doc.edits[existingIdx] : undefined;
+  const expectedMatchesCurrent = (): boolean => {
+    if (!hasExpectedUpdatedAt) {
+      return true;
+    }
+    if (body.expectedUpdatedAt === null) {
+      return currentEdit === undefined;
+    }
+    if (!currentEdit?.updatedAt) {
+      return false;
+    }
+    return (
+      new Date(currentEdit.updatedAt).getTime() ===
+      new Date(body.expectedUpdatedAt as string).getTime()
+    );
+  };
+
+  const editConflict = async (): Promise<Response> =>
+    Response.json(
+      {
+        ok: false,
+        error: "edit-conflict",
+        seat: docSeat,
+        edit: currentEdit
+          ? serializeReviewEdit(currentEdit, doc.createdBy, existingReviewers)
+          : null,
+        reviewers: existingReviewers,
+      },
+      { status: 409 }
+    );
+
   if (body.delete) {
+    if (currentEdit && !expectedMatchesCurrent()) {
+      return editConflict();
+    }
     let deleted = false;
     if (existingIdx >= 0) {
       doc.edits.splice(existingIdx, 1);
@@ -214,6 +266,38 @@ export async function action({
           { status: 400 }
         );
       }
+    }
+  }
+
+  if (hasExpectedUpdatedAt) {
+    const currentText = currentEdit?.text ?? "";
+    const currentDrawing = currentEdit?.drawing?.length
+      ? Buffer.from(currentEdit.drawing)
+      : null;
+    const desiredText = text !== undefined ? text : currentText;
+    const desiredDrawing =
+      drawingBuffer === undefined
+        ? currentDrawing
+        : drawingBuffer?.length
+          ? Buffer.from(drawingBuffer)
+          : null;
+    const alreadyApplied =
+      desiredText === currentText &&
+      (currentDrawing === null
+        ? desiredDrawing === null
+        : desiredDrawing !== null && currentDrawing.equals(desiredDrawing));
+    if (alreadyApplied) {
+      return Response.json({
+        ok: true,
+        seat: docSeat,
+        edit: currentEdit
+          ? serializeReviewEdit(currentEdit, doc.createdBy, existingReviewers)
+          : null,
+        reviewers: existingReviewers,
+      });
+    }
+    if (!expectedMatchesCurrent()) {
+      return editConflict();
     }
   }
 
