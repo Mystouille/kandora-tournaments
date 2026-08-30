@@ -85,3 +85,21 @@ export function gameSignInPath(returnTo: string): string {
   });
   return `/sign-in?${params.toString()}`;
 }
+
+export function localReturnPathFromRequest(
+  request: Request,
+  basePath = ""
+): string {
+  const url = new URL(request.url);
+  return normalizeLocalReturnPath(
+    stripAppBasePath(`${url.pathname}${url.search}`, basePath)
+  );
+}
+
+export function authSignInPath(returnTo: string): string {
+  const params = new URLSearchParams({
+    mode: "auth",
+    returnTo: normalizeLocalReturnPath(returnTo),
+  });
+  return `/sign-in?${params.toString()}`;
+}

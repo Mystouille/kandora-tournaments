@@ -15,21 +15,26 @@ import {
   evaluateGameAccess,
   type GameAccessResult,
 } from "~/utils/gameAuth.server";
-import { normalizeGameReturnPath } from "~/utils/gameReturnPath";
+import {
+  normalizeGameReturnPath,
+  normalizeLocalReturnPath,
+} from "~/utils/gameReturnPath";
+import { getAuthenticatedUser } from "~/utils/jwt.server";
 
 type DeniedGameAccessStatus = Exclude<GameAccessResult["status"], "allowed">;
 
 export interface SignInLoaderData {
   status: DeniedGameAccessStatus;
   returnTo: string;
+  authOnly: boolean;
 }
 
 export function meta() {
   return [
-    { title: "Game Access - TNT Paris Mahjong" },
+    { title: "Sign in - TNT Paris Mahjong" },
     {
       name: "description",
-      content: "Sign in with Discord to play or watch live games.",
+      content: "Sign in to continue to TNT Paris Mahjong.",
     },
   ];
 }
@@ -40,12 +45,23 @@ export async function loader({
   request: Request;
 }): Promise<SignInLoaderData> {
   const url = new URL(request.url);
+  if (url.searchParams.get("mode") === "auth") {
+    const returnTo = normalizeLocalReturnPath(
+      url.searchParams.get("returnTo"),
+      "/"
+    );
+    const authenticatedUser = await getAuthenticatedUser(request);
+    if (authenticatedUser) {
+      throw redirect(returnTo);
+    }
+    return { status: "signed_out", returnTo, authOnly: true };
+  }
   const returnTo = normalizeGameReturnPath(url.searchParams.get("returnTo"));
   const access = await evaluateGameAccess(request);
   if (access.status === "allowed") {
     throw redirect(returnTo);
   }
-  return { status: access.status, returnTo };
+  return { status: access.status, returnTo, authOnly: false };
 }
 
 export default function SignInPage({
@@ -59,7 +75,12 @@ export default function SignInPage({
   const canConnectDiscord =
     loaderData.status === "signed_out" ||
     loaderData.status === "discord_unlinked";
-  const content = t.gameAccess[loaderData.status];
+  const content = loaderData.authOnly
+    ? t.gameAccess.authOnly
+    : t.gameAccess[loaderData.status];
+  const eyebrow = loaderData.authOnly
+    ? t.gameAccess.authOnly.eyebrow
+    : t.gameAccess.eyebrow;
 
   const connectDiscord = (): void => {
     setOauthError(null);
@@ -107,7 +128,12 @@ export default function SignInPage({
         <Link
           to="/"
           aria-label={t.gameAccess.backToTournaments}
-          style={{ display: "block", height: 64, minWidth: 0, overflow: "hidden" }}
+          style={{
+            display: "block",
+            height: 64,
+            minWidth: 0,
+            overflow: "hidden",
+          }}
         >
           <LogoDisplay size="small" />
         </Link>
@@ -155,7 +181,7 @@ export default function SignInPage({
             textTransform: "uppercase",
           }}
         >
-          {t.gameAccess.eyebrow}
+          {eyebrow}
         </p>
         <h1
           style={{

@@ -26,6 +26,8 @@ export const en: Translations = {
     articles: "Articles",
     exercises: "Exercises",
     onlineTools: "Analysis tools",
+    replayTools: "Open replay",
+    myReplays: "My replays",
     resourcesCategory: "Resources",
     links: "Links",
     inPersonCategory: "In Person",
@@ -141,6 +143,12 @@ export const en: Translations = {
 
   gameAccess: {
     eyebrow: "Live game access",
+    authOnly: {
+      eyebrow: "Account access",
+      title: "Sign in to continue",
+      description:
+        "Sign in to import a new replay or view replays and reviews related to your account.",
+    },
     signed_out: {
       title: "Sign in to play or watch",
       description:
@@ -1088,6 +1096,55 @@ export const en: Translations = {
       body: "You have {n} unpublished review item(s). A recovery copy will remain in this browser for up to 30 days, but it is not published or available on another device.",
       stay: "Stay on page",
       leave: "Leave anyway",
+    },
+  },
+
+  myReplays: {
+    title: "My replays",
+    subtitle: "Replay logs and collaborative reviews related to you",
+    empty: "No related replays or reviews yet.",
+    noMatches: "No replays match the selected filters.",
+    unknown: "Unknown",
+    notApplicable: "Not applicable",
+    total: "{count} replay groups",
+    columns: {
+      gameDate: "Game date",
+      platform: "Platform",
+      context: "Context",
+      ruleset: "Ruleset",
+      type: "Type",
+      links: "Links",
+      lastModified: "Last modified",
+      comments: "Comments",
+    },
+    filters: {
+      startDate: "Start date",
+      endDate: "End date",
+      reset: "Reset",
+      apply: "Apply",
+    },
+    platforms: {
+      ingame: "Kandora",
+      majsoul: "Mahjong Soul",
+      tenhou: "Tenhou",
+      riichicity: "Riichi City",
+    },
+    contexts: {
+      friendly: "Friendly",
+      tournament: "Tournament",
+      external: "External",
+    },
+    types: {
+      replay: "Replay",
+      review: "Review",
+    },
+    links: {
+      replay: "Replay",
+      review: "Review",
+    },
+    rulesets: {
+      online: "Online",
+      indonesian: "Indonesian",
     },
   },
 

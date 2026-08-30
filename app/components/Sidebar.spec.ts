@@ -22,6 +22,8 @@ vi.mock("../contexts/LocaleContext", () => ({
         tournaments: "Tournaments",
         gameLobby: "Game lobby",
         onlineTools: "Analysis tools",
+        replayTools: "Open replay",
+        myReplays: "My replays",
       },
       onlineTournaments: {
         navInfo: "Information",
@@ -57,5 +59,14 @@ describe("Sidebar game lobby item", () => {
 
     expect(html).toContain("Game lobby");
     expect(html).toContain('href="/lobby"');
+  });
+
+  it("shows My replays only to signed-in users", () => {
+    const signedOutHtml = renderSidebar(null);
+    const signedInHtml = renderSidebar({});
+
+    expect(signedOutHtml).toContain("Open replay");
+    expect(signedOutHtml).not.toContain("My replays");
+    expect(signedInHtml).toContain('href="/my-replays"');
   });
 });

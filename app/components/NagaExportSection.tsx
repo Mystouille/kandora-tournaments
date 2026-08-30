@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { Alert, Button, Card, Input, Select, Space, Typography } from "antd";
 import { CopyOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useLocale } from "../contexts/LocaleContext";
 import { inferReplaySource } from "../game/replay/inferSource";
 import { normalizeReplayId } from "../game/replay/normalizeReplayId";
 import { basePath } from "../utils/basePath";
+import { authSignInPath } from "../utils/gameReturnPath";
 import {
   buildNagaRoundUrl,
   formatNagaRoundLabel,
@@ -20,7 +22,10 @@ import {
  */
 export function NagaExportSection() {
   const { t } = useLocale();
-  const [rawId, setRawId] = useState("");
+  const [searchParams] = useSearchParams();
+  const [rawId, setRawId] = useState(
+    () => searchParams.get("nagaGameId") ?? ""
+  );
   const [log, setLog] = useState<Tenhou5LogShape | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -73,6 +78,13 @@ export function NagaExportSection() {
         )}&format=net5`,
         { cache: "no-store" }
       );
+      if (res.status === 401) {
+        const returnTo = `/review?${new URLSearchParams({
+          nagaGameId: cleanedId,
+        }).toString()}`;
+        window.location.assign(`${basePath}${authSignInPath(returnTo)}`);
+        return;
+      }
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }

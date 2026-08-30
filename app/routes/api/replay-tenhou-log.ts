@@ -1,5 +1,7 @@
 /**
- * Public endpoint: `GET /api/replay-tenhou-log?gameId=<id>`.
+ * Public for cached logs: `GET /api/replay-tenhou-log?gameId=<id>`.
+ * A Riichi City cache miss requires authentication before fetching and
+ * persisting a new ReplayLog.
  *
  * Returns a minimal tenhou.net/5 viewer JSON
  * (`{ title, name, rule: { aka }, log }`) suitable for embedding
@@ -20,6 +22,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { inferReplaySource } from "~/game/replay/inferSource";
 import { normalizeReplayId } from "~/game/replay/normalizeReplayId";
 import { trackEvent } from "~/services/telemetry.server";
+import { getAuthenticatedUser } from "~/utils/jwt.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const startedAt = Date.now();
@@ -118,7 +121,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
         .exec();
       let replay: unknown = cached;
       if (!replay) {
-        replay = await fetchOrphanReplayLog(source, gameId);
+        const authenticatedUser = await getAuthenticatedUser(request);
+        if (!authenticatedUser) {
+          trackEvent({
+            type: "replay_download",
+            statusCode: 401,
+            durationMs: Date.now() - startedAt,
+            sessionId,
+            meta: {
+              format: "tenhou5",
+              outcome: "sign-in-required",
+              source,
+              gameId,
+            },
+          });
+          return Response.json({ error: "sign_in_required" }, { status: 401 });
+        }
+        replay = await fetchOrphanReplayLog(
+          source,
+          gameId,
+          authenticatedUser.sub
+        );
       }
       if (!replay) {
         trackEvent({

@@ -21,6 +21,7 @@
  */
 import { ReplayLogModel } from "~/core/models/game/ReplayLog";
 import type { ReplayLog, ReplaySource } from "~/game/replay/types";
+import mongoose from "mongoose";
 import { MajsoulLeagueConnector } from "~/services/connectors/MajsoulLeagueConnector.server";
 import { TenhouLeagueConnector } from "~/services/connectors/TenhouLeagueConnector.server";
 import { RiichiCityLeagueConnector } from "~/services/connectors/RiichiCityLeagueConnector.server";
@@ -58,8 +59,12 @@ async function fetchFromPlatform(
  */
 export async function fetchOrphanReplayLog(
   source: ReplaySource,
-  gameId: string
+  gameId: string,
+  creationTriggeredBy: string
 ): Promise<ReplayLog | null> {
+  if (!mongoose.isValidObjectId(creationTriggeredBy)) {
+    throw new Error("Replay creation requires a valid user id");
+  }
   const log = await fetchFromPlatform(source, gameId);
 
   if (!log) {
@@ -70,6 +75,11 @@ export async function fetchOrphanReplayLog(
     await ReplayLogModel.findOneAndUpdate(
       { source: log.source, sourceGameId: log.sourceGameId },
       {
+        $setOnInsert: {
+          creationTriggeredBy: new mongoose.Types.ObjectId(
+            creationTriggeredBy
+          ),
+        },
         $set: {
           source: log.source,
           sourceGameId: log.sourceGameId,

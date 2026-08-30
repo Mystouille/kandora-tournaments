@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useFetcher, useNavigate } from "react-router";
+import { useFetcher, useNavigate, useSearchParams } from "react-router";
 import { Alert, Button, Card, Input, Space, Typography } from "antd";
 import { CheckCircleFilled, EyeOutlined } from "@ant-design/icons";
 import { NagaExportSection } from "~/components/NagaExportSection";
@@ -11,6 +11,7 @@ import {
   normalizeReplayId,
 } from "~/game/replay/normalizeReplayId";
 import type { ReplaySource } from "~/game/replay/types";
+import { authSignInPath } from "~/utils/gameReturnPath";
 
 export function meta() {
   return [
@@ -90,9 +91,28 @@ export async function action({ request }: { request: Request }) {
     });
     return Response.json({ ok: true, gameId, source });
   }
+  const { getAuthenticatedUser } = await import("~/utils/jwt.server");
+  const authenticatedUser = await getAuthenticatedUser(request);
+  if (!authenticatedUser) {
+    trackEvent({
+      type: "replay_review_import",
+      statusCode: 401,
+      durationMs: Date.now() - startedAt,
+      sessionId,
+      meta: { outcome: "sign-in-required", source, gameId },
+    });
+    return Response.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401 }
+    );
+  }
   let fetched;
   try {
-    fetched = await fetchOrphanReplayLog(source, gameId);
+    fetched = await fetchOrphanReplayLog(
+      source,
+      gameId,
+      authenticatedUser.sub
+    );
   } catch (error) {
     console.error(
       `[review] connector fetch failed for ${source}/${gameId}`,
@@ -137,7 +157,12 @@ type ImportResponse =
   | { ok: true; gameId: string; source: ReplaySource }
   | {
       ok: false;
-      error: "missing" | "unrecognized" | "not-found" | "fetch-failed";
+      error:
+        | "missing"
+        | "unrecognized"
+        | "not-found"
+        | "fetch-failed"
+        | "unauthorized";
       detail?: string;
     };
 
@@ -152,7 +177,10 @@ export default function ReviewRoute() {
   const { t } = useLocale();
   const fetcher = useFetcher<ImportResponse>();
   const navigate = useNavigate();
-  const [gameId, setGameId] = useState("");
+  const [searchParams] = useSearchParams();
+  const [gameId, setGameId] = useState(
+    () => searchParams.get("gameId") ?? ""
+  );
 
   // Strip the same viewer-suffixes / share-URLs client-side so the
   // recognition checkmark matches what the server will look up.
@@ -199,6 +227,20 @@ export default function ReviewRoute() {
     }
   }, [result, fetcher.state, navigate, rcWind]);
 
+  useEffect(() => {
+    if (
+      result &&
+      !result.ok &&
+      result.error === "unauthorized" &&
+      fetcher.state === "idle"
+    ) {
+      const returnTo = `/review?${new URLSearchParams({
+        gameId: cleanedId,
+      }).toString()}`;
+      navigate(authSignInPath(returnTo));
+    }
+  }, [cleanedId, fetcher.state, navigate, result]);
+
   const canSubmit = detectedSource !== null && !isSubmitting && !succeeded;
 
   const onSubmit = () => {
@@ -212,7 +254,9 @@ export default function ReviewRoute() {
 
   let errorMessage: string | null = null;
   if (result && !result.ok) {
-    if (result.error === "unrecognized") {
+    if (result.error === "unauthorized") {
+      errorMessage = null;
+    } else if (result.error === "unrecognized") {
       errorMessage = t.review.errorUnrecognized;
     } else if (result.error === "not-found") {
       errorMessage = t.review.errorNotFound;

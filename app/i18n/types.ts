@@ -20,6 +20,8 @@ export interface Translations extends CoreTranslations {
     articles: string;
     exercises: string;
     onlineTools: string;
+    replayTools: string;
+    myReplays: string;
     resourcesCategory: string;
     links: string;
     inPersonCategory: string;
@@ -116,6 +118,7 @@ export interface Translations extends CoreTranslations {
   };
   gameAccess: {
     eyebrow: string;
+    authOnly: { eyebrow: string; title: string; description: string };
     signed_out: { title: string; description: string };
     discord_unlinked: { title: string; description: string };
     not_in_main_guild: { title: string; description: string };
@@ -994,6 +997,54 @@ export interface Translations extends CoreTranslations {
       body: string;
       stay: string;
       leave: string;
+    };
+  };
+  myReplays: {
+    title: string;
+    subtitle: string;
+    empty: string;
+    noMatches: string;
+    unknown: string;
+    notApplicable: string;
+    total: string;
+    columns: {
+      gameDate: string;
+      platform: string;
+      context: string;
+      ruleset: string;
+      type: string;
+      links: string;
+      lastModified: string;
+      comments: string;
+    };
+    filters: {
+      startDate: string;
+      endDate: string;
+      reset: string;
+      apply: string;
+    };
+    platforms: {
+      ingame: string;
+      majsoul: string;
+      tenhou: string;
+      riichicity: string;
+    };
+    contexts: {
+      friendly: string;
+      tournament: string;
+      external: string;
+    };
+    types: {
+      replay: string;
+      review: string;
+    };
+    links: {
+      replay: string;
+      review: string;
+    };
+    rulesets: {
+      online: string;
+      indonesian: string;
     };
   };
   links: {

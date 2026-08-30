@@ -8,6 +8,7 @@ import {
   TrophyOutlined,
   InfoCircleOutlined,
   ToolOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Link, useLocation } from "react-router";
 import { useAppTheme } from "../contexts/ThemeContext";
@@ -86,11 +87,23 @@ export function Sidebar({
           ),
         ]
       : []),
-    getItem(
-      <Link to="/review">{t.nav.onlineTools}</Link>,
-      "/review",
-      <ToolOutlined />
-    ),
+    {
+      key: "analysis-tools",
+      label: t.nav.onlineTools,
+      icon: <ToolOutlined />,
+      children: [
+        getItem(<Link to="/review">{t.nav.replayTools}</Link>, "/review"),
+        ...(currentUser
+          ? [
+              getItem(
+                <Link to="/my-replays">{t.nav.myReplays}</Link>,
+                "/my-replays",
+                <UnorderedListOutlined />
+              ),
+            ]
+          : []),
+      ],
+    } as MenuItem,
   ];
 
   const selectedKey = tournamentSlug
@@ -103,9 +116,11 @@ export function Sidebar({
       ? "/"
       : location.pathname === "/lobby"
         ? "/lobby"
-      : location.pathname === "/review"
-        ? "/review"
-        : "";
+        : location.pathname === "/review"
+          ? "/review"
+          : location.pathname === "/my-replays"
+            ? "/my-replays"
+            : "";
 
   const showCollapsedLogo = Boolean(collapsed && !isMobile);
 
@@ -181,6 +196,7 @@ export function Sidebar({
         theme={isDark ? "dark" : "light"}
         mode="inline"
         selectedKeys={[selectedKey]}
+        defaultOpenKeys={["analysis-tools"]}
         items={items}
         onClick={() => isMobile && onClose?.()}
         style={{

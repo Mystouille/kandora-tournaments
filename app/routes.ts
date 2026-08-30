@@ -47,6 +47,7 @@ export default [
 
   // Replay import + review landing (fetch-on-demand, then open the viewer).
   route("/review", "routes/review.tsx"),
+  route("/my-replays", "routes/my-replays.tsx"),
 
   // ---------------------------------------------------------------------
   // Game lobby, replay, and live viewers

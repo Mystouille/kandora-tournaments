@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  authSignInPath,
   gameReturnPathFromRequest,
   gameSignInPath,
+  localReturnPathFromRequest,
   normalizeGameReturnPath,
   normalizeLocalReturnPath,
   stripAppBasePath,
@@ -38,9 +40,7 @@ describe("game return paths", () => {
   });
 
   it("strips the configured basename from request URLs", () => {
-    const request = new Request(
-      "https://app.test/kandora/game/room-1?debug=1"
-    );
+    const request = new Request("https://app.test/kandora/game/room-1?debug=1");
 
     expect(gameReturnPathFromRequest(request, "/kandora")).toBe(
       "/game/room-1?debug=1"
@@ -48,5 +48,17 @@ describe("game return paths", () => {
     expect(
       stripAppBasePath("/kandora/sign-in?returnTo=%2Flobby", "/kandora")
     ).toBe("/sign-in?returnTo=%2Flobby");
+    expect(localReturnPathFromRequest(request, "/kandora")).toBe(
+      "/game/room-1?debug=1"
+    );
+  });
+
+  it("builds auth-only sign-in paths for any safe local destination", () => {
+    expect(authSignInPath("/my-replays?type=review")).toBe(
+      "/sign-in?mode=auth&returnTo=%2Fmy-replays%3Ftype%3Dreview"
+    );
+    expect(authSignInPath("https://evil.test/path")).toBe(
+      "/sign-in?mode=auth&returnTo=%2F"
+    );
   });
 });

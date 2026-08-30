@@ -60,6 +60,10 @@ import type {
 import { getAuthenticatedUser } from "~/utils/jwt.server";
 import { basePath } from "~/utils/basePath";
 import {
+  authSignInPath,
+  localReturnPathFromRequest,
+} from "~/utils/gameReturnPath";
+import {
   readWebTableLayoutMode,
   writeWebTableLayoutMode,
 } from "~/game/client/webTableLayoutPreference";
@@ -277,7 +281,12 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       ruleSetDetails: doc.ruleSetDetails as Record<string, unknown> | undefined,
       startedAt: doc.startedAt,
       endedAt: doc.endedAt,
-      seats: doc.seats as ReplayLog["seats"],
+      seats: doc.seats.map((seat) => ({
+        seat: seat.seat as Seat,
+        displayName: seat.displayName,
+        finalScore: seat.finalScore,
+        place: seat.place as 1 | 2 | 3 | 4,
+      })),
       events: annotateWallSchedule(doc.events as GameEvent[]),
       schemaVersion: doc.schemaVersion,
     };
@@ -309,7 +318,16 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       { status: 404 }
     );
   }
-  const fetched = await fetchOrphanReplayLog(source, cleanGameId).catch(
+  if (!currentUserId) {
+    throw redirect(
+      authSignInPath(localReturnPathFromRequest(request, basePath))
+    );
+  }
+  const fetched = await fetchOrphanReplayLog(
+    source,
+    cleanGameId,
+    currentUserId
+  ).catch(
     (error) => {
       console.error(
         `[replay loader] connector fetch failed for ${source}/${cleanGameId}`,

@@ -26,6 +26,8 @@ export const fr: Translations = {
     articles: "Articles",
     exercises: "Exercices",
     onlineTools: "Outils d'analyse",
+    replayTools: "Ouvrir un replay",
+    myReplays: "Mes replays",
     resourcesCategory: "Ressources",
     links: "Liens",
     inPersonCategory: "En présentiel",
@@ -142,6 +144,12 @@ export const fr: Translations = {
 
   gameAccess: {
     eyebrow: "Accès aux parties en direct",
+    authOnly: {
+      eyebrow: "Accès au compte",
+      title: "Connectez-vous pour continuer",
+      description:
+        "Connectez-vous pour importer un nouveau replay ou consulter les replays et analyses liés à votre compte.",
+    },
     signed_out: {
       title: "Connectez-vous pour jouer ou regarder",
       description:
@@ -1113,6 +1121,55 @@ export const fr: Translations = {
       body: "Vous avez {n} élément(s) d’analyse non publié(s). Une copie de récupération restera dans ce navigateur pendant 30 jours au maximum, mais elle n’est ni publiée ni disponible sur un autre appareil.",
       stay: "Rester sur la page",
       leave: "Quitter quand même",
+    },
+  },
+
+  myReplays: {
+    title: "Mes replays",
+    subtitle: "Logs de parties et analyses collaboratives liés à votre compte",
+    empty: "Aucun replay ou aucune analyse associés pour le moment.",
+    noMatches: "Aucun replay ne correspond aux filtres sélectionnés.",
+    unknown: "Inconnu",
+    notApplicable: "Non applicable",
+    total: "{count} groupes de replays",
+    columns: {
+      gameDate: "Date de la partie",
+      platform: "Plateforme",
+      context: "Contexte",
+      ruleset: "Règles",
+      type: "Type",
+      links: "Liens",
+      lastModified: "Dernière modification",
+      comments: "Commentaires",
+    },
+    filters: {
+      startDate: "Date de début",
+      endDate: "Date de fin",
+      reset: "Réinitialiser",
+      apply: "Appliquer",
+    },
+    platforms: {
+      ingame: "Kandora",
+      majsoul: "Mahjong Soul",
+      tenhou: "Tenhou",
+      riichicity: "Riichi City",
+    },
+    contexts: {
+      friendly: "Amicale",
+      tournament: "Tournoi",
+      external: "Externe",
+    },
+    types: {
+      replay: "Replay",
+      review: "Analyse",
+    },
+    links: {
+      replay: "Replay",
+      review: "Analyse",
+    },
+    rulesets: {
+      online: "En ligne",
+      indonesian: "Indonésiennes",
     },
   },
 
