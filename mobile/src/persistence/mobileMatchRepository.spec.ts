@@ -17,6 +17,9 @@ class RecordingDatabase implements MobileSqliteDatabase {
   changes = 1;
   rows: unknown[] = [];
   readonly runs: Array<{ statement: string; values: unknown[] }> = [];
+  readonly transactions: Array<
+    Array<{ statement: string; values?: unknown[] }>
+  > = [];
 
   async execute() {
     return { changes: { changes: 0 } };
@@ -28,6 +31,13 @@ class RecordingDatabase implements MobileSqliteDatabase {
 
   async run(statement: string, values: unknown[] = []) {
     this.runs.push({ statement, values });
+    return { changes: { changes: this.changes } };
+  }
+
+  async executeTransaction(
+    tasks: Array<{ statement: string; values?: unknown[] }>
+  ) {
+    this.transactions.push(tasks);
     return { changes: { changes: this.changes } };
   }
 }
@@ -44,6 +54,31 @@ describe("mobile SQLite match repository", () => {
   afterEach(() => {
     setReadyCheckMs(5_000);
     setDelayAfterDiscardMs(350);
+  });
+
+  it("appends a contiguous event batch and advances its cursor transactionally", async () => {
+    const database = new RecordingDatabase();
+    database.rows = [{ status: "playing", next_seq: 4 }];
+    const repository = createSqliteMatchRepository(database);
+
+    await repository.appendMatchEvents({
+      matchId: "mobile-journal",
+      events: [4, 5].map((seq) => ({
+        seq,
+        emittedAt: 10_000 + seq,
+        event: { type: "furiten", seat: 0, active: seq === 4 },
+      })),
+    });
+
+    expect(database.transactions).toHaveLength(1);
+    expect(database.transactions[0]).toHaveLength(3);
+    expect(database.transactions[0][0].statement).toContain(
+      "INSERT INTO mobile_match_events"
+    );
+    expect(database.transactions[0][2]).toMatchObject({
+      statement: expect.stringContaining("UPDATE mobile_match_journals"),
+      values: [6, "mobile-journal", 4],
+    });
   });
 
   it("stores and reloads one atomic pending-command record", async () => {
@@ -114,11 +149,9 @@ describe("mobile SQLite match repository", () => {
     const database = new RecordingDatabase();
     database.changes = 0;
     const repository = createSqliteMatchRepository(database);
-    const room = MatchProcess.createWaitingRoom(
-      "mobile-sqlite-terminal",
-      82,
-      { repository: ephemeralMatchRepository }
-    );
+    const room = MatchProcess.createWaitingRoom("mobile-sqlite-terminal", 82, {
+      repository: ephemeralMatchRepository,
+    });
     const checkpoint = room.createCheckpoint();
 
     await expect(

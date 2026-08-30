@@ -138,6 +138,7 @@ export class NearbyMatchController {
   private initializePromise: Promise<void> | null = null;
   private controlQueue: Promise<void> = Promise.resolve();
   private commandQueue: Promise<void> = Promise.resolve();
+  private commandIntakeOpen = true;
   private matchStartPromise: Promise<void> | null = null;
   private state: NearbyMatchControllerState = INITIAL_NEARBY_MATCH_STATE;
 
@@ -147,8 +148,7 @@ export class NearbyMatchController {
 
   constructor(
     private readonly persistence: MobileMatchRepositoryHandle,
-    private readonly transport: NearbyTransport =
-      NearbyConnections as unknown as NearbyTransport
+    private readonly transport: NearbyTransport = NearbyConnections as unknown as NearbyTransport
   ) {}
 
   subscribe(listener: StateListener): () => void {
@@ -196,6 +196,7 @@ export class NearbyMatchController {
         seed,
         {
           repository: this.persistence.repository,
+          eventJournalStore: this.persistence.eventJournalStore,
           runtime: createSystemMatchRuntime(seed),
         },
         undefined,
@@ -209,12 +210,14 @@ export class NearbyMatchController {
       await room.pauseAndSaveCheckpoint();
       const restored = await MatchProcess.restoreSavedCheckpoint(matchId, {
         repository: this.persistence.repository,
+        eventJournalStore: this.persistence.eventJournalStore,
         runtime: createSystemMatchRuntime(seed),
       });
       if (restored === null) {
         throw new Error("Could not establish the Nearby recovery point");
       }
       this.installHostMatch(restored, identity);
+      await restored.deleteSavedCheckpoint();
       await this.persistence.setActiveMatch({
         matchId,
         owner: "nearby-host",
@@ -222,6 +225,7 @@ export class NearbyMatchController {
       await this.transport.startAdvertising({
         endpointName: `${identity.displayName}'s table`,
       });
+      this.commandIntakeOpen = true;
       this.update({ status: "lobby", matchId, error: null });
     });
   }
@@ -249,6 +253,7 @@ export class NearbyMatchController {
         activeMatch.matchId,
         {
           repository: this.persistence.repository,
+          eventJournalStore: this.persistence.eventJournalStore,
           runtime: createSystemMatchRuntime(0),
         }
       );
@@ -258,9 +263,11 @@ export class NearbyMatchController {
         return;
       }
       this.installHostMatch(restored, identity);
+      await restored.deleteSavedCheckpoint();
       await this.transport.startAdvertising({
         endpointName: `${identity.displayName}'s table`,
       });
+      this.commandIntakeOpen = true;
       this.update({
         status: restored.status === "waiting" ? "lobby" : "playing",
         matchId: restored.matchId,
@@ -279,6 +286,7 @@ export class NearbyMatchController {
       this.match = null;
       useMatchStore.getState().reset();
       await this.transport.startDiscovery();
+      this.commandIntakeOpen = true;
       this.update({
         role: "guest",
         status: "discovering",
@@ -399,7 +407,9 @@ export class NearbyMatchController {
   }
 
   leave(): Promise<void> {
+    this.commandIntakeOpen = false;
     return this.enqueueControl(async () => {
+      await this.commandQueue;
       if (this.state.role === "guest" && this.state.matchId !== null) {
         await this.sendClientMessage({
           type: "leave_seat",
@@ -421,18 +431,27 @@ export class NearbyMatchController {
   }
 
   pause(): Promise<void> {
+    this.commandIntakeOpen = false;
     return this.enqueueControl(async () => {
-      if (this.state.role === "host") {
-        if (this.match?.status === "waiting") {
-          await this.closeHostWaitingRoom();
-        } else {
-          await this.pauseHost();
+      await this.commandQueue;
+      try {
+        if (this.state.role === "host") {
+          if (this.match?.status === "waiting") {
+            await this.closeHostWaitingRoom();
+          } else {
+            await this.pauseHost();
+          }
         }
-      }
-      await this.stopTransportAndDetachRemotes();
-      if (this.state.role === "guest") {
-        useMatchStore.getState().setConn("closed");
-        this.update({ status: "disconnected" });
+        await this.stopTransportAndDetachRemotes();
+        if (this.state.role === "guest") {
+          useMatchStore.getState().setConn("closed");
+          this.update({ status: "disconnected" });
+        }
+      } catch (error) {
+        if (this.match !== null) {
+          this.commandIntakeOpen = true;
+        }
+        throw error;
       }
     });
   }
@@ -560,7 +579,9 @@ export class NearbyMatchController {
       return;
     }
     if (this.state.role === "host") {
-      this.update({ status: this.match?.status === "waiting" ? "lobby" : "playing" });
+      this.update({
+        status: this.match?.status === "waiting" ? "lobby" : "playing",
+      });
     }
   }
 
@@ -638,7 +659,8 @@ export class NearbyMatchController {
     }
     const send = this.remoteSends.get(endpointId);
     const match = this.match;
-    const seat = send === undefined ? null : match?.humanSeatFor(send) ?? null;
+    const seat =
+      send === undefined ? null : (match?.humanSeatFor(send) ?? null);
     if (match === null || send === undefined || seat === null) {
       await this.sendError(
         endpointId,
@@ -656,7 +678,11 @@ export class NearbyMatchController {
   ): Promise<void> {
     const match = this.match;
     if (match === null) {
-      await this.sendError(endpointId, "host_unavailable", "The host has no active room");
+      await this.sendError(
+        endpointId,
+        "host_unavailable",
+        "The host has no active room"
+      );
       return;
     }
     for (const [otherEndpointId, otherIdentity] of this.remoteIdentities) {
@@ -672,10 +698,7 @@ export class NearbyMatchController {
     if (existingSend !== undefined) {
       const existingSeat = match.humanSeatFor(existingSend);
       if (existingSeat !== null) {
-        this.queueServerMessage(
-          endpointId,
-          match.buildRoomState(existingSeat)
-        );
+        this.queueServerMessage(endpointId, match.buildRoomState(existingSeat));
         if (match.status !== "waiting") {
           this.queueServerMessage(
             endpointId,
@@ -776,12 +799,7 @@ export class NearbyMatchController {
       if (seat === null) {
         throw new Error("The host seat is not attached");
       }
-      await this.applyClientMessage(
-        this.match,
-        seat,
-        parsed,
-        this.localSend
-      );
+      await this.applyClientMessage(this.match, seat, parsed, this.localSend);
     });
   }
 
@@ -904,10 +922,7 @@ export class NearbyMatchController {
     }
   }
 
-  private queueServerMessage(
-    endpointId: string,
-    message: ServerMessage
-  ): void {
+  private queueServerMessage(endpointId: string, message: ServerMessage): void {
     void this.queueFrame(endpointId, {
       version: NEARBY_PROTOCOL_VERSION,
       kind: "server",
@@ -1015,6 +1030,9 @@ export class NearbyMatchController {
   }
 
   private enqueueCommand(operation: () => Promise<void>): Promise<void> {
+    if (!this.commandIntakeOpen) {
+      return Promise.resolve();
+    }
     const running = this.commandQueue.then(operation, operation);
     this.commandQueue = running.catch((error: unknown) => {
       this.update({ error: errorMessage(error) });

@@ -89,6 +89,7 @@ export class LocalMatchController {
       this.update({ status: "starting", matchId, error: null });
       const restored = await MatchProcess.restoreSavedCheckpoint(matchId, {
         repository: this.persistence.repository,
+        eventJournalStore: this.persistence.eventJournalStore,
         runtime: createSystemMatchRuntime(0),
       });
       if (restored === null) {
@@ -106,6 +107,7 @@ export class LocalMatchController {
         await this.completeStartup(restored, starting);
         this.syncSnapshot();
       }
+      await restored.deleteSavedCheckpoint();
       this.update({ status: "playing", matchId, error: null });
     });
   }
@@ -123,6 +125,7 @@ export class LocalMatchController {
         seed,
         {
           repository: this.persistence.repository,
+          eventJournalStore: this.persistence.eventJournalStore,
           runtime: createSystemMatchRuntime(seed),
         },
         undefined,
@@ -137,6 +140,7 @@ export class LocalMatchController {
       await match.pauseAndSaveCheckpoint();
       const restorable = await MatchProcess.restoreSavedCheckpoint(matchId, {
         repository: this.persistence.repository,
+        eventJournalStore: this.persistence.eventJournalStore,
         runtime: createSystemMatchRuntime(seed),
       });
       if (restorable === null) {
@@ -153,6 +157,7 @@ export class LocalMatchController {
       await this.persistence.setActiveMatch({ matchId, owner: "solo" });
       const starting = restorable.fillBotsAndStart();
       await this.completeStartup(restorable, starting);
+      await restorable.deleteSavedCheckpoint();
       this.syncSnapshot();
       this.update({ status: "playing", matchId, error: null });
     });

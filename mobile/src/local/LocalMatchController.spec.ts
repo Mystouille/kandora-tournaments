@@ -12,8 +12,10 @@ function memoryPersistence(): MobileMatchRepositoryHandle {
   let activeMatch: Awaited<
     ReturnType<MobileMatchRepositoryHandle["getActiveMatch"]>
   > = null;
+  const repository = createMemoryMatchRepository();
   return {
-    repository: createMemoryMatchRepository(),
+    repository,
+    eventJournalStore: repository,
     storage: "memory",
     getActiveMatch: async () => activeMatch,
     setActiveMatch: async (nextActiveMatch) => {
@@ -50,9 +52,9 @@ describe("local mobile match controller", () => {
     expect(initialView.mySeat).not.toBeNull();
     expect(initialView.legalActions.length).toBeGreaterThan(0);
 
-    const action = initialView.legalActions.find(
-      (action) => action.type === "discard"
-    ) ?? initialView.legalActions.find((candidate) => candidate.type === "pass");
+    const action =
+      initialView.legalActions.find((action) => action.type === "discard") ??
+      initialView.legalActions.find((candidate) => candidate.type === "pass");
     if (action === undefined) {
       throw new Error("expected a safe local action");
     }
@@ -95,5 +97,5 @@ describe("local mobile match controller", () => {
     expect(restoredView.legalActions).toEqual(advancedView.legalActions);
 
     await restored.pause();
-   });
- });
+  });
+});

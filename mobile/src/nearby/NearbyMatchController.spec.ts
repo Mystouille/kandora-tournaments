@@ -128,8 +128,10 @@ function memoryPersistence(): MobileMatchRepositoryHandle {
   let activeMatch: Awaited<
     ReturnType<MobileMatchRepositoryHandle["getActiveMatch"]>
   > = null;
+  const repository = createMemoryMatchRepository();
   return {
-    repository: createMemoryMatchRepository(),
+    repository,
+    eventJournalStore: repository,
     storage: "memory",
     getActiveMatch: async () => activeMatch,
     setActiveMatch: async (nextActiveMatch) => {
@@ -147,6 +149,44 @@ function serverFrames(transport: FakeNearbyTransport, endpointId: string) {
 }
 
 describe("Nearby mobile match controller", () => {
+  it("waits for active command work and closes intake before pausing", async () => {
+    const controller = new NearbyMatchController(
+      memoryPersistence(),
+      new FakeNearbyTransport()
+    );
+    let releaseCommand!: () => void;
+    const commandGate = new Promise<void>((resolve) => {
+      releaseCommand = resolve;
+    });
+    const internals = controller as unknown as {
+      enqueueCommand(operation: () => Promise<void>): Promise<void>;
+    };
+    let activeStarted = false;
+    const active = internals.enqueueCommand(async () => {
+      activeStarted = true;
+      await commandGate;
+    });
+    await Promise.resolve();
+    expect(activeStarted).toBe(true);
+
+    let pauseFinished = false;
+    const pausing = controller.pause().then(() => {
+      pauseFinished = true;
+    });
+    let lateCommandRan = false;
+    await internals.enqueueCommand(async () => {
+      lateCommandRan = true;
+    });
+    await Promise.resolve();
+    expect(pauseFinished).toBe(false);
+    expect(lateCommandRan).toBe(false);
+
+    releaseCommand();
+    await active;
+    await pausing;
+    expect(pauseFinished).toBe(true);
+  });
+
   afterEach(() => {
     useMatchStore.getState().reset();
     setReadyCheckMs(0);

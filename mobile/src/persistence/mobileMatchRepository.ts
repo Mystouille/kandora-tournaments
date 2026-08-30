@@ -1,8 +1,10 @@
 import { Capacitor } from "@capacitor/core";
 import { z } from "zod";
 import {
+  assertContiguousMatchEvents,
   createMemoryMatchRepository,
   parseMatchRecoveryRecord,
+  type MatchEventJournalStore,
   type MatchRecoveryRecord,
   type MatchRepository,
 } from "~/game/server/src/repository";
@@ -21,8 +23,14 @@ const RecoveryRowSchema = z.object({
   terminal_at: z.number().nullable(),
 });
 
+const JournalStateRowSchema = z.object({
+  status: z.enum(["playing", "finished", "aborted"]),
+  next_seq: z.number().int().nonnegative(),
+});
+
 export interface MobileMatchRepositoryHandle {
   repository: MatchRepository;
+  eventJournalStore: MatchEventJournalStore;
   storage: "sqlite" | "memory";
   getActiveMatch(): Promise<MobileActiveMatch | null>;
   setActiveMatch(activeMatch: MobileActiveMatch | null): Promise<void>;
@@ -39,13 +47,13 @@ export interface MobileSqliteDatabase {
     statements: string,
     transaction?: boolean
   ): Promise<{ changes?: { changes?: number } }>;
-  query(
-    statement: string,
-    values?: unknown[]
-  ): Promise<{ values?: unknown[] }>;
+  query(statement: string, values?: unknown[]): Promise<{ values?: unknown[] }>;
   run(
     statement: string,
     values?: unknown[]
+  ): Promise<{ changes?: { changes?: number } }>;
+  executeTransaction(
+    tasks: Array<{ statement: string; values?: unknown[] }>
   ): Promise<{ changes?: { changes?: number } }>;
 }
 
@@ -53,31 +61,38 @@ function serialize(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function affectedRows(result: {
-  changes?: { changes?: number };
-}): number {
+function affectedRows(result: { changes?: { changes?: number } }): number {
   return result.changes?.changes ?? 0;
 }
 
-class SqliteMatchRepository implements MatchRepository {
+class SqliteMatchRepository implements MatchRepository, MatchEventJournalStore {
   constructor(private readonly database: MobileSqliteDatabase) {}
 
   async createMatch(args: Parameters<MatchRepository["createMatch"]>[0]) {
-    await this.database.run(
-      `INSERT INTO mobile_matches (
-         match_id, seed, players_json, session_id, game_index,
-         status, started_at, events_json, final_scores_json
-       ) VALUES (?, ?, ?, ?, ?, 'playing', ?, '[]', NULL)
-       ON CONFLICT(match_id) DO NOTHING`,
-      [
-        args.matchId,
-        args.seed,
-        serialize(args.players),
-        args.sessionId ?? null,
-        args.gameIndex ?? null,
-        Date.now(),
-      ]
-    );
+    await this.database.executeTransaction([
+      {
+        statement: `INSERT INTO mobile_matches (
+           match_id, seed, players_json, session_id, game_index,
+           status, started_at, events_json, final_scores_json
+         ) VALUES (?, ?, ?, ?, ?, 'playing', ?, '[]', NULL)
+         ON CONFLICT(match_id) DO NOTHING`,
+        values: [
+          args.matchId,
+          args.seed,
+          serialize(args.players),
+          args.sessionId ?? null,
+          args.gameIndex ?? null,
+          Date.now(),
+        ],
+      },
+      {
+        statement: `INSERT INTO mobile_match_journals (
+           match_id, status, next_seq
+         ) VALUES (?, 'playing', ?)
+         ON CONFLICT(match_id) DO NOTHING`,
+        values: [args.matchId, args.initialEventSeq],
+      },
+    ]);
   }
 
   async archiveMatch(args: Parameters<MatchRepository["archiveMatch"]>[0]) {
@@ -96,6 +111,79 @@ class SqliteMatchRepository implements MatchRepository {
     if (affectedRows(result) !== 1) {
       throw new Error(`Cannot archive unknown mobile match ${args.matchId}`);
     }
+    const nextSeq =
+      args.events.length === 0
+        ? 0
+        : assertContiguousMatchEvents(args.events).nextSeq;
+    await this.database.executeTransaction([
+      {
+        statement: `INSERT INTO mobile_match_journals (
+           match_id, status, next_seq
+         ) VALUES (?, 'finished', ?)
+         ON CONFLICT(match_id) DO UPDATE SET
+           status = 'finished', next_seq = excluded.next_seq`,
+        values: [args.matchId, nextSeq],
+      },
+      {
+        statement: "DELETE FROM mobile_match_events WHERE match_id = ?",
+        values: [args.matchId],
+      },
+    ]);
+  }
+
+  async appendMatchEvents(
+    args: Parameters<MatchEventJournalStore["appendMatchEvents"]>[0]
+  ) {
+    const { firstSeq, nextSeq } = assertContiguousMatchEvents(args.events);
+    const stored = await this.loadMatchEventJournalState(args.matchId);
+    if (stored === null) {
+      throw new Error(
+        `Cannot append events for unknown mobile match ${args.matchId}`
+      );
+    }
+    if (stored.status !== "playing" || stored.nextSeq >= nextSeq) {
+      return;
+    }
+    if (stored.nextSeq !== firstSeq) {
+      throw new Error(
+        `Mobile match ${args.matchId} expected event seq ${stored.nextSeq}, got ${firstSeq}`
+      );
+    }
+    await this.database.executeTransaction([
+      ...args.events.map((entry) => ({
+        statement: `INSERT INTO mobile_match_events (
+           match_id, seq, emitted_at, event_json
+         ) VALUES (?, ?, ?, ?)
+         ON CONFLICT(match_id, seq) DO NOTHING`,
+        values: [
+          args.matchId,
+          entry.seq,
+          entry.emittedAt,
+          serialize(entry.event),
+        ],
+      })),
+      {
+        statement: `UPDATE mobile_match_journals
+         SET next_seq = ?
+         WHERE match_id = ? AND status = 'playing' AND next_seq = ?`,
+        values: [nextSeq, args.matchId, firstSeq],
+      },
+    ]);
+  }
+
+  async loadMatchEventJournalState(matchId: string): Promise<{
+    status: "playing" | "finished" | "aborted";
+    nextSeq: number;
+  } | null> {
+    const result = await this.database.query(
+      `SELECT status, next_seq FROM mobile_match_journals
+       WHERE match_id = ?`,
+      [matchId]
+    );
+    const row = JournalStateRowSchema.safeParse(result.values?.[0]);
+    return row.success
+      ? { status: row.data.status, nextSeq: row.data.next_seq }
+      : null;
   }
 
   async archiveReplayLog(
@@ -107,9 +195,7 @@ class SqliteMatchRepository implements MatchRepository {
       source,
       sourceGameId,
       ruleSet: args.ruleSet,
-      ...(args.ruleSetDetails
-        ? { ruleSetDetails: args.ruleSetDetails }
-        : {}),
+      ...(args.ruleSetDetails ? { ruleSetDetails: args.ruleSetDetails } : {}),
       startedAt: args.startedAt.getTime(),
       endedAt: args.endedAt.getTime(),
       seats: args.seats,
@@ -127,10 +213,7 @@ class SqliteMatchRepository implements MatchRepository {
     );
   }
 
-  async saveCheckpoint(args: {
-    matchId: string;
-    checkpoint: MatchCheckpoint;
-  }) {
+  async saveCheckpoint(args: { matchId: string; checkpoint: MatchCheckpoint }) {
     const checkpoint = parseMatchCheckpoint(args.checkpoint);
     const result = await this.database.run(
       `INSERT INTO match_recovery (
@@ -145,7 +228,9 @@ class SqliteMatchRepository implements MatchRepository {
       [args.matchId, serialize(checkpoint), Date.now()]
     );
     if (affectedRows(result) !== 1) {
-      throw new Error(`Cannot save checkpoint for terminal match ${args.matchId}`);
+      throw new Error(
+        `Cannot save checkpoint for terminal match ${args.matchId}`
+      );
     }
   }
 
@@ -219,10 +304,9 @@ class SqliteMatchRepository implements MatchRepository {
   }
 
   async deleteCheckpoint(matchId: string) {
-    await this.database.run(
-      "DELETE FROM match_recovery WHERE match_id = ?",
-      [matchId]
-    );
+    await this.database.run("DELETE FROM match_recovery WHERE match_id = ?", [
+      matchId,
+    ]);
   }
 }
 
@@ -248,6 +332,18 @@ async function initializeSchema(database: MobileSqliteDatabase) {
        events_json TEXT NOT NULL,
        final_scores_json TEXT
      );
+     CREATE TABLE IF NOT EXISTS mobile_match_journals (
+       match_id TEXT PRIMARY KEY NOT NULL,
+       status TEXT NOT NULL CHECK(status IN ('playing', 'finished', 'aborted')),
+       next_seq INTEGER NOT NULL
+     );
+     CREATE TABLE IF NOT EXISTS mobile_match_events (
+       match_id TEXT NOT NULL,
+       seq INTEGER NOT NULL,
+       emitted_at INTEGER NOT NULL,
+       event_json TEXT NOT NULL,
+       PRIMARY KEY (match_id, seq)
+     );
      CREATE TABLE IF NOT EXISTS mobile_replays (
        source TEXT NOT NULL,
        source_game_id TEXT NOT NULL,
@@ -265,15 +361,17 @@ async function initializeSchema(database: MobileSqliteDatabase) {
 
 export function createSqliteMatchRepository(
   database: MobileSqliteDatabase
-): MatchRepository {
+): MatchRepository & MatchEventJournalStore {
   return new SqliteMatchRepository(database);
 }
 
 export async function openMobileMatchRepository(): Promise<MobileMatchRepositoryHandle> {
   if (!Capacitor.isNativePlatform()) {
     let activeMatch: MobileActiveMatch | null = null;
+    const repository = createMemoryMatchRepository();
     return {
-      repository: createMemoryMatchRepository(),
+      repository,
+      eventJournalStore: repository,
       storage: "memory",
       getActiveMatch: async () => activeMatch,
       setActiveMatch: async (nextActiveMatch) => {
@@ -283,9 +381,8 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
     };
   }
 
-  const { CapacitorSQLite, SQLiteConnection } = await import(
-    "@capacitor-community/sqlite"
-  );
+  const { CapacitorSQLite, SQLiteConnection } =
+    await import("@capacitor-community/sqlite");
   const sqlite = new SQLiteConnection(CapacitorSQLite);
   const existing = await sqlite.isConnection(DATABASE_NAME, false);
   const database = existing.result
@@ -303,8 +400,11 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
   }
   await initializeSchema(database);
 
+  const repository = createSqliteMatchRepository(database);
+
   return {
-    repository: createSqliteMatchRepository(database),
+    repository,
+    eventJournalStore: repository,
     storage: "sqlite",
     getActiveMatch: async () => {
       const metadata = await database.query(
@@ -351,10 +451,10 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
     },
     setActiveMatch: async (activeMatch) => {
       if (activeMatch === null) {
-        await database.run(
-          "DELETE FROM mobile_metadata WHERE key IN (?, ?)",
-          ["active_match_id", "active_match_owner"]
-        );
+        await database.run("DELETE FROM mobile_metadata WHERE key IN (?, ?)", [
+          "active_match_id",
+          "active_match_owner",
+        ]);
         return;
       }
       await database.run(

@@ -29,17 +29,18 @@ npm run mobile:android:install -- -Serial emulator-5554
 
 The first shell renders the production Pixi table and imports shared
 `ReplayLog` JSON. Native startup opens a versioned SQLite `MatchRepository`
-covering recovery checkpoints, command transactions, tombstones, completed
-matches, and replay archives; browser development uses the existing in-memory
-repository.
+covering asynchronous live event journals, explicit-pause recovery checkpoints,
+tombstones, completed matches, and replay archives; browser development uses
+the existing in-memory repository. Normal turns never wait for SQLite.
 
 Nearby mode currently runs a complete on-device solo table: one local human and
 three shared-engine bots. `LocalMatchController` composes `MatchProcess` with
 SQLite and feeds its `ServerMessage` callback through the same Zustand dispatcher
 used by `GameWS`, so tile/action input and the production Pixi renderer do not
-fork between cloud and local play. App backgrounding atomically pauses/saves the
-match; foregrounding restores a new process from the active recovery record.
-The shell also exposes manual Pause/Resume for the same path.
+fork between cloud and local play. App backgrounding attempts to flush the
+journal and save a checkpoint before suspension; mobile operating systems may
+suspend JavaScript before that best-effort callback completes. Manual Pause
+awaits the same barrier and therefore provides the exact Resume guarantee.
 
 The online Lobby is native UI: it loads public rule presets and live room
 summaries from `/api/mobile/lobby`, offers a rule-selection modal, and labels
