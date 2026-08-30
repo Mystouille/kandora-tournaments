@@ -5,7 +5,7 @@ vi.mock("~/services/gameServer.server", () => ({
   getGameServerHttpUrl: () => "https://game.test",
 }));
 vi.mock("~/game/rules/presets", () => ({
-  listPresets: () => [
+  listSelectablePresets: () => [
     { id: "m-league", displayName: "M-League", description: "League rules" },
   ],
 }));

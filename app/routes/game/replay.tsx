@@ -101,6 +101,7 @@ import {
 import {
   replaySoundTarget,
   type ReplayNavigationKind,
+  type ReplaySoundTarget,
 } from "~/game/client/replaySound";
 
 function normalizeReviewDraftText(html: string): string {
@@ -553,21 +554,21 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() =>
     isGameSoundEnabled()
   );
-  // Navigation explicitly arms one event index for sound. Numerical
+  // Navigation explicitly arms one event target for sound. Numerical
   // adjacency is not sufficient: a round/slider/comment jump may land
   // one index ahead but must remain silent.
-  const pendingSoundIndexRef = useRef<number | null>(null);
+  const pendingSoundTargetRef = useRef<ReplaySoundTarget | null>(null);
   useEffect(() => {
     indexRef.current = index;
-    const shouldPlay = pendingSoundIndexRef.current === index;
-    pendingSoundIndexRef.current = null;
+    const target = pendingSoundTargetRef.current;
+    pendingSoundTargetRef.current = null;
     if (!soundEnabled) {
       return;
     }
-    if (!shouldPlay) {
+    if (!target || target.playIndex !== index) {
       return;
     }
-    const ev = log.events[index];
+    const ev = log.events[target.eventIndex];
     if (!ev) {
       return;
     }
@@ -1059,7 +1060,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       if (active.eventIndex !== index) {
         preserveDraftForIndexRef.current = active.eventIndex;
         indexRef.current = active.eventIndex;
-        pendingSoundIndexRef.current = null;
+        pendingSoundTargetRef.current = null;
         setIndex(active.eventIndex);
       }
       setDraft({ mode: active.mode, text, strokes });
@@ -1827,7 +1828,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   const navigateReplay = useCallback(
     (n: number, kind: ReplayNavigationKind): void => {
       const next = clamp(n);
-      pendingSoundIndexRef.current = replaySoundTarget(
+      pendingSoundTargetRef.current = replaySoundTarget(
         indexRef.current,
         next,
         kind

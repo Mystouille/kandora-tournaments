@@ -1,6 +1,6 @@
 import GameLobby, { type LobbyLoaderData } from "~/game/routes/lobby";
 import { requireGameEnabled, getClientGameFlag } from "~/game/feature-gate";
-import { listPresets } from "~/game/rules/presets";
+import { listSelectablePresets } from "~/game/rules/presets";
 import { ReplayLogModel } from "~/core/models/game/ReplayLog";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { requireGameUser } from "~/utils/gameAuth.server";
@@ -31,7 +31,7 @@ export async function loader({
     .exec();
   return {
     flag: getClientGameFlag(),
-    presets: listPresets().map(({ id, displayName, description }) => ({
+    presets: listSelectablePresets().map(({ id, displayName, description }) => ({
       id,
       displayName,
       description,

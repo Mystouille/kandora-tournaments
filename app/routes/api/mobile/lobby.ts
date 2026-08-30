@@ -1,5 +1,5 @@
 import { isGameEnabled } from "~/game/feature-gate";
-import { listPresets } from "~/game/rules/presets";
+import { listSelectablePresets } from "~/game/rules/presets";
 import { getGameServerHttpUrl } from "~/services/gameServer.server";
 
 const CORS_HEADERS = {
@@ -31,7 +31,7 @@ export async function loader(): Promise<Response> {
     }
     const body = (await response.json()) as { rooms?: unknown };
     return json({
-      presets: listPresets().map(({ id, displayName, description }) => ({
+      presets: listSelectablePresets().map(({ id, displayName, description }) => ({
         id,
         displayName,
         description,

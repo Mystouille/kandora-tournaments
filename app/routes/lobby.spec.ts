@@ -18,7 +18,7 @@ vi.mock("~/game/feature-gate", () => ({
   getClientGameFlag: () => ({ gameEnabled: true }),
 }));
 vi.mock("~/game/rules/presets", () => ({
-  listPresets: () => [
+  listSelectablePresets: () => [
     {
       id: "buu-east",
       displayName: "Buu Mahjong - East",
