@@ -105,6 +105,44 @@ describe("replay viewer cache authentication", () => {
     expect(mocks.fetchOrphanReplayLog).not.toHaveBeenCalled();
   });
 
+  it("redirects a Tenhou watch-id alias to its canonical replay", async () => {
+    const canonicalGameId = "2026082503gm-0009-19370-0e3a95d1";
+    mocks.findReplay.mockReturnValue(
+      findResult({
+        source: "tenhou",
+        sourceGameId: canonicalGameId,
+        sourceGameIdAliases: ["66B555F2"],
+      })
+    );
+    let thrown: unknown;
+
+    try {
+      await loader({
+        ...loaderArgs(),
+        request: new Request("http://app.test/watch/replay/66b555f2?seat=2"),
+        params: { gameId: "66b555f2" },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(mocks.findReplay).toHaveBeenCalledWith({
+      $or: [
+        { sourceGameId: "66b555f2" },
+        {
+          sourceGameIdAliases: {
+            $in: ["66b555f2", "66B555F2"],
+          },
+        },
+      ],
+    });
+    expect(thrown).toBeInstanceOf(Response);
+    expect((thrown as Response).status).toBe(302);
+    expect((thrown as Response).headers.get("Location")).toBe(
+      `/watch/replay/${canonicalGameId}?seat=2`
+    );
+  });
+
   it("redirects an anonymous cache miss before fetch", async () => {
     mocks.findReplay.mockReturnValue(findResult(null));
     let thrown: unknown;

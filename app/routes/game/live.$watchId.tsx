@@ -35,7 +35,10 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   let matchId: string;
   try {
-    ({ matchId } = await startRelay(watchId));
+    ({ matchId } = await startRelay(
+      watchId,
+      live.canonicalGameId ?? undefined
+    ));
   } catch (error) {
     console.error("Failed to start live relay:", error);
     const code = error instanceof RelayError ? error.code : "relay_failed";

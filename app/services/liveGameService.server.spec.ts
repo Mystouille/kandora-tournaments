@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 
 const mocks = vi.hoisted(() => ({
   deleteMany: vi.fn(),
+  fetchLobbyGameList: vi.fn(),
   fetchLobbyWatchGames: vi.fn(),
   findUsers: vi.fn(),
   updateOne: vi.fn(),
@@ -21,7 +22,10 @@ vi.mock("~/core/models/shared/User", () => ({
 
 vi.mock("~/api/tenhou/TenhouService.server", () => ({
   TenhouService: {
-    instance: { fetchLobbyWatchGames: mocks.fetchLobbyWatchGames },
+    instance: {
+      fetchLobbyGameList: mocks.fetchLobbyGameList,
+      fetchLobbyWatchGames: mocks.fetchLobbyWatchGames,
+    },
   },
 }));
 
@@ -38,6 +42,10 @@ describe("syncLiveGames", () => {
         ratings: [],
       },
     ]);
+    mocks.fetchLobbyGameList.mockImplementation(
+      async (lobbyId: string) =>
+        `[2026/08/10 04:07:31] lobby=11017&type=0009&wg=watch-${lobbyId}&log=2026081004gm-0009-11017-${lobbyId}&cmd=<CHAT text="#START"/>`
+    );
     mocks.findUsers.mockReturnValue({
       select: vi.fn().mockReturnValue({
         lean: vi.fn().mockReturnValue({
@@ -72,9 +80,11 @@ describe("syncLiveGames", () => {
     expect(mocks.updateOne).toHaveBeenCalledTimes(2);
     expect(mocks.updateOne.mock.calls[0][1].$set.phaseId).toBe("regular");
     expect(mocks.updateOne.mock.calls[1][1].$set.phaseId).toBe("finals");
-    expect(
-      mocks.updateOne.mock.calls[0][1].$setOnInsert.startTime
-    ).toBeInstanceOf(Date);
+    expect(mocks.updateOne.mock.calls[0][1].$set).toMatchObject({
+      watchId: "watch-regular",
+      canonicalGameId: "2026081004gm-0009-11017-regular",
+      startTime: new Date("2026-08-09T19:07:31.000Z"),
+    });
     expect(mocks.deleteMany).toHaveBeenCalledWith({
       league: league._id,
       gameId: { $nin: ["watch-regular", "watch-finals"] },

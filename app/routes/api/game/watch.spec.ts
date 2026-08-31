@@ -53,7 +53,11 @@ describe("game watch API", () => {
       user: { sub: "user-1", username: "Alice", loginMethod: "discord" },
     });
     mocks.findLiveGame.mockReturnValue({
-      lean: vi.fn().mockResolvedValue({ _id: "live-1", watchId: "watch-1" }),
+      lean: vi.fn().mockResolvedValue({
+        _id: "live-1",
+        watchId: "watch-1",
+        canonicalGameId: "2026081004gm-0009-11017-9b9f92d7",
+      }),
     });
     mocks.startRelay.mockResolvedValue({ matchId: "relay-1" });
     mocks.updateLiveGame.mockReturnValue({
@@ -88,6 +92,9 @@ describe("game watch API", () => {
       ok: true,
       matchId: "relay-1",
     });
-    expect(mocks.startRelay).toHaveBeenCalledWith("watch-1");
+    expect(mocks.startRelay).toHaveBeenCalledWith(
+      "watch-1",
+      "2026081004gm-0009-11017-9b9f92d7"
+    );
   });
 });

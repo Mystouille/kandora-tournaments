@@ -15,6 +15,13 @@ interface TenhouLogLine {
  */
 interface PendingGame {
   logId: string;
+  watchId?: string;
+  startTime: Date;
+}
+
+export interface TenhouReplayIdMapping {
+  watchId: string;
+  gameId: string;
   startTime: Date;
 }
 
@@ -76,6 +83,25 @@ function parseLine(raw: string): TenhouLogLine | null {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Extract authoritative live watch-id → completed log-id pairs from START rows. */
+export function parseTenhouReplayIdMappings(
+  rawText: string
+): TenhouReplayIdMapping[] {
+  const mappings: TenhouReplayIdMapping[] = [];
+  for (const raw of rawText.replace(/\r/g, "").split("\n")) {
+    const line = parseLine(raw);
+    if (!line?.params.type || !line.params.wg || !line.params.log) {
+      continue;
+    }
+    mappings.push({
+      watchId: line.params.wg,
+      gameId: line.params.log,
+      startTime: line.timestamp,
+    });
+  }
+  return mappings;
+}
+
 /**
  * Parses the raw text returned by Tenhou's `cmd_get_log.cgi` into an
  * array of {@link GameSummary} objects.
@@ -126,7 +152,11 @@ export function parseTenhouLobbyLog(
         pending = null;
         continue;
       }
-      pending = { logId, startTime: line.timestamp };
+      pending = {
+        logId,
+        watchId: line.params.wg || undefined,
+        startTime: line.timestamp,
+      };
       continue;
     }
 
@@ -153,6 +183,7 @@ export function parseTenhouLobbyLog(
 
       summaries.push({
         gameId: pending.logId,
+        watchId: pending.watchId,
         platform: "tenhou",
         startTime: pending.startTime,
         endTime: line.timestamp,

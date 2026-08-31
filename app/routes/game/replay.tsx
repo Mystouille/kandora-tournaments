@@ -261,7 +261,21 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     /* anonymous viewer */
   }
 
-  const query: Record<string, string> = { sourceGameId: cleanGameId };
+  const replayIdCandidates = /^[0-9a-f]{8}$/i.test(cleanGameId)
+    ? [
+        ...new Set([
+          cleanGameId,
+          cleanGameId.toLowerCase(),
+          cleanGameId.toUpperCase(),
+        ]),
+      ]
+    : [cleanGameId];
+  const query: Record<string, unknown> = {
+    $or: [
+      { sourceGameId: cleanGameId },
+      { sourceGameIdAliases: { $in: replayIdCandidates } },
+    ],
+  };
   if (source) {
     query.source = source;
   }
@@ -271,6 +285,12 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   // Cache hit: hand the persisted row straight to the component.
   if (doc) {
+    if (doc.sourceGameId !== cleanGameId) {
+      const qs = url.searchParams.toString();
+      throw redirect(
+        `/watch/replay/${encodeURIComponent(doc.sourceGameId)}${qs ? `?${qs}` : ""}`
+      );
+    }
     if (rcWind !== null) {
       redirectToCanonicalRcUrl(doc.events as GameEvent[]);
     }

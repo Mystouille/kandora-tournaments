@@ -44,7 +44,10 @@ export async function action({ request }: { request: Request }) {
   }
 
   try {
-    const { matchId } = await startRelay(watchId);
+    const { matchId } = await startRelay(
+      watchId,
+      live.canonicalGameId ?? undefined
+    );
     await LiveGameModel.updateOne(
       { _id: live._id },
       { $set: { relayMatchId: matchId } }

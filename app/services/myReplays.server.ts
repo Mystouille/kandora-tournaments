@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import { ReplayLogModel } from "~/core/models/game/ReplayLog";
 import { ReplayReviewModel } from "~/core/models/game/ReplayReview";
@@ -38,6 +39,11 @@ interface ReplayLogListDocument {
     finalScore?: number;
     place?: number;
   }>;
+}
+
+interface ReplayEventsDocument {
+  _id: mongoose.Types.ObjectId;
+  events?: unknown[];
 }
 
 interface ReviewListDocument {
@@ -232,9 +238,7 @@ function addSeed(
 function replayOutcomeFingerprint(
   replay: ReplayLogListDocument | undefined
 ): string | null {
-  const startedAt = asTimestamp(replay?.startedAt);
-  const endedAt = asTimestamp(replay?.endedAt);
-  if (!replay || startedAt === null || endedAt === null) {
+  if (!replay) {
     return null;
   }
 
@@ -258,28 +262,101 @@ function replayOutcomeFingerprint(
   outcomes.sort((left, right) =>
     JSON.stringify(left).localeCompare(JSON.stringify(right))
   );
-  return JSON.stringify([
-    replay.source,
-    replay.ruleSet,
-    startedAt,
-    endedAt,
-    outcomes,
-  ]);
+  return JSON.stringify([replay.source, outcomes]);
 }
 
-function deduplicateTournamentReplayGroups(
+function canonicalGameplayValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalGameplayValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => key !== "liveWall" && key !== "deadWall")
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, canonicalGameplayValue(child)])
+    );
+  }
+  return value;
+}
+
+function replayGameplayFingerprint(
+  events: unknown[] | undefined
+): string | null {
+  if (!events || events.length === 0) {
+    return null;
+  }
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalGameplayValue(events)))
+    .digest("hex");
+}
+
+async function deduplicateTournamentReplayGroups(
   groups: MyReplayGroup[],
   replayByKey: Map<string, ReplayLogListDocument>
-): MyReplayGroup[] {
-  const groupsByFingerprint = new Map<string, MyReplayGroup[]>();
+): Promise<MyReplayGroup[]> {
+  const groupsByOutcome = new Map<string, MyReplayGroup[]>();
   for (const group of groups) {
     const fingerprint = replayOutcomeFingerprint(replayByKey.get(group.key));
     if (!fingerprint) {
       continue;
     }
-    const matchingGroups = groupsByFingerprint.get(fingerprint) ?? [];
+    const matchingGroups = groupsByOutcome.get(fingerprint) ?? [];
     matchingGroups.push(group);
-    groupsByFingerprint.set(fingerprint, matchingGroups);
+    groupsByOutcome.set(fingerprint, matchingGroups);
+  }
+
+  const candidateGroups = [...groupsByOutcome.values()].filter(
+    (matchingGroups) =>
+      matchingGroups.some((group) => group.context.kind === "tournament") &&
+      matchingGroups.some((group) => group.context.kind === "external")
+  );
+  const candidateReplayIds = [
+    ...new Set(
+      candidateGroups.flatMap((matchingGroups) =>
+        matchingGroups.flatMap((group) => {
+          const replay = replayByKey.get(group.key);
+          return replay ? [String(replay._id)] : [];
+        })
+      )
+    ),
+  ].map((id) => new mongoose.Types.ObjectId(id));
+  if (candidateReplayIds.length === 0) {
+    return groups;
+  }
+
+  const replayEvents = await ReplayLogModel.find(
+    { _id: { $in: candidateReplayIds } },
+    { events: 1 }
+  )
+    .lean<ReplayEventsDocument[]>()
+    .exec();
+  const gameplayFingerprintByReplayId = new Map(
+    replayEvents.flatMap((replay) => {
+      const fingerprint = replayGameplayFingerprint(replay.events);
+      return fingerprint ? [[String(replay._id), fingerprint] as const] : [];
+    })
+  );
+  const groupsByFingerprint = new Map<string, MyReplayGroup[]>();
+  for (const matchingGroups of candidateGroups) {
+    for (const group of matchingGroups) {
+      const replay = replayByKey.get(group.key);
+      const gameplayFingerprint = replay
+        ? gameplayFingerprintByReplayId.get(String(replay._id))
+        : undefined;
+      const outcomeFingerprint = replayOutcomeFingerprint(replay);
+      if (!gameplayFingerprint || !outcomeFingerprint) {
+        continue;
+      }
+      const fingerprint = JSON.stringify([
+        outcomeFingerprint,
+        gameplayFingerprint,
+      ]);
+      const groupsWithMatchingGameplay =
+        groupsByFingerprint.get(fingerprint) ?? [];
+      groupsWithMatchingGameplay.push(group);
+      groupsByFingerprint.set(fingerprint, groupsWithMatchingGameplay);
+    }
   }
 
   const mergedTournamentGroups = new Map<string, MyReplayGroup>();
@@ -676,7 +753,11 @@ export async function getMyReplays(
     });
   }
 
-  return deduplicateTournamentReplayGroups(groups, replayByKey).sort(
+  const deduplicatedGroups = await deduplicateTournamentReplayGroups(
+    groups,
+    replayByKey
+  );
+  return deduplicatedGroups.sort(
     (left, right) =>
       (right.gameDate ?? Number.NEGATIVE_INFINITY) -
         (left.gameDate ?? Number.NEGATIVE_INFINITY) ||

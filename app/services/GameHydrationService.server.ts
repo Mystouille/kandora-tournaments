@@ -307,6 +307,7 @@ export async function hydrateLeagueGames(
 
       savedGame = await GameModel.create({
         gameId: summary.gameId,
+        watchId: summary.watchId,
         name: `${league.name} - ${summary.gameId}`,
         platform: summary.platform,
         rules: league.rulesConfig.gameRules,
@@ -477,6 +478,12 @@ async function hydrateReplayLog(
   }
 
   try {
+    const replayAliases =
+      source === "tenhou" &&
+      game.watchId &&
+      game.watchId !== replayLog.sourceGameId
+        ? [game.watchId]
+        : [];
     const result = await ReplayLogModel.findOneAndUpdate(
       { source: replayLog.source, sourceGameId: replayLog.sourceGameId },
       {
@@ -492,6 +499,13 @@ async function hydrateReplayLog(
           schemaVersion: replayLog.schemaVersion,
           parsedAt: new Date(),
         },
+        ...(replayAliases.length > 0
+          ? {
+              $addToSet: {
+                sourceGameIdAliases: { $each: replayAliases },
+              },
+            }
+          : {}),
       },
       { upsert: true, new: true }
     );
@@ -512,7 +526,6 @@ async function hydrateReplayLog(
         `hydrateReplayLog: upsert for ${replayLog.source}/${replayLog.sourceGameId} returned no _id`
       );
     }
-    void source;
     return true;
   } catch (error) {
     console.error(

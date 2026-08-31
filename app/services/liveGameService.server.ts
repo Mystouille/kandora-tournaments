@@ -4,6 +4,7 @@ import { LiveGameModel } from "~/core/models/tournament/LiveGame";
 import { UserModel } from "~/core/models/shared/User";
 import { OngoingGameStatus } from "~/core/types/ongoing-game-status";
 import { TenhouService } from "~/api/tenhou/TenhouService.server";
+import { parseTenhouReplayIdMappings } from "~/api/tenhou/parseTenhouLobbyLog";
 import { type ILeagueTournamentConnector } from "./connectors/ILeagueTournamentConnector.server";
 import { resolveLeagueLobbies } from "./leagueLobbies";
 import {
@@ -24,6 +25,7 @@ import {
 interface NormalizedLiveGame {
   gameId: string;
   watchId?: string;
+  canonicalGameId?: string;
   tableId?: string;
   status: OngoingGameStatus;
   startTime?: Date;
@@ -80,18 +82,30 @@ async function gatherLiveGames(
   connector: ILeagueTournamentConnector
 ): Promise<NormalizedLiveGame[]> {
   if (platform === Platform.TENHOU) {
-    let watchGames;
-    try {
-      watchGames = await TenhouService.instance.fetchLobbyWatchGames(
-        String(tournamentId)
-      );
-    } catch {
+    const [watchGamesResult, lobbyLogResult] = await Promise.allSettled([
+      TenhouService.instance.fetchLobbyWatchGames(String(tournamentId)),
+      TenhouService.instance.fetchLobbyGameList(String(tournamentId)),
+    ]);
+    if (watchGamesResult.status === "rejected") {
       return [];
     }
+    const canonicalGameIdByWatchId = new Map(
+      lobbyLogResult.status === "fulfilled"
+        ? parseTenhouReplayIdMappings(lobbyLogResult.value).map((mapping) => [
+            mapping.watchId.toLowerCase(),
+            mapping,
+          ])
+        : []
+    );
+    const watchGames = watchGamesResult.value;
     return watchGames.map((g) => ({
       gameId: g.watchId,
       watchId: g.watchId,
+      canonicalGameId: canonicalGameIdByWatchId.get(g.watchId.toLowerCase())
+        ?.gameId,
       status: OngoingGameStatus.Playing,
+      startTime: canonicalGameIdByWatchId.get(g.watchId.toLowerCase())
+        ?.startTime,
       players: g.players.map((name, seat) => ({
         seat,
         nickname: name,
@@ -233,6 +247,9 @@ export async function syncLiveGames(
         userId: p.accountId ? accountToUser.get(p.accountId) : undefined,
       })),
     };
+    if (g.canonicalGameId) {
+      setValues.canonicalGameId = g.canonicalGameId;
+    }
     if (g.phaseId !== null) {
       setValues.phaseId = g.phaseId;
     }

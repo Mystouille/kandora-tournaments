@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseTenhouLobbyLog } from "./parseTenhouLobbyLog";
+import {
+  parseTenhouLobbyLog,
+  parseTenhouReplayIdMappings,
+} from "./parseTenhouLobbyLog";
 
 describe("parseTenhouLobbyLog", () => {
   it("parses completed games whose rule type is 0009", () => {
@@ -14,6 +17,7 @@ describe("parseTenhouLobbyLog", () => {
     expect(games).toHaveLength(1);
     expect(games[0]).toMatchObject({
       gameId: "2026081004gm-0009-11017-9b9f92d7",
+      watchId: "167fafe2",
       platform: "tenhou",
       startTime: new Date("2026-08-09T19:07:31.000Z"),
       endTime: new Date("2026-08-09T19:38:29.000Z"),
@@ -24,5 +28,19 @@ describe("parseTenhouLobbyLog", () => {
         { nickname: "North", rawScore: null, place: null, seat: 3 },
       ],
     });
+  });
+
+  it("extracts a canonical replay id before the live game finishes", () => {
+    const raw =
+      '[2026/08/10 04:07:31] lobby=11017&type=0009&wg=167fafe2&log=2026081004gm-0009-11017-9b9f92d7&cmd=<CHAT text="#START East South West North"/>';
+
+    expect(parseTenhouReplayIdMappings(raw)).toEqual([
+      {
+        watchId: "167fafe2",
+        gameId: "2026081004gm-0009-11017-9b9f92d7",
+        startTime: new Date("2026-08-09T19:07:31.000Z"),
+      },
+    ]);
+    expect(parseTenhouLobbyLog(raw)).toEqual([]);
   });
 });

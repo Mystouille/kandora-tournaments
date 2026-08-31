@@ -320,10 +320,10 @@ describe("getMyReplays", () => {
     });
   });
 
-  it("merges only an outcome-matching replay into its tournament replay", async () => {
-    const tournamentSourceGameId = "2026082104gm-0009-19370-7618936d";
-    const externalSourceGameId = "2026082104gm-0009-19370-duplicate";
-    const rematchSourceGameId = "2026082104gm-0009-19370-rematch";
+  it("merges a gameplay-matching external replay despite timestamp drift", async () => {
+    const tournamentSourceGameId = "2026082503gm-0009-19370-0e3a95d1";
+    const externalSourceGameId = "66B555F2";
+    const rematchSourceGameId = "66B555F3";
     const externalReplayId = new mongoose.Types.ObjectId(
       "507f1f77bcf86cd799439016"
     );
@@ -356,44 +356,75 @@ describe("getMyReplays", () => {
         place: 4,
       },
     ];
+    const tournamentEvents = [
+      { type: "match_start", scores: [25_000, 25_000, 25_000, 25_000] },
+      {
+        type: "hand_start",
+        round: 0,
+        liveWall: ["1m", "2m"],
+        deadWall: ["3m", "4m"],
+      },
+      { type: "draw", seat: 0, tile: "1m" },
+      { type: "discard", seat: 0, tile: "1m" },
+      {
+        type: "match_end",
+        finalScores: seats.map(({ finalScore }) => finalScore),
+      },
+    ];
+    const externalEvents = tournamentEvents.map((event) => {
+      const {
+        liveWall: _liveWall,
+        deadWall: _deadWall,
+        ...visibleEvent
+      } = event;
+      return visibleEvent;
+    });
     mocks.findReplays.mockReset();
-    mocks.findReplays.mockReturnValue(
-      queryResult([
-        {
-          _id: replayId,
-          source: "tenhou",
-          sourceGameId: tournamentSourceGameId,
-          ruleSet: "tenhou",
-          startedAt: 1_700_000_000_000,
-          endedAt: 1_700_000_000_000,
-          creationTriggeredBy: new mongoose.Types.ObjectId(userId),
-          seats,
-        },
-        {
-          _id: externalReplayId,
-          source: "tenhou",
-          sourceGameId: externalSourceGameId,
-          ruleSet: "tenhou",
-          startedAt: 1_700_000_000_000,
-          endedAt: 1_700_000_000_000,
-          seats: [...seats].reverse(),
-        },
-        {
-          _id: rematchReplayId,
-          source: "tenhou",
-          sourceGameId: rematchSourceGameId,
-          ruleSet: "tenhou",
-          startedAt: 1_700_000_000_000,
-          endedAt: 1_700_000_000_000,
-          seats: [
-            { ...seats[0], finalScore: 44_400, place: 1 },
-            { ...seats[1], finalScore: 29_800, place: 3 },
-            { ...seats[2], finalScore: -7_500, place: 4 },
-            { ...seats[3], finalScore: 33_300, place: 2 },
-          ],
-        },
-      ])
-    );
+    mocks.findReplays
+      .mockReturnValueOnce(
+        queryResult([
+          {
+            _id: replayId,
+            source: "tenhou",
+            sourceGameId: tournamentSourceGameId,
+            ruleSet: "tenhou",
+            startedAt: 1_787_594_400_000,
+            endedAt: 1_787_594_400_000,
+            creationTriggeredBy: new mongoose.Types.ObjectId(userId),
+            seats,
+          },
+          {
+            _id: externalReplayId,
+            source: "tenhou",
+            sourceGameId: externalSourceGameId,
+            ruleSet: "tenhou-default",
+            startedAt: 1_787_598_017_784,
+            endedAt: 1_787_600_597_636,
+            seats: [...seats].reverse(),
+          },
+          {
+            _id: rematchReplayId,
+            source: "tenhou",
+            sourceGameId: rematchSourceGameId,
+            ruleSet: "tenhou-default",
+            startedAt: 1_787_598_017_784,
+            endedAt: 1_787_600_597_636,
+            seats,
+          },
+        ])
+      )
+      .mockReturnValueOnce(
+        queryResult([
+          { _id: replayId, events: tournamentEvents },
+          { _id: externalReplayId, events: externalEvents },
+          {
+            _id: rematchReplayId,
+            events: externalEvents.map((event) =>
+              event.type === "draw" ? { ...event, tile: "2m" } : event
+            ),
+          },
+        ])
+      );
     mocks.findMatches.mockReturnValue(queryResult([]));
     mocks.aggregateReviews.mockReturnValue(
       queryResult([
@@ -416,7 +447,7 @@ describe("getMyReplays", () => {
           rules: "MLEAGUE",
           league: leagueId,
           replayLogRef: replayId,
-          startTime: new Date(1_700_000_000_000),
+          startTime: new Date(1_787_594_400_000),
         },
       ])
     );

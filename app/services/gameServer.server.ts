@@ -21,7 +21,10 @@ function resolveGameServerUrl(): string {
   if (!wsUrl) {
     return "";
   }
-  return wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:").replace(/\/$/, "");
+  return wsUrl
+    .replace(/^ws:/, "http:")
+    .replace(/^wss:/, "https:")
+    .replace(/\/$/, "");
 }
 
 const GAME_SERVER_URL = resolveGameServerUrl();
@@ -43,7 +46,10 @@ export type RelayErrorCode =
   | "relay_failed";
 
 export class RelayError extends Error {
-  constructor(public readonly code: RelayErrorCode, message: string) {
+  constructor(
+    public readonly code: RelayErrorCode,
+    message: string
+  ) {
     super(message);
     this.name = "RelayError";
   }
@@ -77,17 +83,21 @@ function assertConfigured(): void {
 
 /**
  * Start (or reuse) a live Tenhou relay for `watchId`; returns its matchId.
+ * `canonicalGameId` is used only for replay persistence.
  * De-duplicated server-side: a second call for the same watch-id reuses the
  * running relay and returns the same matchId.
  */
-export async function startRelay(watchId: string): Promise<RelayHandle> {
+export async function startRelay(
+  watchId: string,
+  canonicalGameId?: string
+): Promise<RelayHandle> {
   assertConfigured();
   let res: Response;
   try {
     res = await fetch(`${GAME_SERVER_URL}/relay/start`, {
       method: "POST",
       headers: relayHeaders(),
-      body: JSON.stringify({ watchId }),
+      body: JSON.stringify({ watchId, canonicalGameId }),
     });
   } catch (error) {
     throw new RelayError(

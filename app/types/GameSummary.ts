@@ -11,6 +11,8 @@ export type GameSummaryPlayer = {
 
 export type GameSummary = {
   gameId: string;
+  /** Tenhou's temporary live-spectator ID corresponding to `gameId`. */
+  watchId?: string;
   platform: "majsoul" | "riichiCity" | "tenhou" | "IRL";
   startTime: Date;
   endTime?: Date;
