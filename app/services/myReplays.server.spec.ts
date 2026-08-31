@@ -98,6 +98,7 @@ describe("getMyReplays", () => {
             ruleSet: "m-league",
             startedAt: 1_700_000_001_000,
             endedAt: 1_700_000_001_500,
+            seats: [{ seat: 3, displayName: "Native Player" }],
           },
         ])
       );
@@ -108,6 +109,7 @@ describe("getMyReplays", () => {
           ruleSet: "m-league",
           startedAt: new Date(1_700_000_001_000),
           endedAt: new Date(1_700_000_001_500),
+          players: [{ userId, seat: 3 }],
         },
       ])
     );
@@ -117,14 +119,40 @@ describe("getMyReplays", () => {
           shortId: "review-1",
           source: "tenhou",
           sourceGameId: "gm-tournament",
-          seat: 2,
+          target: { name: "Reviewed Player" },
+          commentedByUser: true,
           updatedAt: new Date(1_700_000_004_000),
           commentCount: 3,
+        },
+        {
+          shortId: "review-target",
+          source: "tenhou",
+          sourceGameId: "gm-tournament",
+          target: {
+            user: new mongoose.Types.ObjectId(userId),
+            name: "Canonical Target",
+          },
+          commentedByUser: false,
+          updatedAt: new Date(1_700_000_006_000),
+          commentCount: 1,
+        },
+        {
+          shortId: "review-native-target",
+          source: "ingame",
+          sourceGameId: "native-1",
+          target: {
+            user: new mongoose.Types.ObjectId(userId),
+            name: "Current Native Name",
+          },
+          commentedByUser: false,
+          updatedAt: new Date(1_700_000_005_500),
+          commentCount: 2,
         },
         {
           shortId: "review-2",
           source: "majsoul",
           sourceGameId: "review-only",
+          commentedByUser: true,
           updatedAt: new Date(1_700_000_005_000),
           commentCount: 0,
         },
@@ -177,8 +205,14 @@ describe("getMyReplays", () => {
       },
       ruleset: { id: "m-league", label: "M-League" },
       reasons: ["created", "played"],
-      commentCount: 3,
+      commentCount: 4,
       reviews: [
+        {
+          shortId: "review-target",
+          reviewedPlayerName: "Canonical Target",
+          reasons: ["reviewed"],
+          commentCount: 1,
+        },
         {
           shortId: "review-1",
           reviewedPlayerName: "Reviewed Player",
@@ -192,6 +226,14 @@ describe("getMyReplays", () => {
       context: { kind: "friendly" },
       ruleset: { id: "m-league", label: "M-League" },
       reasons: ["played"],
+      commentCount: 2,
+      reviews: [
+        {
+          shortId: "review-native-target",
+          reviewedPlayerName: "Current Native Name",
+          reasons: ["reviewed"],
+        },
+      ],
     });
     expect(result?.[2]).toMatchObject({
       gameDate: 1_697_609_642_240,
@@ -240,7 +282,6 @@ describe("getMyReplays", () => {
     expect(replayProjection).not.toHaveProperty("events");
     expect(replayProjection).toMatchObject({
       creationTriggeredBy: 1,
-      "seats.seat": 1,
       "seats.userDbId": 1,
       "seats.displayName": 1,
     });
@@ -250,11 +291,13 @@ describe("getMyReplays", () => {
       expect.arrayContaining([
         expect.objectContaining({ "reviewers.user": expect.anything() }),
         expect.objectContaining({ "edits.author": expect.anything() }),
+        expect.objectContaining({ "target.user": expect.anything() }),
       ])
     );
     expect(pipeline[1].$project).not.toHaveProperty("edits");
     expect(pipeline[1].$project).not.toHaveProperty("drawing");
-    expect(pipeline[1].$project.seat).toBe(1);
+    expect(pipeline[1].$project.target).toBe(1);
+    expect(pipeline[1].$project.commentedByUser).toBeDefined();
     expect(mocks.findMatches).toHaveBeenCalledWith(
       { status: "finished", "players.userId": userId },
       { ruleSet: 1, startedAt: 1, endedAt: 1 }

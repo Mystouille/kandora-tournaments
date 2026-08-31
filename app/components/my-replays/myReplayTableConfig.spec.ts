@@ -5,19 +5,20 @@ import {
   fitMyReplayColumns,
   longestHeaderWordLength,
   mergeMyReplayHeaderFilters,
+  myReplayContextFilterValue,
+  myReplayReasonFilterValue,
   parseMyReplayTablePreferences,
   resolveMyReplayColumnWidths,
 } from "./myReplayTableConfig";
 
 describe("My Replays table preferences", () => {
-  it("uses the requested column display order without Type", () => {
+  it("uses one Context column without standalone Type or Reason columns", () => {
     expect(MY_REPLAY_COLUMN_DISPLAY_ORDER).toEqual([
       "gameDate",
       "context",
       "platform",
       "links",
       "ruleset",
-      "reason",
       "lastModified",
       "comments",
     ]);
@@ -84,7 +85,6 @@ describe("My Replays responsive columns", () => {
       platform: "Plateforme",
       links: "Liens",
       ruleset: "Règles",
-      reason: "Raison",
       lastModified: "Dernière modification",
       comments: "Commentaires",
     });
@@ -102,15 +102,15 @@ describe("My Replays responsive columns", () => {
     expect(fitMyReplayColumns(MY_REPLAY_COLUMN_DISPLAY_ORDER, 800)).toEqual([
       "gameDate",
       "context",
+      "platform",
       "links",
-      "lastModified",
     ]);
   });
 
   it("lets users surface a lower-priority column by hiding others", () => {
-    expect(fitMyReplayColumns(["links", "reason"], 500)).toEqual([
+    expect(fitMyReplayColumns(["links", "ruleset"], 500)).toEqual([
       "links",
-      "reason",
+      "ruleset",
     ]);
   });
 
@@ -131,7 +131,6 @@ describe("My Replays responsive columns", () => {
       platform: "Platform",
       links: "Links",
       ruleset: "Ruleset",
-      reason: "Reason",
       lastModified: "Last modified",
       comments: "Comments",
     });
@@ -153,7 +152,6 @@ describe("My Replays responsive columns", () => {
       platform: "Plateforme",
       links: "Liens",
       ruleset: "Règles",
-      reason: "Raison",
       lastModified: "Dernière modification",
       comments: "Commentaires",
     });
@@ -165,7 +163,7 @@ describe("My Replays responsive columns", () => {
     );
 
     expect(fitted).toContain("lastModified");
-    expect(fitted).not.toContain("comments");
+    expect(fitted).toContain("comments");
   });
 });
 
@@ -189,12 +187,26 @@ describe("My Replays header filter synchronization", () => {
     });
   });
 
-  it("clears a filter when its visible header reports null", () => {
+  it("merges reason and context values reported by the Context header", () => {
     const current = defaultMyReplayTablePreferences().filters;
-    current.reasons = ["played"];
 
     expect(
-      mergeMyReplayHeaderFilters(current, { reason: null }).reasons
-    ).toEqual([]);
+      mergeMyReplayHeaderFilters(current, {
+        context: [
+          myReplayReasonFilterValue("reviewed"),
+          myReplayContextFilterValue("friendly"),
+        ],
+      })
+    ).toMatchObject({ reasons: ["reviewed"], contexts: ["friendly"] });
+  });
+
+  it("clears both merged filters when the Context header reports null", () => {
+    const current = defaultMyReplayTablePreferences().filters;
+    current.reasons = ["played"];
+    current.contexts = ["friendly"];
+
+    expect(
+      mergeMyReplayHeaderFilters(current, { context: null })
+    ).toMatchObject({ reasons: [], contexts: [] });
   });
 });

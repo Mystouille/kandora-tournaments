@@ -327,15 +327,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     source,
     cleanGameId,
     currentUserId
-  ).catch(
-    (error) => {
-      console.error(
-        `[replay loader] connector fetch failed for ${source}/${cleanGameId}`,
-        error
-      );
-      return null;
-    }
-  );
+  ).catch((error) => {
+    console.error(
+      `[replay loader] connector fetch failed for ${source}/${cleanGameId}`,
+      error
+    );
+    return null;
+  });
   if (!fetched) {
     throw new Response(
       "Replay not yet available; it will appear after the next hydration cycle.",
@@ -380,13 +378,7 @@ export function meta({ data }: Route.MetaArgs) {
     .sort((a, b) => a.place - b.place)
     .map((s) => `${s.place}. ${s.displayName} (${s.finalScore})`)
     .join(" · ");
-  // The reviewed player is the seat the review is locked to (the
-  // player it focuses on, not the reviewer). `seat` stays null until
-  // the first edit locks it.
-  const reviewedName =
-    review && typeof review.seat === "number"
-      ? log.seats[review.seat]?.displayName
-      : undefined;
+  const reviewedName = review?.target?.name;
   const commentCount = review
     ? review.edits.filter((e) => e.text.length > 0 || e.drawingBase64).length
     : 0;
@@ -637,9 +629,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   }, [currentUserId, log.source, log.sourceGameId, review?.shortId]);
   const [recoveryPrompt, setRecoveryPrompt] =
     useState<ReviewRecoveryPrompt | null>(null);
-  const [recoveryReady, setRecoveryReady] = useState(
-    currentUserId === null
-  );
+  const [recoveryReady, setRecoveryReady] = useState(currentUserId === null);
   const recoveryStartedRef = useRef(false);
   const latestReviewDraftSnapshotRef = useRef<ReviewDraftSnapshot | null>(null);
   const storageWarningShownRef = useRef(false);
@@ -790,8 +780,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     }
     return (
       review.edits.find(
-        (edit) =>
-          edit.eventIndex === index && edit.author === currentUserId
+        (edit) => edit.eventIndex === index && edit.author === currentUserId
       ) ?? null
     );
   }, [review, currentUserId, index]);
@@ -869,8 +858,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   // the work remains unpublished.
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      hasUnpublishedWork &&
-      currentLocation.pathname !== nextLocation.pathname
+      hasUnpublishedWork && currentLocation.pathname !== nextLocation.pathname
   );
   useEffect(() => {
     if (!hasUnpublishedWork) {
@@ -1364,9 +1352,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         prev.edits,
         index
       );
-      const existingLocal = hasExistingLocal
-        ? prev.edits[index]
-        : undefined;
+      const existingLocal = hasExistingLocal ? prev.edits[index] : undefined;
       // Only the CURRENT user's own edit is a valid base — otherwise a
       // partial patch (e.g. adding text) would absorb another
       // reviewer's drawing/text at this event and re-attribute it to
@@ -2087,69 +2073,69 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           <button
             type="button"
             onClick={() => {
-            const copyToClipboard = (url: string, done: () => void): void => {
-              if (navigator.clipboard?.writeText) {
-                void navigator.clipboard.writeText(url).then(done, done);
-              } else {
-                const ta = document.createElement("textarea");
-                ta.value = url;
-                ta.setAttribute("readonly", "");
-                ta.style.position = "absolute";
-                ta.style.left = "-9999px";
-                document.body.appendChild(ta);
-                ta.select();
-                try {
-                  document.execCommand("copy");
-                } catch {
-                  /* best-effort */
-                }
-                document.body.removeChild(ta);
-                done();
-              }
-            };
-            const flashCopied = (): void => {
-              setCopied(true);
-              window.setTimeout(() => {
-                setCopied(false);
-              }, 1500);
-            };
-            // Publish path: stage exists. Push edits, then copy
-            // the freshly-built share URL.
-            if (canContributeToReview && pendingCount > 0) {
-              void publish().then((url) => {
-                if (!url) {
-                  if (!publishConflictRef.current) {
-                    message.error(t.review.cartridge.publishFailed);
+              const copyToClipboard = (url: string, done: () => void): void => {
+                if (navigator.clipboard?.writeText) {
+                  void navigator.clipboard.writeText(url).then(done, done);
+                } else {
+                  const ta = document.createElement("textarea");
+                  ta.value = url;
+                  ta.setAttribute("readonly", "");
+                  ta.style.position = "absolute";
+                  ta.style.left = "-9999px";
+                  document.body.appendChild(ta);
+                  ta.select();
+                  try {
+                    document.execCommand("copy");
+                  } catch {
+                    /* best-effort */
                   }
-                  return;
+                  document.body.removeChild(ta);
+                  done();
                 }
-                message.success(t.review.cartridge.publishedToast);
-                copyToClipboard(url, flashCopied);
-              });
-              return;
-            }
-            // Share path: build a fresh deeplink from current state.
-            let roundOrdinal = 0;
-            for (let i = 0; i < rounds.length; i++) {
-              if (rounds[i] <= index) {
-                roundOrdinal = i + 1;
+              };
+              const flashCopied = (): void => {
+                setCopied(true);
+                window.setTimeout(() => {
+                  setCopied(false);
+                }, 1500);
+              };
+              // Publish path: stage exists. Push edits, then copy
+              // the freshly-built share URL.
+              if (canContributeToReview && pendingCount > 0) {
+                void publish().then((url) => {
+                  if (!url) {
+                    if (!publishConflictRef.current) {
+                      message.error(t.review.cartridge.publishFailed);
+                    }
+                    return;
+                  }
+                  message.success(t.review.cartridge.publishedToast);
+                  copyToClipboard(url, flashCopied);
+                });
+                return;
               }
-            }
-            // Preserve the active review so the deeplink keeps
-            // surfacing the author's annotations. Without this
-            // the share button strips them and the recipient
-            // sees a clean replay even though the URL bar still
-            // shows `?review=…`.
-            const url =
-              typeof window !== "undefined"
-                ? buildReplayViewerShareUrl(window.location.href, {
-                    seat: focusSeat,
-                    round: roundOrdinal > 0 ? roundOrdinal : undefined,
-                    event: index,
-                    review: review?.shortId,
-                  })
-                : "";
-            copyToClipboard(url, flashCopied);
+              // Share path: build a fresh deeplink from current state.
+              let roundOrdinal = 0;
+              for (let i = 0; i < rounds.length; i++) {
+                if (rounds[i] <= index) {
+                  roundOrdinal = i + 1;
+                }
+              }
+              // Preserve the active review so the deeplink keeps
+              // surfacing the author's annotations. Without this
+              // the share button strips them and the recipient
+              // sees a clean replay even though the URL bar still
+              // shows `?review=…`.
+              const url =
+                typeof window !== "undefined"
+                  ? buildReplayViewerShareUrl(window.location.href, {
+                      seat: focusSeat,
+                      round: roundOrdinal > 0 ? roundOrdinal : undefined,
+                      event: index,
+                      review: review?.shortId,
+                    })
+                  : "";
+              copyToClipboard(url, flashCopied);
             }}
             disabled={publishing}
             aria-label={
@@ -2637,8 +2623,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
               ) ? (
                 <p className="m-0">{t.review.recovery.openDrawing}</p>
               ) : null}
-              {recoveryPrompt.reconciliation.conflictEventIndices.length >
-              0 ? (
+              {recoveryPrompt.reconciliation.conflictEventIndices.length > 0 ? (
                 <p className="m-0 text-amber-700 dark:text-amber-300">
                   {t.review.recovery.conflicts.replace(
                     "{events}",

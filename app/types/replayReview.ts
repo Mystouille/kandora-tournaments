@@ -15,12 +15,17 @@ export interface SerializedReviewer {
   name: string;
 }
 
+export interface SerializedReviewTarget {
+  name: string;
+}
+
 export interface SerializedReview {
   shortId: string;
   source: ReplaySource;
   sourceGameId: string;
   createdBy: string;
   seat: number | null;
+  target?: SerializedReviewTarget;
   reviewers: SerializedReviewer[];
   edits: SerializedReviewEdit[];
 }

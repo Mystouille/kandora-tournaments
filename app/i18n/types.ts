@@ -1040,6 +1040,7 @@ export interface Translations extends CoreTranslations {
       created: string;
       played: string;
       commented: string;
+      reviewed: string;
     };
     links: {
       replay: string;

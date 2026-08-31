@@ -21,6 +21,7 @@ interface ReviewDocumentLike {
   sourceGameId: string;
   createdBy: unknown;
   seat?: number | null;
+  target?: { user?: unknown; name?: string } | null;
   reviewers?: Array<{ user: unknown; name?: string }>;
   edits?: ReviewEditLike[];
 }
@@ -120,6 +121,13 @@ export function serializeReview(
     sourceGameId: doc.sourceGameId,
     createdBy: String(doc.createdBy),
     seat: typeof doc.seat === "number" ? doc.seat : null,
+    ...(doc.target?.name
+      ? {
+          target: {
+            name: doc.target.name,
+          },
+        }
+      : {}),
     reviewers,
     edits: (doc.edits ?? []).map((edit) =>
       serializeReviewEdit(edit, doc.createdBy, reviewers)

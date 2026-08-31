@@ -22,7 +22,7 @@ const groups: MyReplayGroup[] = [
         key: "review:older",
         shortId: "older",
         reviewedPlayerName: "Alice",
-        reasons: ["commented"],
+        reasons: ["commented", "reviewed"],
         lastModified: 2_500,
         commentCount: 2,
         reviewUrl: "/watch/replay/newer?review=older",
@@ -169,5 +169,15 @@ describe("My Replays hierarchy filters", () => {
       "unknown-date",
     ]);
     expect(commented[0].reviews).toHaveLength(2);
+
+    const reviewed = filterAndSortMyReplayGroups(
+      groups,
+      { ...EMPTY_MY_REPLAY_FILTERS, reasons: ["reviewed"] },
+      DEFAULT_MY_REPLAY_SORT
+    );
+    expect(reviewed.map((group) => group.sourceGameId)).toEqual(["newer"]);
+    expect(reviewed[0].reviews.map((review) => review.shortId)).toEqual([
+      "older",
+    ]);
   });
 });

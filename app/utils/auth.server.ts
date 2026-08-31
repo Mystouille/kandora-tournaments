@@ -4,6 +4,7 @@ import { GameModel } from "~/core/models/tournament/Game";
 import { TeamModel } from "~/core/models/tournament/Team";
 import { RankingModel } from "~/core/models/tournament/Ranking";
 import { ClubSessionModel } from "~/core/models/portal/ClubSession";
+import { ReplayReviewModel } from "~/core/models/game/ReplayReview";
 import { connectToDatabase } from "./dbConnection.server";
 
 export class AuthService {
@@ -327,6 +328,11 @@ export class AuthService {
       { "participants.userId": srcId },
       { $set: { "participants.$[elem].userId": tgtId } },
       { arrayFilters: [{ "elem.userId": srcId }] }
+    );
+
+    await ReplayReviewModel.updateMany(
+      { "target.user": srcId },
+      { $set: { "target.user": tgtId } }
     );
 
     // Delete the source user

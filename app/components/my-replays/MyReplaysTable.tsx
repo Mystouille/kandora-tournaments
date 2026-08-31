@@ -42,6 +42,8 @@ import {
   defaultMyReplayTablePreferences,
   fitMyReplayColumns,
   mergeMyReplayHeaderFilters,
+  myReplayContextFilterValue,
+  myReplayReasonFilterValue,
   parseMyReplayTablePreferences,
   resolveMyReplayColumnWidths,
   type MyReplayColumnKey,
@@ -67,6 +69,7 @@ const REASON_DISPLAY_ORDER: MyReplayReason[] = [
   "created",
   "played",
   "commented",
+  "reviewed",
 ];
 
 export const MY_REPLAY_HEADER_TEXT_STYLE = {
@@ -410,11 +413,13 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
     created: t.myReplays.reasons.created,
     played: t.myReplays.reasons.played,
     commented: t.myReplays.reasons.commented,
+    reviewed: t.myReplays.reasons.reviewed,
   };
   const reasonColors: Record<MyReplayReason, string> = {
     created: "blue",
     played: "green",
     commented: "magenta",
+    reviewed: "orange",
   };
   const columnLabels: Record<MyReplayColumnKey, string> = {
     gameDate: t.myReplays.columns.gameDate,
@@ -422,7 +427,6 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
     platform: t.myReplays.columns.platform,
     context: t.myReplays.columns.context,
     ruleset: t.myReplays.columns.ruleset,
-    reason: t.myReplays.columns.reason,
     lastModified: t.myReplays.columns.lastModified,
     comments: t.myReplays.columns.comments,
   };
@@ -629,23 +633,46 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       dataIndex: ["context", "kind"],
       key: "context",
       width: columnWidths.context,
-      filters: contextOptions,
-      filteredValue: filters.contexts,
+      filters: [
+        ...REASON_DISPLAY_ORDER.map((reason) => ({
+          text: `${t.myReplays.columns.reason}: ${reasonLabels[reason]}`,
+          value: myReplayReasonFilterValue(reason),
+        })),
+        ...contextOptions.map(({ text, value }) => ({
+          text: `${t.myReplays.columns.context}: ${text}`,
+          value: myReplayContextFilterValue(value),
+        })),
+      ],
+      filteredValue: [
+        ...filters.reasons.map(myReplayReasonFilterValue),
+        ...filters.contexts.map(myReplayContextFilterValue),
+      ],
       onFilter: () => true,
       render: (_value: string, row) => (
         <Space direction="vertical" size={2}>
-          <Tag
-            color={
-              row.context.kind === "friendly"
-                ? "green"
-                : row.context.kind === "tournament"
-                  ? "gold"
-                  : "blue"
-            }
-            style={{ margin: 0 }}
-          >
-            {contextLabels[row.context.kind]}
-          </Tag>
+          <Space size={[4, 4]} wrap>
+            {row.reasons.map((reason) => (
+              <Tag
+                key={reason}
+                color={reasonColors[reason]}
+                style={{ margin: 0 }}
+              >
+                {reasonLabels[reason]}
+              </Tag>
+            ))}
+            <Tag
+              color={
+                row.context.kind === "friendly"
+                  ? "green"
+                  : row.context.kind === "tournament"
+                    ? "gold"
+                    : "blue"
+              }
+              style={{ margin: 0 }}
+            >
+              {contextLabels[row.context.kind]}
+            </Tag>
+          </Space>
           {row.context.tournamentName && row.context.tournamentUrl ? (
             <Link to={row.context.tournamentUrl}>
               {row.context.tournamentName}
@@ -667,28 +694,6 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       filteredValue: filters.rulesets,
       onFilter: () => true,
       render: (_value: string, row) => displayRuleset(row.ruleset),
-    },
-    {
-      title: <ColumnHeaderText label={columnLabels.reason} />,
-      dataIndex: "reasons",
-      key: "reason",
-      width: columnWidths.reason,
-      filters: REASON_DISPLAY_ORDER.map((reason) => ({
-        text: reasonLabels[reason],
-        value: reason,
-      })),
-      filteredValue: filters.reasons,
-      onFilter: () => true,
-      render: (reasons: MyReplayReason[]) =>
-        reasons.length > 0 ? (
-          <Space size={[0, 4]} wrap>
-            {reasons.map((reason) => (
-              <Tag key={reason} color={reasonColors[reason]}>
-                {reasonLabels[reason]}
-              </Tag>
-            ))}
-          </Space>
-        ) : null,
     },
     {
       title: <ColumnHeaderText label={columnLabels.lastModified} />,

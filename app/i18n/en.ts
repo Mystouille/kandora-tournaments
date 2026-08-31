@@ -1140,6 +1140,7 @@ export const en: Translations = {
       created: "Created",
       played: "Played",
       commented: "Commented",
+      reviewed: "Reviewed",
     },
     links: {
       replay: "Replay",

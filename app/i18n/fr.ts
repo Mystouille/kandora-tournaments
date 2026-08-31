@@ -172,8 +172,7 @@ export const fr: Translations = {
     },
     linkDiscord: "Connecter Discord",
     backToTournaments: "Retour aux tournois",
-    oauthError:
-      "La connexion Discord n'a pas pu démarrer. Veuillez réessayer.",
+    oauthError: "La connexion Discord n'a pas pu démarrer. Veuillez réessayer.",
   },
 
   // Page de vérification d'e-mail
@@ -751,7 +750,7 @@ export const fr: Translations = {
       deleteTournament: "Supprimer le tournoi",
       deleteTournamentDescription:
         "Supprimer définitivement ce tournoi et ses données non révisées.",
-      deleteTournamentModalTitle: 'Supprimer « {name} » ?',
+      deleteTournamentModalTitle: "Supprimer « {name} » ?",
       deleteTournamentIrreversible: "Cette action est irréversible.",
       deleteTournamentWarning:
         "Tous les relevés de partie sans aucune revue et toutes les données des utilisateurs non inscrits qui ne sont liés à aucun autre tournoi seront définitivement supprimés. Les parties avec une revue seront conservées.",
@@ -1165,6 +1164,7 @@ export const fr: Translations = {
       created: "Créé",
       played: "Joué",
       commented: "Commenté",
+      reviewed: "Analysé",
     },
     links: {
       replay: "Replay",

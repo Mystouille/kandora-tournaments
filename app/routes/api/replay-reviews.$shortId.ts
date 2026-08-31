@@ -10,7 +10,12 @@ import {
   serializeReviewEdit,
 } from "../../services/replayReview.server";
 import { notifyReviewContributors } from "../../services/replayReviewNotification.server";
+import {
+  resolveReplayReviewTarget,
+  type ResolvedReplayReviewTarget,
+} from "../../services/replayReviewTarget.server";
 import type { SerializedReviewer } from "../../types/replayReview";
+import type { ReplaySource } from "../../game/replay/types";
 
 /**
  * `GET /api/replay-reviews/:shortId` — fetch a review by its public
@@ -163,6 +168,26 @@ export async function action({
     doc.markModified("seat");
   };
 
+  const storedTarget = (): { name?: string } | null | undefined =>
+    (doc as unknown as { target?: { name?: string } | null }).target;
+  const setTarget = (target: ResolvedReplayReviewTarget | undefined): void => {
+    doc.set("target", target);
+    doc.markModified("target");
+  };
+  const ensureTarget = async (seat: number): Promise<void> => {
+    if (storedTarget()?.name) {
+      return;
+    }
+    const target = await resolveReplayReviewTarget({
+      source: doc.source as ReplaySource,
+      sourceGameId: doc.sourceGameId,
+      seat,
+    });
+    if (target) {
+      setTarget(target);
+    }
+  };
+
   const responseReviewers = async (): Promise<SerializedReviewer[]> =>
     resolveReviewersForDoc(doc);
 
@@ -206,6 +231,9 @@ export async function action({
       doc.edits.splice(existingIdx, 1);
       if (doc.edits.length === 0) {
         setSeat(null);
+        setTarget(undefined);
+      } else if (docSeat !== null) {
+        await ensureTarget(docSeat);
       }
       await doc.save();
       deleted = true;
@@ -226,11 +254,7 @@ export async function action({
     });
   }
 
-  if (
-    docSeat !== null &&
-    requestedSeat !== null &&
-    requestedSeat !== docSeat
-  ) {
+  if (docSeat !== null && requestedSeat !== null && requestedSeat !== docSeat) {
     return Response.json(
       { ok: false, error: "seat-locked", seat: docSeat },
       { status: 409 }
@@ -376,6 +400,12 @@ export async function action({
 
   if (doc.edits.length === 0) {
     setSeat(null);
+    setTarget(undefined);
+  } else {
+    const effectiveSeat = docSeat ?? requestedSeat;
+    if (effectiveSeat !== null) {
+      await ensureTarget(effectiveSeat);
+    }
   }
 
   if (contributed) {
@@ -425,9 +455,7 @@ export async function action({
   return Response.json({
     ok: true,
     seat: finalSeat,
-    edit: stored
-      ? serializeReviewEdit(stored, doc.createdBy, reviewers)
-      : null,
+    edit: stored ? serializeReviewEdit(stored, doc.createdBy, reviewers) : null,
     reviewers,
   });
 }

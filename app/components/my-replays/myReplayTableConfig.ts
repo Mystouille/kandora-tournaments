@@ -15,7 +15,6 @@ export const MY_REPLAY_COLUMN_DISPLAY_ORDER = [
   "platform",
   "links",
   "ruleset",
-  "reason",
   "lastModified",
   "comments",
 ] as const;
@@ -28,7 +27,6 @@ const MY_REPLAY_COLUMN_PRIORITY: MyReplayColumnKey[] = [
   "context",
   "platform",
   "ruleset",
-  "reason",
   "comments",
   "lastModified",
 ];
@@ -37,9 +35,8 @@ export const MY_REPLAY_COLUMN_WIDTH: Record<MyReplayColumnKey, number> = {
   gameDate: 220,
   links: 190,
   platform: 125,
-  context: 160,
+  context: 200,
   ruleset: 145,
-  reason: 180,
   lastModified: 180,
   comments: 90,
 };
@@ -52,7 +49,6 @@ const HEADER_CONTROL_WIDTH: Record<MyReplayColumnKey, number> = {
   platform: 24,
   links: 0,
   ruleset: 24,
-  reason: 24,
   lastModified: 44,
   comments: 0,
 };
@@ -65,8 +61,25 @@ const REPLAY_SOURCES: ReplaySource[] = [
   "tenhou",
   "riichicity",
 ];
-const REASONS: MyReplayReason[] = ["created", "played", "commented"];
+const REASONS: MyReplayReason[] = [
+  "created",
+  "played",
+  "commented",
+  "reviewed",
+];
 const CONTEXTS: MyReplayContextKind[] = ["friendly", "tournament", "external"];
+const CONTEXT_FILTER_PREFIX = "context:";
+const REASON_FILTER_PREFIX = "reason:";
+
+export function myReplayContextFilterValue(
+  context: MyReplayContextKind
+): string {
+  return `${CONTEXT_FILTER_PREFIX}${context}`;
+}
+
+export function myReplayReasonFilterValue(reason: MyReplayReason): string {
+  return `${REASON_FILTER_PREFIX}${reason}`;
+}
 
 export interface MyReplayTablePreferences {
   filters: MyReplayFilters;
@@ -99,7 +112,7 @@ export function resolveMyReplayColumnWidths(
   ) as Record<MyReplayColumnKey, number>;
 }
 
-type HeaderFilterKey = "platform" | "context" | "ruleset" | "reason";
+type HeaderFilterKey = "platform" | "context" | "ruleset";
 type HeaderFilterValues = Partial<
   Record<HeaderFilterKey, readonly unknown[] | null>
 >;
@@ -256,17 +269,34 @@ export function mergeMyReplayHeaderFilters(
 ): MyReplayFilters {
   const has = (key: HeaderFilterKey): boolean =>
     Object.prototype.hasOwnProperty.call(reported, key);
+  const combinedContextValues = has("context")
+    ? stringArray(reported.context)
+    : null;
+  const combinedContexts = combinedContextValues
+    ? allowedStrings(
+        combinedContextValues.map((value) =>
+          value.startsWith(CONTEXT_FILTER_PREFIX)
+            ? value.slice(CONTEXT_FILTER_PREFIX.length)
+            : value
+        ),
+        CONTEXTS
+      )
+    : null;
+  const combinedReasons = combinedContextValues
+    ? allowedStrings(
+        combinedContextValues
+          .filter((value) => value.startsWith(REASON_FILTER_PREFIX))
+          .map((value) => value.slice(REASON_FILTER_PREFIX.length)),
+        REASONS
+      )
+    : null;
   return {
     ...current,
     platforms: has("platform")
       ? allowedStrings(reported.platform, REPLAY_SOURCES)
       : current.platforms,
-    contexts: has("context")
-      ? allowedStrings(reported.context, CONTEXTS)
-      : current.contexts,
+    contexts: combinedContexts ?? current.contexts,
     rulesets: has("ruleset") ? stringArray(reported.ruleset) : current.rulesets,
-    reasons: has("reason")
-      ? allowedStrings(reported.reason, REASONS)
-      : current.reasons,
+    reasons: combinedReasons ?? current.reasons,
   };
 }

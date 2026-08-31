@@ -1,7 +1,7 @@
 import type { ReplaySource } from "~/game/replay/types";
 
 export type MyReplayContextKind = "friendly" | "tournament" | "external";
-export type MyReplayReason = "created" | "played" | "commented";
+export type MyReplayReason = "created" | "played" | "commented" | "reviewed";
 
 export interface MyReplayContext {
   kind: MyReplayContextKind;

@@ -32,7 +32,6 @@ interface ReplayLogListDocument {
   endedAt: number;
   creationTriggeredBy?: mongoose.Types.ObjectId;
   seats?: Array<{
-    seat: number;
     userDbId?: mongoose.Types.ObjectId;
     displayName: string;
   }>;
@@ -42,9 +41,13 @@ interface ReviewListDocument {
   shortId: string;
   source: ReplaySource;
   sourceGameId: string;
+  target?: {
+    user?: mongoose.Types.ObjectId;
+    name: string;
+  };
+  commentedByUser: boolean;
   updatedAt?: Date;
   createdAt?: Date;
-  seat?: number | null;
   commentCount: number;
 }
 
@@ -76,7 +79,8 @@ interface ReplaySeed {
   reasons: Set<MyReplayReason>;
 }
 
-const REPLAY_REASON_ORDER: MyReplayReason[] = ["created", "played"];
+const PARENT_REASON_ORDER: MyReplayReason[] = ["created", "played"];
+const REVIEW_REASON_ORDER: MyReplayReason[] = ["commented", "reviewed"];
 
 const SOURCE_LABELS: Record<ReplaySource, string> = {
   ingame: "Kandora",
@@ -248,7 +252,7 @@ export async function getMyReplays(
     }
   }
 
-  const [directReplays, matches, reviews] = await Promise.all([
+  const [directReplays, matches] = await Promise.all([
     ReplayLogModel.find(
       { $or: replayRelations },
       {
@@ -258,7 +262,6 @@ export async function getMyReplays(
         startedAt: 1,
         endedAt: 1,
         creationTriggeredBy: 1,
-        "seats.seat": 1,
         "seats.userDbId": 1,
         "seats.displayName": 1,
       }
@@ -271,37 +274,70 @@ export async function getMyReplays(
     )
       .lean<MatchListDocument[]>()
       .exec(),
-    ReplayReviewModel.aggregate<ReviewListDocument>([
-      {
-        $match: {
-          $or: [
-            { "reviewers.user": userObjectId },
-            { "edits.author": userObjectId },
-            {
-              createdBy: userObjectId,
-              edits: {
-                $elemMatch: {
-                  $or: [{ author: { $exists: false } }, { author: null }],
-                },
+  ]);
+
+  const reviews = await ReplayReviewModel.aggregate<ReviewListDocument>([
+    {
+      $match: {
+        $or: [
+          { "reviewers.user": userObjectId },
+          { "edits.author": userObjectId },
+          { "target.user": userObjectId },
+          {
+            createdBy: userObjectId,
+            edits: {
+              $elemMatch: {
+                $or: [{ author: { $exists: false } }, { author: null }],
               },
+            },
+          },
+        ],
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        shortId: 1,
+        source: 1,
+        sourceGameId: 1,
+        target: 1,
+        commentedByUser: {
+          $or: [
+            {
+              $in: [userObjectId, { $ifNull: ["$reviewers.user", []] }],
+            },
+            {
+              $in: [userObjectId, { $ifNull: ["$edits.author", []] }],
+            },
+            {
+              $and: [
+                { $eq: ["$createdBy", userObjectId] },
+                {
+                  $gt: [
+                    {
+                      $size: {
+                        $filter: {
+                          input: { $ifNull: ["$edits", []] },
+                          as: "edit",
+                          cond: {
+                            $eq: [{ $ifNull: ["$$edit.author", null] }, null],
+                          },
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+              ],
             },
           ],
         },
+        updatedAt: 1,
+        createdAt: 1,
+        commentCount: { $size: { $ifNull: ["$edits", []] } },
       },
-      {
-        $project: {
-          _id: 0,
-          shortId: 1,
-          source: 1,
-          sourceGameId: 1,
-          updatedAt: 1,
-          createdAt: 1,
-          seat: 1,
-          commentCount: { $size: { $ifNull: ["$edits", []] } },
-        },
-      },
-    ]).exec(),
-  ]);
+    },
+  ]).exec();
 
   const replayByKey = new Map(
     directReplays.map((replay) => [
@@ -334,8 +370,25 @@ export async function getMyReplays(
     matchByKey.set(key, match);
     addSeed(seeds, "ingame", match._id, "played");
   }
+  const reasonsByReviewId = new Map<string, MyReplayReason[]>();
   for (const review of reviews) {
-    addSeed(seeds, review.source, review.sourceGameId, "commented");
+    const reasonSet = new Set<MyReplayReason>();
+    if (review.commentedByUser) {
+      reasonSet.add("commented");
+    }
+    if (String(review.target?.user ?? "") === userId) {
+      reasonSet.add("reviewed");
+    }
+    const reasons = REVIEW_REASON_ORDER.filter((reason) =>
+      reasonSet.has(reason)
+    );
+    if (reasons.length === 0) {
+      continue;
+    }
+    reasonsByReviewId.set(review.shortId, reasons);
+    for (const reason of reasons) {
+      addSeed(seeds, review.source, review.sourceGameId, reason);
+    }
   }
 
   const missingReplayFilters = [...seeds.values()]
@@ -353,7 +406,6 @@ export async function getMyReplays(
         ruleSet: 1,
         startedAt: 1,
         endedAt: 1,
-        "seats.seat": 1,
         "seats.displayName": 1,
       }
     )
@@ -442,21 +494,19 @@ export async function getMyReplays(
 
   const reviewsByKey = new Map<string, MyReplayReview[]>();
   for (const review of reviews) {
+    const reasons = reasonsByReviewId.get(review.shortId);
+    if (!reasons) {
+      continue;
+    }
     const key = replayKey(review.source, review.sourceGameId);
     const gameReplayUrl = replayUrl(review.sourceGameId);
-    const reviewedPlayerName =
-      typeof review.seat === "number"
-        ? replayByKey
-            .get(key)
-            ?.seats?.find((seat) => seat.seat === review.seat)
-            ?.displayName.trim() || null
-        : null;
+    const reviewedPlayerName = review.target?.name.trim() || null;
     const rows = reviewsByKey.get(key) ?? [];
     rows.push({
       key: `review:${review.shortId}`,
       shortId: review.shortId,
       reviewedPlayerName,
-      reasons: ["commented"],
+      reasons,
       lastModified: asTimestamp(review.updatedAt ?? review.createdAt),
       commentCount: review.commentCount,
       reviewUrl: `${gameReplayUrl}?${new URLSearchParams({
@@ -490,7 +540,7 @@ export async function getMyReplays(
       key,
       source: seed.source,
       sourceGameId: seed.sourceGameId,
-      reasons: REPLAY_REASON_ORDER.filter((reason) => seed.reasons.has(reason)),
+      reasons: PARENT_REASON_ORDER.filter((reason) => seed.reasons.has(reason)),
       gameDate,
       context: resolveContext(seed.source, game, league),
       ruleset: resolveRuleset(seed.source, replay, match, game),

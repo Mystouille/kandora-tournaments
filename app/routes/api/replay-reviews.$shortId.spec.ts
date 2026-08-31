@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getAuthenticatedUser: vi.fn(),
   findReview: vi.fn(),
   findUser: vi.fn(),
+  resolveReplayReviewTarget: vi.fn(),
   notifyReviewContributors: vi.fn(),
 }));
 
@@ -23,6 +24,9 @@ vi.mock("../../core/models/shared/User", () => ({
 }));
 vi.mock("../../services/replayReviewNotification.server", () => ({
   notifyReviewContributors: mocks.notifyReviewContributors,
+}));
+vi.mock("../../services/replayReviewTarget.server", () => ({
+  resolveReplayReviewTarget: mocks.resolveReplayReviewTarget,
 }));
 
 import { action, loader } from "./replay-reviews.$shortId";
@@ -49,22 +53,32 @@ function objectId(value: string): mongoose.Types.ObjectId {
 
 function makeReview(options?: {
   seat?: number | null;
+  target?: { user?: mongoose.Types.ObjectId; name: string };
   edits?: FakeEdit[];
   reviewers?: FakeReviewer[];
 }) {
+  const seat = options?.seat === undefined ? 0 : options.seat;
   const review = {
     shortId: "Review1234",
     source: "tenhou",
     sourceGameId: "2026081100gm-test",
     createdBy: objectId(CREATOR_ID),
-    seat: options?.seat === undefined ? 0 : options.seat,
+    seat,
+    target:
+      options && Object.prototype.hasOwnProperty.call(options, "target")
+        ? options.target
+        : seat === null
+          ? undefined
+          : { name: "Existing Target" },
     edits: options?.edits ?? [],
-    reviewers:
-      options?.reviewers ??
-      [{ user: objectId(CREATOR_ID), name: "Creator" }],
+    reviewers: options?.reviewers ?? [
+      { user: objectId(CREATOR_ID), name: "Creator" },
+    ],
     set: vi.fn((key: string, value: unknown) => {
       if (key === "seat") {
         review.seat = value as number | null;
+      } else if (key === "target") {
+        review.target = value as typeof review.target;
       }
     }),
     markModified: vi.fn(),
@@ -107,6 +121,7 @@ describe("replay review collaboration", () => {
       }),
     });
     mocks.notifyReviewContributors.mockResolvedValue(undefined);
+    mocks.resolveReplayReviewTarget.mockResolvedValue({ name: "Target Name" });
   });
 
   it("lets anonymous viewers read a shared review with author metadata", async () => {
@@ -124,7 +139,10 @@ describe("replay review collaboration", () => {
     const response = await loader({ params: { shortId: "Review1234" } });
     const data = (await response.json()) as {
       ok: boolean;
-      review: { edits: Array<Record<string, unknown>> };
+      review: {
+        target?: { name: string };
+        edits: Array<Record<string, unknown>>;
+      };
     };
 
     expect(response.status).toBe(200);
@@ -136,6 +154,7 @@ describe("replay review collaboration", () => {
       colorIndex: 0,
       text: "Creator note",
     });
+    expect(data.review.target).toEqual({ name: "Existing Target" });
     expect(mocks.getAuthenticatedUser).not.toHaveBeenCalled();
   });
 
@@ -229,9 +248,7 @@ describe("replay review collaboration", () => {
           updatedAt,
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
@@ -257,9 +274,7 @@ describe("replay review collaboration", () => {
           updatedAt,
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
@@ -292,9 +307,7 @@ describe("replay review collaboration", () => {
           updatedAt,
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
@@ -321,9 +334,7 @@ describe("replay review collaboration", () => {
           drawing,
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
@@ -349,9 +360,7 @@ describe("replay review collaboration", () => {
           drawing: Buffer.from([1, 2, 3]),
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
@@ -433,9 +442,7 @@ describe("replay review collaboration", () => {
           updatedAt,
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
@@ -461,9 +468,7 @@ describe("replay review collaboration", () => {
           text: "Contributor note",
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
@@ -570,7 +575,36 @@ describe("replay review collaboration", () => {
     expect(response.status).toBe(200);
     expect(review.edits).toHaveLength(0);
     expect(review.seat).toBeNull();
+    expect(review.target).toBeUndefined();
     expect(data.seat).toBeNull();
+  });
+
+  it("stores the resolved target when the first edit locks the seat", async () => {
+    const targetUserId = objectId("64b000000000000000000003");
+    const review = makeReview({ seat: null });
+    mocks.findReview.mockResolvedValue(review);
+    mocks.resolveReplayReviewTarget.mockResolvedValue({
+      user: targetUserId,
+      name: "Canonical Target",
+    });
+
+    const { response } = await mutate({
+      eventIndex: 10,
+      text: "First note",
+      seat: 2,
+    });
+
+    expect(response.status).toBe(200);
+    expect(review.seat).toBe(2);
+    expect(review.target).toEqual({
+      user: targetUserId,
+      name: "Canonical Target",
+    });
+    expect(mocks.resolveReplayReviewTarget).toHaveBeenCalledWith({
+      source: "tenhou",
+      sourceGameId: "2026081100gm-test",
+      seat: 2,
+    });
   });
 
   it("rejects a stale deletion without removing the newer edit", async () => {
@@ -583,9 +617,7 @@ describe("replay review collaboration", () => {
           updatedAt: new Date("2026-08-26T10:05:00.000Z"),
         },
       ],
-      reviewers: [
-        { user: objectId(CONTRIBUTOR_ID), name: "Contributor" },
-      ],
+      reviewers: [{ user: objectId(CONTRIBUTOR_ID), name: "Contributor" }],
     });
     mocks.findReview.mockResolvedValue(review);
 
