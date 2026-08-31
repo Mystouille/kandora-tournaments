@@ -11,7 +11,7 @@ const groups: MyReplayGroup[] = [
     key: "tenhou:newer",
     source: "tenhou",
     sourceGameId: "newer",
-    reasons: ["created", "played", "commented"],
+    reasons: ["created", "played"],
     gameDate: 2_000,
     context: { kind: "tournament", tournamentName: "Cup" },
     ruleset: { id: "wrc", label: "WRC" },
@@ -21,19 +21,19 @@ const groups: MyReplayGroup[] = [
       {
         key: "review:older",
         shortId: "older",
+        reviewedPlayerName: "Alice",
         reasons: ["commented"],
         lastModified: 2_500,
         commentCount: 2,
-        replayUrl: "/watch/replay/newer",
         reviewUrl: "/watch/replay/newer?review=older",
       },
       {
         key: "review:newest",
         shortId: "newest",
+        reviewedPlayerName: "Alice",
         reasons: ["commented"],
         lastModified: 4_000,
         commentCount: 3,
-        replayUrl: "/watch/replay/newer",
         reviewUrl: "/watch/replay/newer?review=newest",
       },
     ],
@@ -64,10 +64,10 @@ const groups: MyReplayGroup[] = [
       {
         key: "review:undated",
         shortId: "undated",
+        reviewedPlayerName: null,
         reasons: ["commented"],
         lastModified: null,
         commentCount: 1,
-        replayUrl: "/watch/replay/unknown-date",
         reviewUrl: "/watch/replay/unknown-date?review=undated",
       },
     ],
@@ -75,15 +75,16 @@ const groups: MyReplayGroup[] = [
 ];
 
 describe("My Replays hierarchy filters", () => {
-  it("retains replay parents for review-only matches", () => {
+  it("retains replay parents and their review relationships", () => {
     const result = filterAndSortMyReplayGroups(
       groups,
-      { ...EMPTY_MY_REPLAY_FILTERS, rowTypes: ["review"] },
+      EMPTY_MY_REPLAY_FILTERS,
       DEFAULT_MY_REPLAY_SORT
     );
 
     expect(result.map((group) => group.sourceGameId)).toEqual([
       "newer",
+      "older",
       "unknown-date",
     ]);
     expect(result[0].reviews).toHaveLength(2);

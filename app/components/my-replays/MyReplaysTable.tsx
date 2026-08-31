@@ -1,11 +1,24 @@
-import { useMemo, useState } from "react";
-import { Button, Empty, Input, Space, Table, Tag, Typography } from "antd";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Button,
+  Checkbox,
+  Empty,
+  Input,
+  Popover,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
 import type { TableColumnsType, TableProps } from "antd";
-import type { FilterDropdownProps, FilterValue } from "antd/es/table/interface";
+import type { FilterDropdownProps } from "antd/es/table/interface";
 import {
   CalendarOutlined,
+  ClearOutlined,
   CommentOutlined,
   EyeOutlined,
+  TableOutlined,
 } from "@ant-design/icons";
 import { Link } from "react-router";
 import { useLocale } from "~/contexts/LocaleContext";
@@ -19,16 +32,23 @@ import type {
 import type { ReplaySource } from "~/game/replay/types";
 import {
   DEFAULT_MY_REPLAY_SORT,
-  EMPTY_MY_REPLAY_FILTERS,
   filterAndSortMyReplayGroups,
   type MyReplayFilters,
-  type MyReplayRowType,
   type MyReplaySort,
 } from "./myReplayRows";
+import {
+  MY_REPLAY_COLUMN_DISPLAY_ORDER,
+  MY_REPLAY_TABLE_STORAGE_KEY,
+  defaultMyReplayTablePreferences,
+  fitMyReplayColumns,
+  mergeMyReplayHeaderFilters,
+  parseMyReplayTablePreferences,
+  resolveMyReplayColumnWidths,
+  type MyReplayColumnKey,
+} from "./myReplayTableConfig";
 
 interface MyReplayTableRow {
   key: string;
-  rowType: MyReplayRowType;
   reasons: MyReplayReason[];
   gameDate: number | null;
   source: ReplaySource;
@@ -36,21 +56,12 @@ interface MyReplayTableRow {
   ruleset: MyReplayRuleset;
   replayUrl: string;
   reviewUrl?: string;
+  reviewedPlayerName?: string | null;
   lastModified: number | null;
   commentCount: number;
+  treeBranch?: "middle" | "last";
   children?: MyReplayTableRow[];
 }
-
-export const MY_REPLAY_COLUMN_MIN_BREAKPOINT = {
-  links: "sm",
-  platform: "md",
-  type: "md",
-  reason: "md",
-  context: "lg",
-  ruleset: "lg",
-  comments: "lg",
-  lastModified: "xl",
-} as const;
 
 const REASON_DISPLAY_ORDER: MyReplayReason[] = [
   "created",
@@ -58,10 +69,49 @@ const REASON_DISPLAY_ORDER: MyReplayReason[] = [
   "commented",
 ];
 
-function toTableRows(groups: MyReplayGroup[]): MyReplayTableRow[] {
+export const MY_REPLAY_HEADER_TEXT_STYLE = {
+  display: "inline-block",
+  maxWidth: "100%",
+  whiteSpace: "normal",
+  overflowWrap: "normal",
+  wordBreak: "normal",
+  hyphens: "none",
+  lineHeight: 1.2,
+} as const;
+
+function ColumnHeaderText({ label }: { label: string }) {
+  return <span style={MY_REPLAY_HEADER_TEXT_STYLE}>{label}</span>;
+}
+
+export function myReplayLinkForRow(
+  row: Pick<MyReplayTableRow, "replayUrl" | "reviewUrl" | "reviewedPlayerName">
+):
+  | { kind: "replay"; url: string }
+  | { kind: "review"; url: string; reviewedPlayerName: string | null } {
+  if (row.reviewUrl) {
+    return {
+      kind: "review",
+      url: row.reviewUrl,
+      reviewedPlayerName: row.reviewedPlayerName ?? null,
+    };
+  }
+  return { kind: "replay", url: row.replayUrl };
+}
+
+export function reviewLinkLabel(
+  template: string,
+  reviewedPlayerName: string | null,
+  unknownPlayerName: string
+): string {
+  return template.replace(
+    "{username}",
+    reviewedPlayerName ?? unknownPlayerName
+  );
+}
+
+export function toTableRows(groups: MyReplayGroup[]): MyReplayTableRow[] {
   return groups.map((group) => ({
     key: group.key,
-    rowType: "replay",
     reasons: group.reasons,
     gameDate: group.gameDate,
     source: group.source,
@@ -70,24 +120,25 @@ function toTableRows(groups: MyReplayGroup[]): MyReplayTableRow[] {
     replayUrl: group.replayUrl,
     lastModified: null,
     commentCount: group.commentCount,
-    children: group.reviews.map((review) => ({
-      key: review.key,
-      rowType: "review",
-      reasons: review.reasons,
-      gameDate: group.gameDate,
-      source: group.source,
-      context: group.context,
-      ruleset: group.ruleset,
-      replayUrl: review.replayUrl,
-      reviewUrl: review.reviewUrl,
-      lastModified: review.lastModified,
-      commentCount: review.commentCount,
-    })),
+    ...(group.reviews.length > 0
+      ? {
+          children: group.reviews.map((review, index) => ({
+            key: review.key,
+            reasons: review.reasons,
+            gameDate: group.gameDate,
+            source: group.source,
+            context: group.context,
+            ruleset: group.ruleset,
+            replayUrl: group.replayUrl,
+            reviewUrl: review.reviewUrl,
+            reviewedPlayerName: review.reviewedPlayerName,
+            lastModified: review.lastModified,
+            commentCount: review.commentCount,
+            treeBranch: index === group.reviews.length - 1 ? "last" : "middle",
+          })),
+        }
+      : {}),
   }));
-}
-
-function stringFilterValues(value: FilterValue | null): string[] {
-  return value?.map(String) ?? [];
 }
 
 function dateInputValue(timestamp: number): string {
@@ -96,6 +147,57 @@ function dateInputValue(timestamp: number): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function DateTimeText({ value }: { value: string }) {
+  return (
+    <span
+      title={value}
+      style={{
+        display: "block",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
+function ReplayTreeBranch({ position }: { position: "middle" | "last" }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        position: "relative",
+        alignSelf: "stretch",
+        flex: "0 0 20px",
+        minHeight: 20,
+        marginRight: 6,
+        opacity: 0.35,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          left: 4,
+          top: -17,
+          bottom: position === "last" ? "50%" : -17,
+          borderLeft: "1px solid currentColor",
+        }}
+      />
+      <span
+        style={{
+          position: "absolute",
+          left: 4,
+          top: "50%",
+          width: 14,
+          borderTop: "1px solid currentColor",
+        }}
+      />
+    </span>
+  );
 }
 
 function DateRangeFilter({
@@ -119,6 +221,11 @@ function DateRangeFilter({
   const [end, setEnd] = useState(value ? dateInputValue(value[1]) : "");
   const hasCompleteRange = Boolean(start && end);
   const hasPartialRange = Boolean(start || end) && !hasCompleteRange;
+
+  useEffect(() => {
+    setStart(value ? dateInputValue(value[0]) : "");
+    setEnd(value ? dateInputValue(value[1]) : "");
+  }, [value]);
 
   return (
     <Space direction="vertical" size={12} style={{ padding: 12 }}>
@@ -170,12 +277,123 @@ function DateRangeFilter({
   );
 }
 
+function DateRangeControl({
+  label,
+  value,
+  startLabel,
+  endLabel,
+  resetLabel,
+  applyLabel,
+  onChange,
+}: {
+  label: string;
+  value: [number, number] | null;
+  startLabel: string;
+  endLabel: string;
+  resetLabel: string;
+  applyLabel: string;
+  onChange: (next: [number, number] | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover
+      trigger="click"
+      placement="bottomLeft"
+      open={open}
+      onOpenChange={setOpen}
+      content={
+        <DateRangeFilter
+          value={value}
+          startLabel={startLabel}
+          endLabel={endLabel}
+          resetLabel={resetLabel}
+          applyLabel={applyLabel}
+          onChange={onChange}
+          onClose={() => setOpen(false)}
+        />
+      }
+    >
+      <Button
+        type={value ? "primary" : "default"}
+        icon={<CalendarOutlined />}
+        aria-label={label}
+      >
+        {label}
+      </Button>
+    </Popover>
+  );
+}
+
 export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
   const { locale, t } = useLocale();
   const [filters, setFilters] = useState<MyReplayFilters>(
-    EMPTY_MY_REPLAY_FILTERS
+    () => defaultMyReplayTablePreferences().filters
   );
-  const [sort, setSort] = useState<MyReplaySort>(DEFAULT_MY_REPLAY_SORT);
+  const [sort, setSort] = useState<MyReplaySort>(
+    () => defaultMyReplayTablePreferences().sort
+  );
+  const [enabledColumns, setEnabledColumns] = useState<MyReplayColumnKey[]>(
+    () => defaultMyReplayTablePreferences().enabledColumns
+  );
+  const [pageSize, setPageSize] = useState(
+    () => defaultMyReplayTablePreferences().pageSize
+  );
+  const [preferencesRestored, setPreferencesRestored] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let preferences = defaultMyReplayTablePreferences();
+    try {
+      preferences = parseMyReplayTablePreferences(
+        localStorage.getItem(MY_REPLAY_TABLE_STORAGE_KEY)
+      );
+    } catch {
+      // Storage may be unavailable in privacy-restricted browsers.
+    }
+    setFilters(preferences.filters);
+    setSort(preferences.sort);
+    setEnabledColumns(preferences.enabledColumns);
+    setPageSize(preferences.pageSize);
+    setPreferencesRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!preferencesRestored) {
+      return;
+    }
+    try {
+      localStorage.setItem(
+        MY_REPLAY_TABLE_STORAGE_KEY,
+        JSON.stringify({ filters, sort, enabledColumns, pageSize })
+      );
+    } catch {
+      // Keep table controls usable when storage is unavailable.
+    }
+  }, [enabledColumns, filters, pageSize, preferencesRestored, sort]);
+
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) {
+      return;
+    }
+    const updateWidth = (width: number): void => {
+      setContainerWidth(Math.max(0, Math.floor(width)));
+    };
+    updateWidth(container.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") {
+      const onResize = (): void => {
+        updateWidth(container.getBoundingClientRect().width);
+      };
+      window.addEventListener("resize", onResize);
+      return () => window.removeEventListener("resize", onResize);
+    }
+    const observer = new ResizeObserver(([entry]) => {
+      updateWidth(entry.contentRect.width);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   const platformLabels: Record<ReplaySource, string> = {
     ingame: t.myReplays.platforms.ingame,
@@ -198,6 +416,17 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
     played: "green",
     commented: "magenta",
   };
+  const columnLabels: Record<MyReplayColumnKey, string> = {
+    gameDate: t.myReplays.columns.gameDate,
+    links: t.myReplays.columns.links,
+    platform: t.myReplays.columns.platform,
+    context: t.myReplays.columns.context,
+    ruleset: t.myReplays.columns.ruleset,
+    reason: t.myReplays.columns.reason,
+    lastModified: t.myReplays.columns.lastModified,
+    comments: t.myReplays.columns.comments,
+  };
+  const columnWidths = resolveMyReplayColumnWidths(columnLabels);
 
   const displayRuleset = (ruleset: MyReplayRuleset): string => {
     if (ruleset.id.startsWith("platform:")) {
@@ -259,6 +488,33 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       ].sort((left, right) => left.text.localeCompare(right.text, locale)),
     [groups, locale, platformLabels, t]
   );
+  const reasonOptions = REASON_DISPLAY_ORDER.map((reason) => ({
+    label: reasonLabels[reason],
+    value: reason,
+  }));
+  const hasActiveFilters =
+    filters.gameDateRange !== null ||
+    filters.lastModifiedRange !== null ||
+    filters.platforms.length > 0 ||
+    filters.reasons.length > 0 ||
+    filters.contexts.length > 0 ||
+    filters.rulesets.length > 0;
+  const resetFilters = (): void => {
+    setFilters(defaultMyReplayTablePreferences().filters);
+  };
+  const toggleColumn = (key: MyReplayColumnKey, checked: boolean): void => {
+    setEnabledColumns((current) => {
+      if (checked) {
+        return MY_REPLAY_COLUMN_DISPLAY_ORDER.filter(
+          (column) => column === key || current.includes(column)
+        );
+      }
+      if (current.length === 1) {
+        return current;
+      }
+      return current.filter((column) => column !== key);
+    });
+  };
 
   const dateFilter =
     (
@@ -277,12 +533,12 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       />
     );
 
-  const columns: TableColumnsType<MyReplayTableRow> = [
+  const allColumns: TableColumnsType<MyReplayTableRow> = [
     {
-      title: t.myReplays.columns.gameDate,
+      title: <ColumnHeaderText label={columnLabels.gameDate} />,
       dataIndex: "gameDate",
       key: "gameDate",
-      width: 185,
+      width: columnWidths.gameDate,
       sorter: true,
       sortOrder: sort.field === "gameDate" ? sort.order : null,
       filteredValue: filters.gameDateRange ? ["active"] : null,
@@ -293,43 +549,86 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
         <CalendarOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
       ),
       onFilter: () => true,
-      render: (value: number | null) => formatDateTime(value),
-    },
-    {
-      title: t.myReplays.columns.links,
-      key: "links",
-      width: 185,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.links],
-      render: (_value, row) => (
-        <Space wrap>
-          <Link to={row.replayUrl}>
-            <EyeOutlined /> {t.myReplays.links.replay}
-          </Link>
-          {row.reviewUrl ? (
-            <Link to={row.reviewUrl}>
-              <CommentOutlined /> {t.myReplays.links.review}
-            </Link>
+      render: (value: number | null, row) => (
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            minWidth: 0,
+            height: "100%",
+          }}
+        >
+          {row.treeBranch ? (
+            <ReplayTreeBranch position={row.treeBranch} />
           ) : null}
-        </Space>
+          <span style={{ minWidth: 0, flex: "1 1 auto" }}>
+            <DateTimeText value={formatDateTime(value)} />
+          </span>
+        </span>
       ),
     },
     {
-      title: t.myReplays.columns.platform,
+      title: <ColumnHeaderText label={columnLabels.links} />,
+      key: "links",
+      width: columnWidths.links,
+      render: (_value, row) => {
+        const link = myReplayLinkForRow(row);
+        if (link.kind === "review") {
+          const label = reviewLinkLabel(
+            t.myReplays.links.reviewOf,
+            link.reviewedPlayerName,
+            t.myReplays.unknown
+          );
+          return (
+            <Link
+              to={link.url}
+              title={label}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                maxWidth: "100%",
+              }}
+            >
+              <CommentOutlined style={{ flex: "0 0 auto" }} />
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+              </span>
+            </Link>
+          );
+        }
+        return (
+          <Link
+            to={link.url}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <EyeOutlined />
+            {t.myReplays.links.replay}
+          </Link>
+        );
+      },
+    },
+    {
+      title: <ColumnHeaderText label={columnLabels.platform} />,
       dataIndex: "source",
       key: "platform",
-      width: 135,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.platform],
+      width: columnWidths.platform,
       filters: platformOptions,
       filteredValue: filters.platforms,
       onFilter: () => true,
       render: (source: ReplaySource) => platformLabels[source],
     },
     {
-      title: t.myReplays.columns.context,
+      title: <ColumnHeaderText label={columnLabels.context} />,
       dataIndex: ["context", "kind"],
       key: "context",
-      width: 175,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.context],
+      width: columnWidths.context,
       filters: contextOptions,
       filteredValue: filters.contexts,
       onFilter: () => true,
@@ -360,62 +659,42 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       ),
     },
     {
-      title: t.myReplays.columns.ruleset,
+      title: <ColumnHeaderText label={columnLabels.ruleset} />,
       dataIndex: ["ruleset", "id"],
       key: "ruleset",
-      width: 165,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.ruleset],
+      width: columnWidths.ruleset,
       filters: rulesetOptions,
       filteredValue: filters.rulesets,
       onFilter: () => true,
       render: (_value: string, row) => displayRuleset(row.ruleset),
     },
     {
-      title: t.myReplays.columns.type,
-      dataIndex: "rowType",
-      key: "rowType",
-      width: 105,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.type],
-      filters: [
-        { text: t.myReplays.types.replay, value: "replay" },
-        { text: t.myReplays.types.review, value: "review" },
-      ],
-      filteredValue: filters.rowTypes,
-      onFilter: () => true,
-      render: (rowType: MyReplayRowType) => (
-        <Tag color={rowType === "replay" ? "cyan" : "magenta"}>
-          {t.myReplays.types[rowType]}
-        </Tag>
-      ),
-    },
-    {
-      title: t.myReplays.columns.reason,
+      title: <ColumnHeaderText label={columnLabels.reason} />,
       dataIndex: "reasons",
       key: "reason",
-      width: 210,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.reason],
+      width: columnWidths.reason,
       filters: REASON_DISPLAY_ORDER.map((reason) => ({
         text: reasonLabels[reason],
         value: reason,
       })),
       filteredValue: filters.reasons,
       onFilter: () => true,
-      render: (reasons: MyReplayReason[]) => (
-        <Space size={[0, 4]} wrap>
-          {reasons.map((reason) => (
-            <Tag key={reason} color={reasonColors[reason]}>
-              {reasonLabels[reason]}
-            </Tag>
-          ))}
-        </Space>
-      ),
+      render: (reasons: MyReplayReason[]) =>
+        reasons.length > 0 ? (
+          <Space size={[0, 4]} wrap>
+            {reasons.map((reason) => (
+              <Tag key={reason} color={reasonColors[reason]}>
+                {reasonLabels[reason]}
+              </Tag>
+            ))}
+          </Space>
+        ) : null,
     },
     {
-      title: t.myReplays.columns.lastModified,
+      title: <ColumnHeaderText label={columnLabels.lastModified} />,
       dataIndex: "lastModified",
       key: "lastModified",
-      width: 185,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.lastModified],
+      width: columnWidths.lastModified,
       sorter: true,
       sortOrder: sort.field === "lastModified" ? sort.order : null,
       filteredValue: filters.lastModifiedRange ? ["active"] : null,
@@ -429,64 +708,219 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       ),
       onFilter: () => true,
       render: (value: number | null) =>
-        value === null ? t.myReplays.notApplicable : formatDateTime(value),
+        value === null ? null : <DateTimeText value={formatDateTime(value)} />,
     },
     {
-      title: t.myReplays.columns.comments,
+      title: <ColumnHeaderText label={columnLabels.comments} />,
       dataIndex: "commentCount",
-      key: "commentCount",
+      key: "comments",
       align: "right",
-      width: 115,
-      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.comments],
+      width: columnWidths.comments,
     },
   ];
+
+  const hasExpandableRows = rows.some((row) => Boolean(row.children?.length));
+  const fittedColumnKeys = fitMyReplayColumns(
+    enabledColumns,
+    containerWidth,
+    hasExpandableRows,
+    columnWidths
+  );
+  const columns = fittedColumnKeys.map((key) =>
+    allColumns.find((column) => column.key === key)!
+  );
 
   const onTableChange: TableProps<MyReplayTableRow>["onChange"] = (
     _pagination,
     tableFilters,
     sorter
   ) => {
-    setFilters((current) => ({
-      ...current,
-      platforms: stringFilterValues(tableFilters.platform) as ReplaySource[],
-      contexts: stringFilterValues(
-        tableFilters.context
-      ) as MyReplayContextKind[],
-      rulesets: stringFilterValues(tableFilters.ruleset),
-      rowTypes: stringFilterValues(tableFilters.rowType) as MyReplayRowType[],
-      reasons: stringFilterValues(tableFilters.reason) as MyReplayReason[],
-    }));
+    setFilters((current) => mergeMyReplayHeaderFilters(current, tableFilters));
     const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
     if (
-      (activeSorter.field === "gameDate" ||
-        activeSorter.field === "lastModified") &&
-      activeSorter.order
+      activeSorter.field === "gameDate" ||
+      activeSorter.field === "lastModified"
     ) {
-      setSort({ field: activeSorter.field, order: activeSorter.order });
-    } else {
-      setSort(DEFAULT_MY_REPLAY_SORT);
+      setSort(
+        activeSorter.order
+          ? { field: activeSorter.field, order: activeSorter.order }
+          : DEFAULT_MY_REPLAY_SORT
+      );
     }
   };
 
+  const selectStyle = {
+    flex: "1 1 160px",
+    minWidth: 140,
+    maxWidth: 240,
+  } as const;
+
   return (
-    <Table<MyReplayTableRow>
-      dataSource={rows}
-      columns={columns}
-      rowKey="key"
-      defaultExpandAllRows
-      expandable={{ rowExpandable: (row) => Boolean(row.children?.length) }}
-      pagination={{
-        defaultPageSize: 20,
-        pageSizeOptions: [10, 20, 50, 100],
-        showSizeChanger: true,
-        showTotal: (total) =>
-          t.myReplays.total.replace("{count}", String(total)),
-      }}
-      locale={{
-        emptyText: <Empty description={t.myReplays.noMatches} />,
-      }}
-      scroll={{ x: 1460 }}
-      onChange={onTableChange}
-    />
+    <>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 12,
+        }}
+      >
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount="responsive"
+          aria-label={t.myReplays.columns.platform}
+          placeholder={t.myReplays.columns.platform}
+          value={filters.platforms}
+          style={selectStyle}
+          options={platformOptions.map(({ text, value }) => ({
+            label: text,
+            value,
+          }))}
+          onChange={(platforms) =>
+            setFilters((current) => ({ ...current, platforms }))
+          }
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount="responsive"
+          aria-label={t.myReplays.columns.context}
+          placeholder={t.myReplays.columns.context}
+          value={filters.contexts}
+          style={selectStyle}
+          options={contextOptions.map(({ text, value }) => ({
+            label: text,
+            value,
+          }))}
+          onChange={(contexts) =>
+            setFilters((current) => ({ ...current, contexts }))
+          }
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount="responsive"
+          aria-label={t.myReplays.columns.ruleset}
+          placeholder={t.myReplays.columns.ruleset}
+          value={filters.rulesets}
+          style={selectStyle}
+          options={rulesetOptions.map(({ text, value }) => ({
+            label: text,
+            value,
+          }))}
+          onChange={(rulesets) =>
+            setFilters((current) => ({ ...current, rulesets }))
+          }
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount="responsive"
+          aria-label={t.myReplays.columns.reason}
+          placeholder={t.myReplays.columns.reason}
+          value={filters.reasons}
+          style={selectStyle}
+          options={reasonOptions}
+          onChange={(reasons) =>
+            setFilters((current) => ({
+              ...current,
+              reasons: reasons as MyReplayReason[],
+            }))
+          }
+        />
+        <DateRangeControl
+          label={t.myReplays.columns.gameDate}
+          value={filters.gameDateRange}
+          startLabel={t.myReplays.filters.startDate}
+          endLabel={t.myReplays.filters.endDate}
+          resetLabel={t.myReplays.filters.reset}
+          applyLabel={t.myReplays.filters.apply}
+          onChange={(gameDateRange) =>
+            setFilters((current) => ({ ...current, gameDateRange }))
+          }
+        />
+        <DateRangeControl
+          label={t.myReplays.columns.lastModified}
+          value={filters.lastModifiedRange}
+          startLabel={t.myReplays.filters.startDate}
+          endLabel={t.myReplays.filters.endDate}
+          resetLabel={t.myReplays.filters.reset}
+          applyLabel={t.myReplays.filters.apply}
+          onChange={(lastModifiedRange) =>
+            setFilters((current) => ({ ...current, lastModifiedRange }))
+          }
+        />
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={
+            <Space direction="vertical" size={8} style={{ minWidth: 180 }}>
+              {MY_REPLAY_COLUMN_DISPLAY_ORDER.map((key) => (
+                <Checkbox
+                  key={key}
+                  checked={enabledColumns.includes(key)}
+                  disabled={
+                    enabledColumns.length === 1 && enabledColumns.includes(key)
+                  }
+                  onChange={(event) => toggleColumn(key, event.target.checked)}
+                >
+                  {columnLabels[key]}
+                </Checkbox>
+              ))}
+              <Button
+                type="link"
+                size="small"
+                onClick={() =>
+                  setEnabledColumns([...MY_REPLAY_COLUMN_DISPLAY_ORDER])
+                }
+              >
+                {t.myReplays.filters.showAllColumns}
+              </Button>
+            </Space>
+          }
+        >
+          <Button icon={<TableOutlined />}>
+            {t.myReplays.filters.columns}
+          </Button>
+        </Popover>
+        <Button
+          icon={<ClearOutlined />}
+          disabled={!hasActiveFilters}
+          onClick={resetFilters}
+        >
+          {t.myReplays.filters.clearAll}
+        </Button>
+      </div>
+      <div ref={tableContainerRef} style={{ width: "100%", minWidth: 0 }}>
+        <Table<MyReplayTableRow>
+          dataSource={rows}
+          columns={columns}
+          rowKey="key"
+          tableLayout="fixed"
+          defaultExpandAllRows
+          expandable={
+            hasExpandableRows
+              ? {
+                  rowExpandable: (row) => Boolean(row.children?.length),
+                }
+              : undefined
+          }
+          pagination={{
+            pageSize,
+            pageSizeOptions: [10, 20, 50, 100],
+            showSizeChanger: true,
+            onChange: (_page, nextPageSize) => setPageSize(nextPageSize),
+            showTotal: (total) =>
+              t.myReplays.total.replace("{count}", String(total)),
+          }}
+          locale={{
+            emptyText: <Empty description={t.myReplays.noMatches} />,
+          }}
+          onChange={onTableChange}
+        />
+      </div>
+    </>
   );
 }

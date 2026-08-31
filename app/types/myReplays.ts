@@ -17,10 +17,10 @@ export interface MyReplayRuleset {
 export interface MyReplayReview {
   key: string;
   shortId: string;
+  reviewedPlayerName: string | null;
   reasons: MyReplayReason[];
   lastModified: number | null;
   commentCount: number;
-  replayUrl: string;
   reviewUrl: string;
 }
 

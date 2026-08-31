@@ -135,6 +135,7 @@ export default [
   route("/api/league-schedule", "routes/api/league-schedule.ts"),
   route("/api/statistics-filters", "routes/api/statistics-filters.ts"),
   route("/api/yaku-map", "routes/api/yaku-map.ts"),
+  route("/api/glossary", "routes/api/glossary.ts"),
   route("/api/telemetry", "routes/api/telemetry.ts"),
 
   // ---------------------------------------------------------------------

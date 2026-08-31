@@ -16,7 +16,7 @@ vi.mock("~/services/myReplays.server", () => ({
   getMyReplays: mocks.getMyReplays,
 }));
 
-import { loader } from "./my-replays";
+import { loader, meta } from "./my-replays";
 
 describe("My Replays route loader", () => {
   beforeEach(() => {
@@ -49,8 +49,49 @@ describe("My Replays route loader", () => {
 
     await expect(
       loader({ request: new Request("http://app.test/my-replays") })
-    ).resolves.toEqual({ groups });
+    ).resolves.toEqual({
+      groups,
+      canonicalUrl: "http://app.test/my-replays",
+      imageUrl: "http://app.test/banner/TNT_logo-WHITE.png",
+      previewOnly: false,
+    });
     expect(mocks.getMyReplays).toHaveBeenCalledWith("user-1");
+  });
+
+  it("serves a data-free metadata shell to Discord's crawler", async () => {
+    const data = await loader({
+      request: new Request("http://internal.test/my-replays", {
+        headers: {
+          "User-Agent": "Discordbot/2.0",
+          "X-Forwarded-Proto": "https",
+          "X-Forwarded-Host": "tournaments.example.test",
+        },
+      }),
+    });
+
+    expect(data).toEqual({
+      groups: [],
+      canonicalUrl: "https://tournaments.example.test/my-replays",
+      imageUrl: "https://tournaments.example.test/banner/TNT_logo-WHITE.png",
+      previewOnly: true,
+    });
+    expect(mocks.getAuthenticatedUser).not.toHaveBeenCalled();
+    expect(mocks.connectToDatabase).not.toHaveBeenCalled();
+
+    expect(meta({ data })).toEqual(
+      expect.arrayContaining([
+        { property: "og:title", content: "My Replays | TNT Paris Mahjong" },
+        {
+          property: "og:url",
+          content: "https://tournaments.example.test/my-replays",
+        },
+        {
+          property: "og:image",
+          content: "https://tournaments.example.test/banner/TNT_logo-WHITE.png",
+        },
+        { name: "twitter:card", content: "summary" },
+      ])
+    );
   });
 
   it("rejects a stale token whose user no longer exists", async () => {

@@ -1105,14 +1105,12 @@ export const en: Translations = {
     empty: "No related replays or reviews yet.",
     noMatches: "No replays match the selected filters.",
     unknown: "Unknown",
-    notApplicable: "Not applicable",
     total: "{count} replay groups",
     columns: {
       gameDate: "Game date",
       platform: "Platform",
       context: "Context",
       ruleset: "Ruleset",
-      type: "Type",
       reason: "Reason",
       links: "Links",
       lastModified: "Last modified",
@@ -1123,6 +1121,9 @@ export const en: Translations = {
       endDate: "End date",
       reset: "Reset",
       apply: "Apply",
+      columns: "Columns",
+      showAllColumns: "Show all columns",
+      clearAll: "Clear filters",
     },
     platforms: {
       ingame: "Kandora",
@@ -1135,10 +1136,6 @@ export const en: Translations = {
       tournament: "Tournament",
       external: "External",
     },
-    types: {
-      replay: "Replay",
-      review: "Review",
-    },
     reasons: {
       created: "Created",
       played: "Played",
@@ -1146,7 +1143,7 @@ export const en: Translations = {
     },
     links: {
       replay: "Replay",
-      review: "Review",
+      reviewOf: "{username}'s review",
     },
     rulesets: {
       online: "Online",

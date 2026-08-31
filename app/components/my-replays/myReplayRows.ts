@@ -5,7 +5,6 @@ import type {
 } from "~/types/myReplays";
 import type { ReplaySource } from "~/game/replay/types";
 
-export type MyReplayRowType = "replay" | "review";
 export type MyReplaySortField = "gameDate" | "lastModified";
 export type MyReplaySortOrder = "ascend" | "descend";
 
@@ -13,7 +12,6 @@ export interface MyReplayFilters {
   gameDateRange: [number, number] | null;
   lastModifiedRange: [number, number] | null;
   platforms: ReplaySource[];
-  rowTypes: MyReplayRowType[];
   reasons: MyReplayReason[];
   contexts: MyReplayContextKind[];
   rulesets: string[];
@@ -28,7 +26,6 @@ export const EMPTY_MY_REPLAY_FILTERS: MyReplayFilters = {
   gameDateRange: null,
   lastModifiedRange: null,
   platforms: [],
-  rowTypes: [],
   reasons: [],
   contexts: [],
   rulesets: [],
@@ -71,11 +68,6 @@ export function filterAndSortMyReplayGroups(
   filters: MyReplayFilters,
   sort: MyReplaySort
 ): MyReplayGroup[] {
-  const wantsReplay =
-    filters.rowTypes.length === 0 || filters.rowTypes.includes("replay");
-  const wantsReview =
-    filters.rowTypes.length === 0 || filters.rowTypes.includes("review");
-
   const filtered = groups.flatMap((group) => {
     if (
       !isInRange(group.gameDate, filters.gameDateRange) ||
@@ -101,13 +93,11 @@ export function filterAndSortMyReplayGroups(
     const parentReasonMatches =
       filters.reasons.length === 0 ||
       group.reasons.some((reason) => filters.reasons.includes(reason));
-    const includeReplay = wantsReplay && parentReasonMatches;
-    const includeReviews = wantsReview && matchingReviews.length > 0;
-    if (!includeReplay && !includeReviews) {
+    if (!parentReasonMatches && matchingReviews.length === 0) {
       return [];
     }
 
-    const visibleReviews = wantsReview ? matchingReviews : [];
+    const visibleReviews = matchingReviews;
     const reviewOrder = sort.field === "lastModified" ? sort.order : "descend";
     visibleReviews.sort(
       (left, right) =>

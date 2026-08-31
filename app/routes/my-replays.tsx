@@ -1,5 +1,6 @@
 import { redirect } from "react-router";
 import { Empty } from "antd";
+import { isbot } from "isbot";
 import { PageTitle } from "~/components/PageTitle";
 import { MyReplaysTable } from "~/components/my-replays/MyReplaysTable";
 import { useLocale } from "~/contexts/LocaleContext";
@@ -13,17 +14,76 @@ import {
 } from "~/utils/gameReturnPath";
 import { getAuthenticatedUser } from "~/utils/jwt.server";
 
-export function meta() {
+const META_TITLE = "My Replays | TNT Paris Mahjong";
+const META_DESCRIPTION =
+  "Find your mahjong replay logs and collaborative reviews across Kandora, Tenhou, Mahjong Soul, and Riichi City.";
+
+interface MyReplaysLoaderData {
+  groups: MyReplayGroup[];
+  canonicalUrl: string;
+  imageUrl: string;
+  previewOnly: boolean;
+}
+
+function publicOrigin(request: Request): string {
+  const forwardedProto = request.headers.get("X-Forwarded-Proto");
+  const forwardedHost =
+    request.headers.get("X-Forwarded-Host") ?? request.headers.get("Host");
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+  return new URL(request.url).origin;
+}
+
+function metadataForRequest(request: Request) {
+  const origin = publicOrigin(request);
+  return {
+    canonicalUrl: `${origin}${basePath}/my-replays`,
+    imageUrl: `${origin}${basePath}/banner/TNT_logo-WHITE.png`,
+  };
+}
+
+export function meta({ data }: { data?: MyReplaysLoaderData }) {
+  const canonicalUrl = data?.canonicalUrl;
+  const imageUrl = data?.imageUrl;
   return [
-    { title: "My replays - TNT Mahjong" },
-    {
-      name: "description",
-      content: "Replays and collaborative reviews related to your account",
-    },
+    { title: META_TITLE },
+    { name: "description", content: META_DESCRIPTION },
+    { name: "robots", content: "noindex, nofollow" },
+    { property: "og:title", content: META_TITLE },
+    { property: "og:description", content: META_DESCRIPTION },
+    { property: "og:type", content: "website" },
+    { property: "og:site_name", content: "TNT Paris Mahjong" },
+    ...(canonicalUrl ? [{ property: "og:url", content: canonicalUrl }] : []),
+    ...(imageUrl
+      ? [
+          { property: "og:image", content: imageUrl },
+          { property: "og:image:width", content: "306" },
+          { property: "og:image:height", content: "306" },
+          {
+            property: "og:image:alt",
+            content: "TNT Paris Mahjong logo",
+          },
+        ]
+      : []),
+    { name: "twitter:card", content: "summary" },
+    { name: "twitter:title", content: META_TITLE },
+    { name: "twitter:description", content: META_DESCRIPTION },
+    ...(imageUrl ? [{ name: "twitter:image", content: imageUrl }] : []),
   ];
 }
 
-export async function loader({ request }: { request: Request }) {
+export async function loader({
+  request,
+}: {
+  request: Request;
+}): Promise<MyReplaysLoaderData> {
+  const metadata = metadataForRequest(request);
+  const userAgent = request.headers.get("User-Agent");
+  if (userAgent && isbot(userAgent)) {
+    return { groups: [], ...metadata, previewOnly: true };
+  }
+
   const authenticatedUser = await getAuthenticatedUser(request);
   if (!authenticatedUser) {
     throw redirect(
@@ -37,13 +97,13 @@ export async function loader({ request }: { request: Request }) {
       status: 401,
     });
   }
-  return { groups };
+  return { groups, ...metadata, previewOnly: false };
 }
 
 export default function MyReplaysRoute({
   loaderData,
 }: {
-  loaderData: { groups: MyReplayGroup[] };
+  loaderData: MyReplaysLoaderData;
 }) {
   const { t } = useLocale();
   return (

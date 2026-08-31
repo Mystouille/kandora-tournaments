@@ -1130,14 +1130,12 @@ export const fr: Translations = {
     empty: "Aucun replay ou aucune analyse associés pour le moment.",
     noMatches: "Aucun replay ne correspond aux filtres sélectionnés.",
     unknown: "Inconnu",
-    notApplicable: "Non applicable",
     total: "{count} groupes de replays",
     columns: {
       gameDate: "Date de la partie",
       platform: "Plateforme",
       context: "Contexte",
       ruleset: "Règles",
-      type: "Type",
       reason: "Raison",
       links: "Liens",
       lastModified: "Dernière modification",
@@ -1148,6 +1146,9 @@ export const fr: Translations = {
       endDate: "Date de fin",
       reset: "Réinitialiser",
       apply: "Appliquer",
+      columns: "Colonnes",
+      showAllColumns: "Afficher toutes les colonnes",
+      clearAll: "Effacer les filtres",
     },
     platforms: {
       ingame: "Kandora",
@@ -1160,10 +1161,6 @@ export const fr: Translations = {
       tournament: "Tournoi",
       external: "Externe",
     },
-    types: {
-      replay: "Replay",
-      review: "Analyse",
-    },
     reasons: {
       created: "Créé",
       played: "Joué",
@@ -1171,7 +1168,7 @@ export const fr: Translations = {
     },
     links: {
       replay: "Replay",
-      review: "Analyse",
+      reviewOf: "Analyse de {username}",
     },
     rulesets: {
       online: "En ligne",

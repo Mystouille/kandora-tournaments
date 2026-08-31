@@ -1005,14 +1005,12 @@ export interface Translations extends CoreTranslations {
     empty: string;
     noMatches: string;
     unknown: string;
-    notApplicable: string;
     total: string;
     columns: {
       gameDate: string;
       platform: string;
       context: string;
       ruleset: string;
-      type: string;
       reason: string;
       links: string;
       lastModified: string;
@@ -1023,6 +1021,9 @@ export interface Translations extends CoreTranslations {
       endDate: string;
       reset: string;
       apply: string;
+      columns: string;
+      showAllColumns: string;
+      clearAll: string;
     };
     platforms: {
       ingame: string;
@@ -1035,10 +1036,6 @@ export interface Translations extends CoreTranslations {
       tournament: string;
       external: string;
     };
-    types: {
-      replay: string;
-      review: string;
-    };
     reasons: {
       created: string;
       played: string;
@@ -1046,7 +1043,7 @@ export interface Translations extends CoreTranslations {
     };
     links: {
       replay: string;
-      review: string;
+      reviewOf: string;
     };
     rulesets: {
       online: string;

@@ -73,7 +73,10 @@ describe("getMyReplays", () => {
             startedAt: 1_700_000_002_000,
             endedAt: 1_700_000_003_000,
             creationTriggeredBy: new mongoose.Types.ObjectId(userId),
-            seats: [{ displayName: "TenhouName" }],
+            seats: [
+              { seat: 0, displayName: "TenhouName" },
+              { seat: 2, displayName: "Reviewed Player" },
+            ],
           },
           {
             _id: riichiCityReplayId,
@@ -82,7 +85,7 @@ describe("getMyReplays", () => {
             ruleSet: "riichicity",
             startedAt: 1_697_609_642_240_000,
             endedAt: 1_697_609_700_000_000,
-            seats: [{ displayName: "City Name" }],
+            seats: [{ seat: 0, displayName: "City Name" }],
           },
         ])
       )
@@ -114,6 +117,7 @@ describe("getMyReplays", () => {
           shortId: "review-1",
           source: "tenhou",
           sourceGameId: "gm-tournament",
+          seat: 2,
           updatedAt: new Date(1_700_000_004_000),
           commentCount: 3,
         },
@@ -172,11 +176,12 @@ describe("getMyReplays", () => {
         tournamentUrl: "/online-tournaments/summer-cup/presentation",
       },
       ruleset: { id: "m-league", label: "M-League" },
-      reasons: ["created", "played", "commented"],
+      reasons: ["created", "played"],
       commentCount: 3,
       reviews: [
         {
           shortId: "review-1",
+          reviewedPlayerName: "Reviewed Player",
           reasons: ["commented"],
           commentCount: 3,
           reviewUrl: "/watch/replay/gm-tournament?review=review-1",
@@ -204,10 +209,11 @@ describe("getMyReplays", () => {
         id: "platform:majsoul",
         label: "Mahjong Soul",
       },
-      reasons: ["commented"],
+      reasons: [],
       reviews: [
         {
           shortId: "review-2",
+          reviewedPlayerName: null,
           reasons: ["commented"],
           commentCount: 0,
         },
@@ -234,6 +240,7 @@ describe("getMyReplays", () => {
     expect(replayProjection).not.toHaveProperty("events");
     expect(replayProjection).toMatchObject({
       creationTriggeredBy: 1,
+      "seats.seat": 1,
       "seats.userDbId": 1,
       "seats.displayName": 1,
     });
@@ -247,6 +254,7 @@ describe("getMyReplays", () => {
     );
     expect(pipeline[1].$project).not.toHaveProperty("edits");
     expect(pipeline[1].$project).not.toHaveProperty("drawing");
+    expect(pipeline[1].$project.seat).toBe(1);
     expect(mocks.findMatches).toHaveBeenCalledWith(
       { status: "finished", "players.userId": userId },
       { ruleSet: 1, startedAt: 1, endedAt: 1 }
