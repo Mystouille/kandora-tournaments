@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   MY_REPLAY_HEADER_TEXT_STYLE,
+  MY_REPLAY_PLATFORM_LOGO_ASPECT_RATIO,
+  myReplayPlatformLogo,
   myReplayLinkForRow,
   reviewLinkLabel,
   toTableRows,
@@ -8,6 +10,20 @@ import {
 import type { MyReplayGroup } from "~/types/myReplays";
 
 describe("My Replays table rows", () => {
+  it("uses equal-ratio platform marks with the requested backgrounds", () => {
+    expect(MY_REPLAY_PLATFORM_LOGO_ASPECT_RATIO).toBe("16 / 9");
+    expect(myReplayPlatformLogo("tenhou")).toMatchObject({
+      backgroundColor: "#000000",
+    });
+    expect(myReplayPlatformLogo("majsoul")).toMatchObject({
+      backgroundColor: "#ffffff",
+    });
+    expect(myReplayPlatformLogo("riichicity")).toMatchObject({
+      backgroundColor: "#ffffff",
+    });
+    expect(myReplayPlatformLogo("ingame")).toBeNull();
+  });
+
   it("wraps headers only at natural word boundaries", () => {
     expect(MY_REPLAY_HEADER_TEXT_STYLE).toMatchObject({
       whiteSpace: "normal",

@@ -30,6 +30,9 @@ import type {
   MyReplayRuleset,
 } from "~/types/myReplays";
 import type { ReplaySource } from "~/game/replay/types";
+import mahjongSoulLogoUrl from "~/core/ui/platforms/assets/mahjongSoul.png?url";
+import riichiCityLogoUrl from "~/core/ui/platforms/assets/riichi city.png?url";
+import tenhouLogoUrl from "~/core/ui/platforms/assets/tenhou.png?url";
 import {
   DEFAULT_MY_REPLAY_SORT,
   filterAndSortMyReplayGroups,
@@ -71,6 +74,68 @@ const REASON_DISPLAY_ORDER: MyReplayReason[] = [
   "commented",
   "reviewed",
 ];
+
+export const MY_REPLAY_PLATFORM_LOGO_ASPECT_RATIO = "16 / 9";
+
+interface PlatformLogoPresentation {
+  url: string;
+  backgroundColor: "#000000" | "#ffffff";
+}
+
+const PLATFORM_LOGO_PRESENTATION: Partial<
+  Record<ReplaySource, PlatformLogoPresentation>
+> = {
+  majsoul: { url: mahjongSoulLogoUrl, backgroundColor: "#ffffff" },
+  tenhou: { url: tenhouLogoUrl, backgroundColor: "#000000" },
+  riichicity: { url: riichiCityLogoUrl, backgroundColor: "#ffffff" },
+};
+
+export function myReplayPlatformLogo(
+  source: ReplaySource
+): PlatformLogoPresentation | null {
+  return PLATFORM_LOGO_PRESENTATION[source] ?? null;
+}
+
+function PlatformCell({
+  source,
+  label,
+}: {
+  source: ReplaySource;
+  label: string;
+}) {
+  const logo = myReplayPlatformLogo(source);
+  if (!logo) {
+    return label;
+  }
+  return (
+    <span
+      title={label}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 80,
+        aspectRatio: MY_REPLAY_PLATFORM_LOGO_ASPECT_RATIO,
+        overflow: "hidden",
+        border: "1px solid rgba(0, 0, 0, 0.12)",
+        borderRadius: 4,
+        backgroundColor: logo.backgroundColor,
+        verticalAlign: "middle",
+      }}
+    >
+      <img
+        src={logo.url}
+        alt={label}
+        style={{
+          display: "block",
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+        }}
+      />
+    </span>
+  );
+}
 
 export const MY_REPLAY_HEADER_TEXT_STYLE = {
   display: "inline-block",
@@ -626,7 +691,9 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       filters: platformOptions,
       filteredValue: filters.platforms,
       onFilter: () => true,
-      render: (source: ReplaySource) => platformLabels[source],
+      render: (source: ReplaySource) => (
+        <PlatformCell source={source} label={platformLabels[source]} />
+      ),
     },
     {
       title: <ColumnHeaderText label={columnLabels.context} />,
