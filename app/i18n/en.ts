@@ -1113,6 +1113,7 @@ export const en: Translations = {
       context: "Context",
       ruleset: "Ruleset",
       type: "Type",
+      reason: "Reason",
       links: "Links",
       lastModified: "Last modified",
       comments: "Comments",
@@ -1137,6 +1138,11 @@ export const en: Translations = {
     types: {
       replay: "Replay",
       review: "Review",
+    },
+    reasons: {
+      created: "Created",
+      played: "Played",
+      commented: "Commented",
     },
     links: {
       replay: "Replay",

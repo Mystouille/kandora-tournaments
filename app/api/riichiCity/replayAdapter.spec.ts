@@ -279,6 +279,8 @@ describe("parseRiichiCityReplay", () => {
 
     expect(log.source).toBe("riichicity");
     expect(log.sourceGameId).toBe("rc-test-game-id");
+    expect(log.startedAt).toBe(1_700_000_000_000);
+    expect(log.endedAt).toBe(1_700_001_000_000);
     expect(log.seats.map((s) => s.displayName)).toEqual([
       "Alice",
       "Bob",

@@ -1,6 +1,7 @@
 import type { ReplaySource } from "~/game/replay/types";
 
 export type MyReplayContextKind = "friendly" | "tournament" | "external";
+export type MyReplayReason = "created" | "played" | "commented";
 
 export interface MyReplayContext {
   kind: MyReplayContextKind;
@@ -16,6 +17,7 @@ export interface MyReplayRuleset {
 export interface MyReplayReview {
   key: string;
   shortId: string;
+  reasons: MyReplayReason[];
   lastModified: number | null;
   commentCount: number;
   replayUrl: string;
@@ -26,6 +28,7 @@ export interface MyReplayGroup {
   key: string;
   source: ReplaySource;
   sourceGameId: string;
+  reasons: MyReplayReason[];
   gameDate: number | null;
   context: MyReplayContext;
   ruleset: MyReplayRuleset;

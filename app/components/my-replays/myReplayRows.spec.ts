@@ -11,6 +11,7 @@ const groups: MyReplayGroup[] = [
     key: "tenhou:newer",
     source: "tenhou",
     sourceGameId: "newer",
+    reasons: ["created", "played", "commented"],
     gameDate: 2_000,
     context: { kind: "tournament", tournamentName: "Cup" },
     ruleset: { id: "wrc", label: "WRC" },
@@ -20,6 +21,7 @@ const groups: MyReplayGroup[] = [
       {
         key: "review:older",
         shortId: "older",
+        reasons: ["commented"],
         lastModified: 2_500,
         commentCount: 2,
         replayUrl: "/watch/replay/newer",
@@ -28,6 +30,7 @@ const groups: MyReplayGroup[] = [
       {
         key: "review:newest",
         shortId: "newest",
+        reasons: ["commented"],
         lastModified: 4_000,
         commentCount: 3,
         replayUrl: "/watch/replay/newer",
@@ -39,6 +42,7 @@ const groups: MyReplayGroup[] = [
     key: "ingame:older",
     source: "ingame",
     sourceGameId: "older",
+    reasons: ["played"],
     gameDate: 1_000,
     context: { kind: "friendly" },
     ruleset: { id: "m-league", label: "M-League" },
@@ -50,6 +54,7 @@ const groups: MyReplayGroup[] = [
     key: "majsoul:unknown-date",
     source: "majsoul",
     sourceGameId: "unknown-date",
+    reasons: ["commented"],
     gameDate: null,
     context: { kind: "external" },
     ruleset: { id: "platform:majsoul", label: "Mahjong Soul" },
@@ -59,6 +64,7 @@ const groups: MyReplayGroup[] = [
       {
         key: "review:undated",
         shortId: "undated",
+        reasons: ["commented"],
         lastModified: null,
         commentCount: 1,
         replayUrl: "/watch/replay/unknown-date",
@@ -141,5 +147,26 @@ describe("My Replays hierarchy filters", () => {
       "newest",
       "older",
     ]);
+  });
+
+  it("filters multi-value parent reasons and matching review children", () => {
+    const created = filterAndSortMyReplayGroups(
+      groups,
+      { ...EMPTY_MY_REPLAY_FILTERS, reasons: ["created"] },
+      DEFAULT_MY_REPLAY_SORT
+    );
+    expect(created.map((group) => group.sourceGameId)).toEqual(["newer"]);
+    expect(created[0].reviews).toEqual([]);
+
+    const commented = filterAndSortMyReplayGroups(
+      groups,
+      { ...EMPTY_MY_REPLAY_FILTERS, reasons: ["commented"] },
+      DEFAULT_MY_REPLAY_SORT
+    );
+    expect(commented.map((group) => group.sourceGameId)).toEqual([
+      "newer",
+      "unknown-date",
+    ]);
+    expect(commented[0].reviews).toHaveLength(2);
   });
 });

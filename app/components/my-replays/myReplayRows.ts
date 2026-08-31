@@ -1,4 +1,8 @@
-import type { MyReplayContextKind, MyReplayGroup } from "~/types/myReplays";
+import type {
+  MyReplayContextKind,
+  MyReplayGroup,
+  MyReplayReason,
+} from "~/types/myReplays";
 import type { ReplaySource } from "~/game/replay/types";
 
 export type MyReplayRowType = "replay" | "review";
@@ -10,6 +14,7 @@ export interface MyReplayFilters {
   lastModifiedRange: [number, number] | null;
   platforms: ReplaySource[];
   rowTypes: MyReplayRowType[];
+  reasons: MyReplayReason[];
   contexts: MyReplayContextKind[];
   rulesets: string[];
 }
@@ -24,6 +29,7 @@ export const EMPTY_MY_REPLAY_FILTERS: MyReplayFilters = {
   lastModifiedRange: null,
   platforms: [],
   rowTypes: [],
+  reasons: [],
   contexts: [],
   rulesets: [],
 };
@@ -83,13 +89,21 @@ export function filterAndSortMyReplayGroups(
       return [];
     }
 
-    const matchingReviews = group.reviews.filter((review) =>
-      isInRange(review.lastModified, filters.lastModifiedRange)
+    const matchingReviews = group.reviews.filter(
+      (review) =>
+        isInRange(review.lastModified, filters.lastModifiedRange) &&
+        (filters.reasons.length === 0 ||
+          review.reasons.some((reason) => filters.reasons.includes(reason)))
     );
     if (filters.lastModifiedRange && matchingReviews.length === 0) {
       return [];
     }
-    if (!wantsReplay && (!wantsReview || matchingReviews.length === 0)) {
+    const parentReasonMatches =
+      filters.reasons.length === 0 ||
+      group.reasons.some((reason) => filters.reasons.includes(reason));
+    const includeReplay = wantsReplay && parentReasonMatches;
+    const includeReviews = wantsReview && matchingReviews.length > 0;
+    if (!includeReplay && !includeReviews) {
       return [];
     }
 

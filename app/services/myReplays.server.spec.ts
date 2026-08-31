@@ -49,6 +49,9 @@ describe("getMyReplays", () => {
     "507f1f77bcf86cd799439013"
   );
   const leagueId = new mongoose.Types.ObjectId("507f1f77bcf86cd799439014");
+  const riichiCityReplayId = new mongoose.Types.ObjectId(
+    "507f1f77bcf86cd799439015"
+  );
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,8 +70,19 @@ describe("getMyReplays", () => {
             source: "tenhou",
             sourceGameId: "gm-tournament",
             ruleSet: "tenhou",
-            startedAt: 2_000,
-            endedAt: 3_000,
+            startedAt: 1_700_000_002_000,
+            endedAt: 1_700_000_003_000,
+            creationTriggeredBy: new mongoose.Types.ObjectId(userId),
+            seats: [{ displayName: "TenhouName" }],
+          },
+          {
+            _id: riichiCityReplayId,
+            source: "riichicity",
+            sourceGameId: "bad-legacy-date",
+            ruleSet: "riichicity",
+            startedAt: 1_697_609_642_240_000,
+            endedAt: 1_697_609_700_000_000,
+            seats: [{ displayName: "City Name" }],
           },
         ])
       )
@@ -79,8 +93,8 @@ describe("getMyReplays", () => {
             source: "ingame",
             sourceGameId: "native-1",
             ruleSet: "m-league",
-            startedAt: 1_000,
-            endedAt: 1_500,
+            startedAt: 1_700_000_001_000,
+            endedAt: 1_700_000_001_500,
           },
         ])
       );
@@ -89,8 +103,8 @@ describe("getMyReplays", () => {
         {
           _id: "native-1",
           ruleSet: "m-league",
-          startedAt: new Date(1_000),
-          endedAt: new Date(1_500),
+          startedAt: new Date(1_700_000_001_000),
+          endedAt: new Date(1_700_000_001_500),
         },
       ])
     );
@@ -100,14 +114,14 @@ describe("getMyReplays", () => {
           shortId: "review-1",
           source: "tenhou",
           sourceGameId: "gm-tournament",
-          updatedAt: new Date(4_000),
+          updatedAt: new Date(1_700_000_004_000),
           commentCount: 3,
         },
         {
           shortId: "review-2",
           source: "majsoul",
           sourceGameId: "review-only",
-          updatedAt: new Date(5_000),
+          updatedAt: new Date(1_700_000_005_000),
           commentCount: 0,
         },
       ])
@@ -120,14 +134,14 @@ describe("getMyReplays", () => {
           rules: "MLEAGUE",
           league: leagueId,
           replayLogRef: replayId,
-          startTime: new Date(2_100),
+          startTime: new Date(1_700_000_002_100),
         },
         {
           gameId: "gm-tournament",
           platform: "tenhou",
           rules: "WRC",
           replayLogRef: replayId,
-          startTime: new Date(2_200),
+          startTime: new Date(1_700_000_002_200),
         },
       ])
     );
@@ -148,6 +162,7 @@ describe("getMyReplays", () => {
     expect(result?.map((group) => group.sourceGameId)).toEqual([
       "gm-tournament",
       "native-1",
+      "bad-legacy-date",
       "review-only",
     ]);
     expect(result?.[0]).toMatchObject({
@@ -157,10 +172,12 @@ describe("getMyReplays", () => {
         tournamentUrl: "/online-tournaments/summer-cup/presentation",
       },
       ruleset: { id: "m-league", label: "M-League" },
+      reasons: ["created", "played", "commented"],
       commentCount: 3,
       reviews: [
         {
           shortId: "review-1",
+          reasons: ["commented"],
           commentCount: 3,
           reviewUrl: "/watch/replay/gm-tournament?review=review-1",
         },
@@ -169,15 +186,32 @@ describe("getMyReplays", () => {
     expect(result?.[1]).toMatchObject({
       context: { kind: "friendly" },
       ruleset: { id: "m-league", label: "M-League" },
+      reasons: ["played"],
     });
     expect(result?.[2]).toMatchObject({
+      gameDate: 1_697_609_642_240,
+      reasons: ["played"],
+      context: { kind: "external" },
+      ruleset: {
+        id: "platform:riichicity",
+        label: "Riichi City",
+      },
+    });
+    expect(result?.[3]).toMatchObject({
       gameDate: null,
       context: { kind: "external" },
       ruleset: {
         id: "platform:majsoul",
         label: "Mahjong Soul",
       },
-      reviews: [{ shortId: "review-2", commentCount: 0 }],
+      reasons: ["commented"],
+      reviews: [
+        {
+          shortId: "review-2",
+          reasons: ["commented"],
+          commentCount: 0,
+        },
+      ],
     });
   });
 
@@ -198,6 +232,11 @@ describe("getMyReplays", () => {
       ])
     );
     expect(replayProjection).not.toHaveProperty("events");
+    expect(replayProjection).toMatchObject({
+      creationTriggeredBy: 1,
+      "seats.userDbId": 1,
+      "seats.displayName": 1,
+    });
 
     const pipeline = mocks.aggregateReviews.mock.calls[0][0];
     expect(pipeline[0].$match.$or).toEqual(

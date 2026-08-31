@@ -1013,6 +1013,7 @@ export interface Translations extends CoreTranslations {
       context: string;
       ruleset: string;
       type: string;
+      reason: string;
       links: string;
       lastModified: string;
       comments: string;
@@ -1037,6 +1038,11 @@ export interface Translations extends CoreTranslations {
     types: {
       replay: string;
       review: string;
+    };
+    reasons: {
+      created: string;
+      played: string;
+      commented: string;
     };
     links: {
       replay: string;

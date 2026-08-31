@@ -13,6 +13,7 @@ import type {
   MyReplayContext,
   MyReplayContextKind,
   MyReplayGroup,
+  MyReplayReason,
   MyReplayRuleset,
 } from "~/types/myReplays";
 import type { ReplaySource } from "~/game/replay/types";
@@ -28,6 +29,7 @@ import {
 interface MyReplayTableRow {
   key: string;
   rowType: MyReplayRowType;
+  reasons: MyReplayReason[];
   gameDate: number | null;
   source: ReplaySource;
   context: MyReplayContext;
@@ -39,10 +41,28 @@ interface MyReplayTableRow {
   children?: MyReplayTableRow[];
 }
 
+export const MY_REPLAY_COLUMN_MIN_BREAKPOINT = {
+  links: "sm",
+  platform: "md",
+  type: "md",
+  reason: "md",
+  context: "lg",
+  ruleset: "lg",
+  comments: "lg",
+  lastModified: "xl",
+} as const;
+
+const REASON_DISPLAY_ORDER: MyReplayReason[] = [
+  "created",
+  "played",
+  "commented",
+];
+
 function toTableRows(groups: MyReplayGroup[]): MyReplayTableRow[] {
   return groups.map((group) => ({
     key: group.key,
     rowType: "replay",
+    reasons: group.reasons,
     gameDate: group.gameDate,
     source: group.source,
     context: group.context,
@@ -53,6 +73,7 @@ function toTableRows(groups: MyReplayGroup[]): MyReplayTableRow[] {
     children: group.reviews.map((review) => ({
       key: review.key,
       rowType: "review",
+      reasons: review.reasons,
       gameDate: group.gameDate,
       source: group.source,
       context: group.context,
@@ -167,6 +188,16 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
     tournament: t.myReplays.contexts.tournament,
     external: t.myReplays.contexts.external,
   };
+  const reasonLabels: Record<MyReplayReason, string> = {
+    created: t.myReplays.reasons.created,
+    played: t.myReplays.reasons.played,
+    commented: t.myReplays.reasons.commented,
+  };
+  const reasonColors: Record<MyReplayReason, string> = {
+    created: "blue",
+    played: "green",
+    commented: "magenta",
+  };
 
   const displayRuleset = (ruleset: MyReplayRuleset): string => {
     if (ruleset.id.startsWith("platform:")) {
@@ -265,10 +296,29 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       render: (value: number | null) => formatDateTime(value),
     },
     {
+      title: t.myReplays.columns.links,
+      key: "links",
+      width: 185,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.links],
+      render: (_value, row) => (
+        <Space wrap>
+          <Link to={row.replayUrl}>
+            <EyeOutlined /> {t.myReplays.links.replay}
+          </Link>
+          {row.reviewUrl ? (
+            <Link to={row.reviewUrl}>
+              <CommentOutlined /> {t.myReplays.links.review}
+            </Link>
+          ) : null}
+        </Space>
+      ),
+    },
+    {
       title: t.myReplays.columns.platform,
       dataIndex: "source",
       key: "platform",
       width: 135,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.platform],
       filters: platformOptions,
       filteredValue: filters.platforms,
       onFilter: () => true,
@@ -279,6 +329,7 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       dataIndex: ["context", "kind"],
       key: "context",
       width: 175,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.context],
       filters: contextOptions,
       filteredValue: filters.contexts,
       onFilter: () => true,
@@ -313,6 +364,7 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       dataIndex: ["ruleset", "id"],
       key: "ruleset",
       width: 165,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.ruleset],
       filters: rulesetOptions,
       filteredValue: filters.rulesets,
       onFilter: () => true,
@@ -323,6 +375,7 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       dataIndex: "rowType",
       key: "rowType",
       width: 105,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.type],
       filters: [
         { text: t.myReplays.types.replay, value: "replay" },
         { text: t.myReplays.types.review, value: "review" },
@@ -336,19 +389,24 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       ),
     },
     {
-      title: t.myReplays.columns.links,
-      key: "links",
-      width: 185,
-      render: (_value, row) => (
-        <Space wrap>
-          <Link to={row.replayUrl}>
-            <EyeOutlined /> {t.myReplays.links.replay}
-          </Link>
-          {row.reviewUrl ? (
-            <Link to={row.reviewUrl}>
-              <CommentOutlined /> {t.myReplays.links.review}
-            </Link>
-          ) : null}
+      title: t.myReplays.columns.reason,
+      dataIndex: "reasons",
+      key: "reason",
+      width: 210,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.reason],
+      filters: REASON_DISPLAY_ORDER.map((reason) => ({
+        text: reasonLabels[reason],
+        value: reason,
+      })),
+      filteredValue: filters.reasons,
+      onFilter: () => true,
+      render: (reasons: MyReplayReason[]) => (
+        <Space size={[0, 4]} wrap>
+          {reasons.map((reason) => (
+            <Tag key={reason} color={reasonColors[reason]}>
+              {reasonLabels[reason]}
+            </Tag>
+          ))}
         </Space>
       ),
     },
@@ -357,6 +415,7 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       dataIndex: "lastModified",
       key: "lastModified",
       width: 185,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.lastModified],
       sorter: true,
       sortOrder: sort.field === "lastModified" ? sort.order : null,
       filteredValue: filters.lastModifiedRange ? ["active"] : null,
@@ -378,6 +437,7 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       key: "commentCount",
       align: "right",
       width: 115,
+      responsive: [MY_REPLAY_COLUMN_MIN_BREAKPOINT.comments],
     },
   ];
 
@@ -394,6 +454,7 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       ) as MyReplayContextKind[],
       rulesets: stringFilterValues(tableFilters.ruleset),
       rowTypes: stringFilterValues(tableFilters.rowType) as MyReplayRowType[],
+      reasons: stringFilterValues(tableFilters.reason) as MyReplayReason[],
     }));
     const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
     if (
@@ -424,7 +485,7 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
       locale={{
         emptyText: <Empty description={t.myReplays.noMatches} />,
       }}
-      scroll={{ x: 1250 }}
+      scroll={{ x: 1460 }}
       onChange={onTableChange}
     />
   );

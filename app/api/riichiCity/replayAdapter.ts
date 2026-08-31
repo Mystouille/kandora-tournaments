@@ -55,6 +55,7 @@ import {
   type ReplayLog,
   type ReplaySeat,
 } from "~/game/replay/types";
+import { normalizeEpochMilliseconds } from "~/game/replay/timestamp";
 
 const ROUND_WIND: ReadonlyArray<"E" | "S" | "W" | "N"> = ["E", "S", "W", "N"];
 
@@ -271,19 +272,15 @@ export function parseRiichiCityReplay(
     };
   }) as ReplaySeat[];
 
-  const startedAt = firstStartTime > 0 ? firstStartTime * 1000 : 0;
-  const endedAt = game.nowTime
-    ? game.nowTime * 1000
-    : lastEventTime > 0
-      ? lastEventTime * 1000
-      : startedAt;
+  const startedAt = normalizeEpochMilliseconds(firstStartTime);
+  const endedAt = normalizeEpochMilliseconds(game.nowTime || lastEventTime);
 
   return {
     source: "riichicity",
     sourceGameId: game.keyValue,
     ruleSet: "riichicity",
     startedAt,
-    endedAt,
+    endedAt: endedAt || startedAt,
     seats,
     events,
     schemaVersion: REPLAY_LOG_SCHEMA_VERSION,

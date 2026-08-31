@@ -6,10 +6,12 @@ import { GameModel } from "~/core/models/tournament/Game";
 import { LeagueModel } from "~/core/models/tournament/League";
 import { UserModel } from "~/core/models/shared/User";
 import { listPresets } from "~/game/rules/presets";
+import { normalizeEpochMilliseconds } from "~/game/replay/timestamp";
 import type { ReplaySource } from "~/game/replay/types";
 import type {
   MyReplayContext,
   MyReplayGroup,
+  MyReplayReason,
   MyReplayRuleset,
   MyReplayReview,
 } from "~/types/myReplays";
@@ -28,6 +30,11 @@ interface ReplayLogListDocument {
   ruleSet: string;
   startedAt: number;
   endedAt: number;
+  creationTriggeredBy?: mongoose.Types.ObjectId;
+  seats?: Array<{
+    userDbId?: mongoose.Types.ObjectId;
+    displayName: string;
+  }>;
 }
 
 interface ReviewListDocument {
@@ -64,7 +71,10 @@ interface LeagueListDocument {
 interface ReplaySeed {
   source: ReplaySource;
   sourceGameId: string;
+  reasons: Set<MyReplayReason>;
 }
+
+const REASON_ORDER: MyReplayReason[] = ["created", "played", "commented"];
 
 const SOURCE_LABELS: Record<ReplaySource, string> = {
   ingame: "Kandora",
@@ -96,8 +106,13 @@ function asTimestamp(value: Date | number | undefined): number | null {
   if (value === undefined) {
     return null;
   }
-  const timestamp = value instanceof Date ? value.getTime() : value;
-  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+  }
+  // ReplayLog numbers may include legacy Riichi City seconds or accidentally
+  // over-multiplied microseconds; normalize them before filtering and sorting.
+  return normalizeEpochMilliseconds(value) || null;
 }
 
 function sourceForGamePlatform(
@@ -184,9 +199,16 @@ function resolveRuleset(
 function addSeed(
   seeds: Map<string, ReplaySeed>,
   source: ReplaySource,
-  sourceGameId: string
+  sourceGameId: string,
+  reason: MyReplayReason
 ): void {
-  seeds.set(replayKey(source, sourceGameId), { source, sourceGameId });
+  const key = replayKey(source, sourceGameId);
+  const existing = seeds.get(key);
+  if (existing) {
+    existing.reasons.add(reason);
+    return;
+  }
+  seeds.set(key, { source, sourceGameId, reasons: new Set([reason]) });
 }
 
 export async function getMyReplays(
@@ -216,8 +238,10 @@ export async function getMyReplays(
     ["tenhou", user.tenhouIdentity?.name?.trim()],
     ["riichicity", user.riichiCityIdentity?.name?.trim()],
   ];
+  const externalNameBySource = new Map<ReplaySource, string>();
   for (const [source, displayName] of externalNames) {
     if (displayName) {
+      externalNameBySource.set(source, displayName);
       replayRelations.push({ source, "seats.displayName": displayName });
     }
   }
@@ -231,6 +255,9 @@ export async function getMyReplays(
         ruleSet: 1,
         startedAt: 1,
         endedAt: 1,
+        creationTriggeredBy: 1,
+        "seats.userDbId": 1,
+        "seats.displayName": 1,
       }
     )
       .lean<ReplayLogListDocument[]>()
@@ -281,15 +308,30 @@ export async function getMyReplays(
   const matchByKey = new Map<string, MatchListDocument>();
   const seeds = new Map<string, ReplaySeed>();
   for (const replay of directReplays) {
-    addSeed(seeds, replay.source, replay.sourceGameId);
+    if (
+      replay.source !== "ingame" &&
+      String(replay.creationTriggeredBy ?? "") === userId
+    ) {
+      addSeed(seeds, replay.source, replay.sourceGameId, "created");
+    }
+    const played =
+      replay.source === "ingame"
+        ? replay.seats?.some((seat) => String(seat.userDbId ?? "") === userId)
+        : replay.seats?.some(
+            (seat) =>
+              seat.displayName === externalNameBySource.get(replay.source)
+          );
+    if (played) {
+      addSeed(seeds, replay.source, replay.sourceGameId, "played");
+    }
   }
   for (const match of matches) {
     const key = replayKey("ingame", match._id);
     matchByKey.set(key, match);
-    addSeed(seeds, "ingame", match._id);
+    addSeed(seeds, "ingame", match._id, "played");
   }
   for (const review of reviews) {
-    addSeed(seeds, review.source, review.sourceGameId);
+    addSeed(seeds, review.source, review.sourceGameId, "commented");
   }
 
   const missingReplayFilters = [...seeds.values()]
@@ -400,6 +442,7 @@ export async function getMyReplays(
     rows.push({
       key: `review:${review.shortId}`,
       shortId: review.shortId,
+      reasons: ["commented"],
       lastModified: asTimestamp(review.updatedAt ?? review.createdAt),
       commentCount: review.commentCount,
       replayUrl: gameReplayUrl,
@@ -434,6 +477,7 @@ export async function getMyReplays(
       key,
       source: seed.source,
       sourceGameId: seed.sourceGameId,
+      reasons: REASON_ORDER.filter((reason) => seed.reasons.has(reason)),
       gameDate,
       context: resolveContext(seed.source, game, league),
       ruleset: resolveRuleset(seed.source, replay, match, game),
