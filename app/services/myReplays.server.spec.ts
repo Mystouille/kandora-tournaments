@@ -263,6 +263,195 @@ describe("getMyReplays", () => {
     });
   });
 
+  it("deduplicates an external replay alias against its tournament game", async () => {
+    const sourceGameId = "2026082104gm-0009-19370-7618936d";
+    const externalReplayId = new mongoose.Types.ObjectId(
+      "507f1f77bcf86cd799439016"
+    );
+    mocks.findReplays.mockReset();
+    mocks.findReplays.mockReturnValue(
+      queryResult([
+        {
+          _id: replayId,
+          source: "tenhou",
+          sourceGameId,
+          ruleSet: "tenhou",
+          startedAt: 1_700_000_002_000,
+          endedAt: 1_700_000_003_000,
+          seats: [{ seat: 0, displayName: "TenhouName" }],
+        },
+        {
+          _id: externalReplayId,
+          source: "tenhou",
+          sourceGameId: `https://tenhou.net/0/?log=${sourceGameId}&tw=0`,
+          ruleSet: "tenhou",
+          startedAt: 1_700_000_002_000,
+          endedAt: 1_700_000_003_000,
+          seats: [{ seat: 0, displayName: "TenhouName" }],
+        },
+      ])
+    );
+    mocks.findMatches.mockReturnValue(queryResult([]));
+    mocks.aggregateReviews.mockReturnValue(queryResult([]));
+    mocks.findGames.mockReturnValue(
+      queryResult([
+        {
+          gameId: sourceGameId,
+          platform: "tenhou",
+          rules: "MLEAGUE",
+          league: leagueId,
+          replayLogRef: replayId,
+          startTime: new Date(1_700_000_002_100),
+        },
+      ])
+    );
+
+    const result = await getMyReplays(userId);
+
+    expect(result).toHaveLength(1);
+    expect(result?.[0]).toMatchObject({
+      source: "tenhou",
+      sourceGameId,
+      context: {
+        kind: "tournament",
+        tournamentName: "Summer Cup",
+      },
+      reasons: ["played"],
+    });
+  });
+
+  it("merges only an outcome-matching replay into its tournament replay", async () => {
+    const tournamentSourceGameId = "2026082104gm-0009-19370-7618936d";
+    const externalSourceGameId = "2026082104gm-0009-19370-duplicate";
+    const rematchSourceGameId = "2026082104gm-0009-19370-rematch";
+    const externalReplayId = new mongoose.Types.ObjectId(
+      "507f1f77bcf86cd799439016"
+    );
+    const rematchReplayId = new mongoose.Types.ObjectId(
+      "507f1f77bcf86cd799439017"
+    );
+    const seats = [
+      {
+        seat: 0,
+        displayName: "TenhouName",
+        finalScore: 46_000,
+        place: 1,
+      },
+      {
+        seat: 1,
+        displayName: "Player Two",
+        finalScore: 19_400,
+        place: 2,
+      },
+      {
+        seat: 2,
+        displayName: "Player Three",
+        finalScore: 19_300,
+        place: 3,
+      },
+      {
+        seat: 3,
+        displayName: "Player Four",
+        finalScore: 15_300,
+        place: 4,
+      },
+    ];
+    mocks.findReplays.mockReset();
+    mocks.findReplays.mockReturnValue(
+      queryResult([
+        {
+          _id: replayId,
+          source: "tenhou",
+          sourceGameId: tournamentSourceGameId,
+          ruleSet: "tenhou",
+          startedAt: 1_700_000_000_000,
+          endedAt: 1_700_000_000_000,
+          creationTriggeredBy: new mongoose.Types.ObjectId(userId),
+          seats,
+        },
+        {
+          _id: externalReplayId,
+          source: "tenhou",
+          sourceGameId: externalSourceGameId,
+          ruleSet: "tenhou",
+          startedAt: 1_700_000_000_000,
+          endedAt: 1_700_000_000_000,
+          seats: [...seats].reverse(),
+        },
+        {
+          _id: rematchReplayId,
+          source: "tenhou",
+          sourceGameId: rematchSourceGameId,
+          ruleSet: "tenhou",
+          startedAt: 1_700_000_000_000,
+          endedAt: 1_700_000_000_000,
+          seats: [
+            { ...seats[0], finalScore: 44_400, place: 1 },
+            { ...seats[1], finalScore: 29_800, place: 3 },
+            { ...seats[2], finalScore: -7_500, place: 4 },
+            { ...seats[3], finalScore: 33_300, place: 2 },
+          ],
+        },
+      ])
+    );
+    mocks.findMatches.mockReturnValue(queryResult([]));
+    mocks.aggregateReviews.mockReturnValue(
+      queryResult([
+        {
+          shortId: "external-review",
+          source: "tenhou",
+          sourceGameId: externalSourceGameId,
+          target: { name: "TenhouName" },
+          commentedByUser: true,
+          updatedAt: new Date(1_700_000_001_000),
+          commentCount: 2,
+        },
+      ])
+    );
+    mocks.findGames.mockReturnValue(
+      queryResult([
+        {
+          gameId: tournamentSourceGameId,
+          platform: "tenhou",
+          rules: "MLEAGUE",
+          league: leagueId,
+          replayLogRef: replayId,
+          startTime: new Date(1_700_000_000_000),
+        },
+      ])
+    );
+
+    const result = await getMyReplays(userId);
+    const tournamentReplay = result?.find(
+      (group) => group.context.kind === "tournament"
+    );
+
+    expect(result).toHaveLength(2);
+    expect(tournamentReplay).toMatchObject({
+      source: "tenhou",
+      sourceGameId: tournamentSourceGameId,
+      context: {
+        kind: "tournament",
+        tournamentName: "Summer Cup",
+      },
+      reasons: ["created", "played"],
+      commentCount: 2,
+      reviews: [
+        expect.objectContaining({
+          shortId: "external-review",
+          reasons: ["commented"],
+          commentCount: 2,
+        }),
+      ],
+    });
+    expect(
+      result?.find((group) => group.context.kind === "external")
+    ).toMatchObject({
+      sourceGameId: rematchSourceGameId,
+      reasons: ["played"],
+    });
+  });
+
   it("builds identity-scoped queries and excludes heavy payload fields", async () => {
     await getMyReplays(userId);
 

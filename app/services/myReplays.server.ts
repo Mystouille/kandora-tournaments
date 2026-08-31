@@ -6,6 +6,7 @@ import { GameModel } from "~/core/models/tournament/Game";
 import { LeagueModel } from "~/core/models/tournament/League";
 import { UserModel } from "~/core/models/shared/User";
 import { listPresets } from "~/game/rules/presets";
+import { normalizeReplayId } from "~/game/replay/normalizeReplayId";
 import { normalizeEpochMilliseconds } from "~/game/replay/timestamp";
 import type { ReplaySource } from "~/game/replay/types";
 import type {
@@ -34,6 +35,8 @@ interface ReplayLogListDocument {
   seats?: Array<{
     userDbId?: mongoose.Types.ObjectId;
     displayName: string;
+    finalScore?: number;
+    place?: number;
   }>;
 }
 
@@ -104,8 +107,12 @@ const PRESET_RULESETS = new Map(
   ])
 );
 
+function canonicalReplayId(source: ReplaySource, sourceGameId: string): string {
+  return source === "ingame" ? sourceGameId : normalizeReplayId(sourceGameId);
+}
+
 function replayKey(source: ReplaySource, sourceGameId: string): string {
-  return JSON.stringify([source, sourceGameId]);
+  return JSON.stringify([source, canonicalReplayId(source, sourceGameId)]);
 }
 
 function asTimestamp(value: Date | number | undefined): number | null {
@@ -208,13 +215,125 @@ function addSeed(
   sourceGameId: string,
   reason: MyReplayReason
 ): void {
-  const key = replayKey(source, sourceGameId);
+  const canonicalSourceGameId = canonicalReplayId(source, sourceGameId);
+  const key = replayKey(source, canonicalSourceGameId);
   const existing = seeds.get(key);
   if (existing) {
     existing.reasons.add(reason);
     return;
   }
-  seeds.set(key, { source, sourceGameId, reasons: new Set([reason]) });
+  seeds.set(key, {
+    source,
+    sourceGameId: canonicalSourceGameId,
+    reasons: new Set([reason]),
+  });
+}
+
+function replayOutcomeFingerprint(
+  replay: ReplayLogListDocument | undefined
+): string | null {
+  const startedAt = asTimestamp(replay?.startedAt);
+  const endedAt = asTimestamp(replay?.endedAt);
+  if (!replay || startedAt === null || endedAt === null) {
+    return null;
+  }
+
+  const outcomes: Array<[string, number, number]> = [];
+  for (const seat of replay.seats ?? []) {
+    const displayName = seat.displayName.trim();
+    if (
+      !displayName ||
+      typeof seat.finalScore !== "number" ||
+      !Number.isFinite(seat.finalScore) ||
+      typeof seat.place !== "number" ||
+      !Number.isFinite(seat.place)
+    ) {
+      return null;
+    }
+    outcomes.push([displayName, seat.finalScore, seat.place]);
+  }
+  if (outcomes.length < 3) {
+    return null;
+  }
+  outcomes.sort((left, right) =>
+    JSON.stringify(left).localeCompare(JSON.stringify(right))
+  );
+  return JSON.stringify([
+    replay.source,
+    replay.ruleSet,
+    startedAt,
+    endedAt,
+    outcomes,
+  ]);
+}
+
+function deduplicateTournamentReplayGroups(
+  groups: MyReplayGroup[],
+  replayByKey: Map<string, ReplayLogListDocument>
+): MyReplayGroup[] {
+  const groupsByFingerprint = new Map<string, MyReplayGroup[]>();
+  for (const group of groups) {
+    const fingerprint = replayOutcomeFingerprint(replayByKey.get(group.key));
+    if (!fingerprint) {
+      continue;
+    }
+    const matchingGroups = groupsByFingerprint.get(fingerprint) ?? [];
+    matchingGroups.push(group);
+    groupsByFingerprint.set(fingerprint, matchingGroups);
+  }
+
+  const mergedTournamentGroups = new Map<string, MyReplayGroup>();
+  const duplicateExternalKeys = new Set<string>();
+  for (const matchingGroups of groupsByFingerprint.values()) {
+    const tournamentGroups = matchingGroups.filter(
+      (group) => group.context.kind === "tournament"
+    );
+    const externalGroups = matchingGroups.filter(
+      (group) => group.context.kind === "external"
+    );
+    if (tournamentGroups.length !== 1 || externalGroups.length === 0) {
+      continue;
+    }
+
+    const tournamentGroup = tournamentGroups[0];
+    const mergedReasons = new Set(tournamentGroup.reasons);
+    const reviewsByKey = new Map(
+      tournamentGroup.reviews.map((review) => [review.key, review])
+    );
+    for (const externalGroup of externalGroups) {
+      duplicateExternalKeys.add(externalGroup.key);
+      for (const reason of externalGroup.reasons) {
+        mergedReasons.add(reason);
+      }
+      for (const review of externalGroup.reviews) {
+        reviewsByKey.set(review.key, review);
+      }
+    }
+    const reviews = [...reviewsByKey.values()].sort(
+      (left, right) =>
+        (right.lastModified ?? Number.NEGATIVE_INFINITY) -
+          (left.lastModified ?? Number.NEGATIVE_INFINITY) ||
+        left.shortId.localeCompare(right.shortId)
+    );
+    mergedTournamentGroups.set(tournamentGroup.key, {
+      ...tournamentGroup,
+      reasons: PARENT_REASON_ORDER.filter((reason) =>
+        mergedReasons.has(reason)
+      ),
+      commentCount: reviews.reduce(
+        (total, review) => total + review.commentCount,
+        0
+      ),
+      reviews,
+    });
+  }
+
+  return groups.flatMap((group) => {
+    if (duplicateExternalKeys.has(group.key)) {
+      return [];
+    }
+    return [mergedTournamentGroups.get(group.key) ?? group];
+  });
 }
 
 export async function getMyReplays(
@@ -264,6 +383,8 @@ export async function getMyReplays(
         creationTriggeredBy: 1,
         "seats.userDbId": 1,
         "seats.displayName": 1,
+        "seats.finalScore": 1,
+        "seats.place": 1,
       }
     )
       .lean<ReplayLogListDocument[]>()
@@ -407,6 +528,8 @@ export async function getMyReplays(
         startedAt: 1,
         endedAt: 1,
         "seats.displayName": 1,
+        "seats.finalScore": 1,
+        "seats.place": 1,
       }
     )
       .lean<ReplayLogListDocument[]>()
@@ -553,7 +676,7 @@ export async function getMyReplays(
     });
   }
 
-  return groups.sort(
+  return deduplicateTournamentReplayGroups(groups, replayByKey).sort(
     (left, right) =>
       (right.gameDate ?? Number.NEGATIVE_INFINITY) -
         (left.gameDate ?? Number.NEGATIVE_INFINITY) ||
