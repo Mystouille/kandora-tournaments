@@ -1449,23 +1449,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   };
 
   /**
-   * Build a share URL for a given `shortId`, pinned to the
-   * current playhead. Returns `""` when the URL cannot be built
-   * (SSR, or no `shortId` available). Used both by the post-
-   * publish flow (where the caller already knows the fresh
-   * `shortId`) and by the cartridge's pre-publish path.
+   * Build a share URL for a given `shortId`. With no explicit
+   * event, the replay route opens the review's first annotation
+   * (or the normal game start when the review is empty). Returns
+   * `""` when the URL cannot be built (SSR, or no `shortId`).
    */
   const buildShareUrlFor = (shortId: string | null): string => {
     if (typeof window === "undefined" || !shortId) {
       return "";
     }
-    // Pin the share link to the current playhead so the viewer
-    // lands on the same frame the author was looking at when they
-    // hit Publish. Drawings/text are attached to a specific event
-    // index — without this the viewer would have to scrub to find
-    // them.
     return buildReplayViewerShareUrl(window.location.href, {
-      event: index,
       review: shortId,
     });
   };

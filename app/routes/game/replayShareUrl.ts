@@ -1,5 +1,5 @@
 export interface ReplayViewerShareState {
-  event: number;
+  event?: number;
   seat?: number;
   round?: number;
   review?: string | null;
@@ -20,7 +20,9 @@ export function buildReplayViewerShareUrl(
   if (state.round !== undefined) {
     url.searchParams.set("round", String(state.round));
   }
-  url.searchParams.set("event", String(state.event));
+  if (state.event !== undefined) {
+    url.searchParams.set("event", String(state.event));
+  }
   if (state.review) {
     url.searchParams.set("review", state.review);
   }

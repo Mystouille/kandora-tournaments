@@ -28,14 +28,12 @@ describe("buildReplayViewerShareUrl", () => {
   it("omits the opener path from copied Publish URLs", () => {
     const url = new URL(
       buildReplayViewerShareUrl(currentUrl, {
-        event: 72,
         review: "review-abc",
       })
     );
 
     expect(url.searchParams.has("from")).toBe(false);
     expect(Object.fromEntries(url.searchParams)).toEqual({
-      event: "72",
       review: "review-abc",
     });
   });
