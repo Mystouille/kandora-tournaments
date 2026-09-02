@@ -91,17 +91,8 @@ import { TileSetName } from "~/components/mahjong/handLayout";
 import { ArticleContent } from "~/components/ArticleContent";
 import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConfig";
 import { Button, Modal, Tooltip, message } from "antd";
-import {
-  DeleteOutlined,
-  QuestionOutlined,
-  SoundOutlined,
-  AudioMutedOutlined,
-} from "@ant-design/icons";
-import {
-  isGameSoundEnabled,
-  setGameSoundEnabled,
-  playSoundForEvent,
-} from "~/game/client/sound";
+import { DeleteOutlined, QuestionOutlined } from "@ant-design/icons";
+import { playSoundForEvent } from "~/game/client/sound";
 import {
   replaySoundTarget,
   type ReplayNavigationKind,
@@ -578,12 +569,6 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   };
   const [focusSeat, setFocusSeat] = useState<Seat>(initial.seat);
   const [copied, setCopied] = useState<boolean>(false);
-  // Audio toggle: persisted via the same `kandora.game.sound.enabled`
-  // localStorage key that the live-game UI uses, so the user's mute
-  // preference carries across both surfaces.
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(() =>
-    isGameSoundEnabled()
-  );
   // Navigation explicitly arms one event target for sound. Numerical
   // adjacency is not sufficient: a round/slider/comment jump may land
   // one index ahead but must remain silent.
@@ -592,9 +577,6 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     indexRef.current = index;
     const target = pendingSoundTargetRef.current;
     pendingSoundTargetRef.current = null;
-    if (!soundEnabled) {
-      return;
-    }
     if (!target || target.playIndex !== index) {
       return;
     }
@@ -603,7 +585,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       return;
     }
     playSoundForEvent(ev, focusSeat);
-  }, [index, soundEnabled, log.events, focusSeat]);
+  }, [index, log.events, focusSeat]);
 
   // ── Review state ────────────────────────────────────────────────
   // `review` mirrors what the server returned at load time and is
@@ -2058,7 +2040,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           </a>
           , C-Egg
         </div>
-        {/* Top-right: sound, share / publish, parameters, and quit.
+        {/* Top-right: share / publish, settings, and quit.
             When the editor has unpublished local edits the same
             slot turns into a "Publish" button that pushes them
             to the server before copying the share link. */}
@@ -2070,19 +2052,6 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           onQuit={handleClose}
           quitLabel="Close replay"
         >
-          <button
-            type="button"
-            onClick={() => {
-              const next = !soundEnabled;
-              setSoundEnabled(next);
-              setGameSoundEnabled(next);
-            }}
-            aria-label={soundEnabled ? "Mute sound" : "Unmute sound"}
-            title={soundEnabled ? "Mute sound" : "Unmute sound"}
-            className={`${WEB_TABLE_TOP_CONTROL_CLASS} w-11 text-xl`}
-          >
-            {soundEnabled ? <SoundOutlined /> : <AudioMutedOutlined />}
-          </button>
           <button
             type="button"
             onClick={() => {
