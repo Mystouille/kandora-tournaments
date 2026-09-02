@@ -51,6 +51,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   return {
     matchId,
     flag: getClientGameFlag(),
+    tenhouRelay: true,
   };
 }
 
