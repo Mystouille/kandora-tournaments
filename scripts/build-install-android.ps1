@@ -113,6 +113,11 @@ try {
   $gradle = Join-Path $repoRoot "android\gradlew.bat"
   $apk = Join-Path $repoRoot "android\app\build\outputs\apk\debug\app-debug.apk"
 
+  Invoke-External $npx @(
+    "vitest",
+    "run",
+    "mobile/src/App.spec.ts"
+  ) "Verify mobile Home shell"
   Invoke-External $npm @("run", "mobile:build") "Build mobile web assets"
   Invoke-External $npx @("cap", "copy", "android") "Copy assets into Android"
   Invoke-External $gradle @(

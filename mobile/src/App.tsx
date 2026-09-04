@@ -1,25 +1,24 @@
 import { App as NativeApp } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
+  ArrowLeft,
+  ChevronRight,
   Cloud,
+  DoorOpen,
   History,
   LoaderCircle,
+  LogIn,
   LogOut,
-  Pause,
   Radio,
   RotateCcw,
   Upload,
+  UserRound,
   Wifi,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { z } from "zod";
 import {
   GameEventSchema,
@@ -34,7 +33,15 @@ import {
 } from "~/game/replay/player";
 import type { MatchView } from "~/game/client/store";
 import { useMatchStore } from "~/game/client/store";
+import { findNoCallAutoPass } from "~/game/client/callPrompt";
 import { findTileAction } from "~/game/client/discardActions";
+import {
+  buildInitialLivePlayMenuFlags,
+  resetEphemeralFlags,
+  writePersistedAutoSort,
+  type LivePlayMenuFlags,
+  type LivePlayMenuOptionKey,
+} from "~/game/client/LivePlayMenu";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import { mobileTableLayout } from "~/game/client/pixi/layouts/mobileTableLayout";
 import { DEMO_EVENTS, DEMO_SEAT_NAMES } from "./demoReplay";
@@ -52,12 +59,37 @@ import {
   type NearbyIdentity,
 } from "./nearby/NearbyMatchController";
 import { NearbyLobbyPanel } from "./nearby/NearbyLobbyPanel";
+import { loadNearbyIdentity, updateNearbyDisplayName } from "./nearby/identity";
+import { MobileLobby } from "./online/MobileLobby";
+import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
+import { MobileGameMenu } from "./game/MobileGameMenu";
 import {
-  loadNearbyIdentity,
-  updateNearbyDisplayName,
-} from "./nearby/identity";
-
-type AppMode = "online" | "nearby" | "replays";
+  INITIAL_ONLINE_MATCH_STATE,
+  OnlineMatchController,
+} from "./online/OnlineMatchController";
+import {
+  clearMobileAuthSession,
+  clearPendingMobileAuth,
+  createMobileAuthRequest,
+  exchangeMobileAuthCode,
+  loadMobileAuthSession,
+  loadPendingMobileAuthVerifier,
+  MobileAuthHttpError,
+  saveMobileAuthSession,
+  savePendingMobileAuth,
+  verifyMobileAuthSession,
+  type MobileAuthSession,
+} from "./auth/mobileAuth";
+import {
+  hasPlayingMatch,
+  mobileAuthCallbackResult,
+  nearbyPageAvailable,
+  normalizeWebAppUrl,
+  retryTransientPause,
+  webAppPath,
+  type MobileShellPage,
+  type MobileStorageState,
+} from "./shell";
 
 interface LoadedReplay {
   id: string;
@@ -102,11 +134,15 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
-const MODES = [
-  { id: "online" as const, label: "Online", Icon: Cloud },
-  { id: "nearby" as const, label: "Nearby", Icon: Radio },
-  { id: "replays" as const, label: "Replays", Icon: History },
-];
+const DRAW_TO_DISCARD_DELAY_MS = 700;
+
+type MobileAuthStatus =
+  | "checking"
+  | "signed_out"
+  | "opening"
+  | "exchanging"
+  | "authenticated"
+  | "error";
 
 function replayToMatchView(replay: LoadedReplay): MatchView {
   let view = initialView();
@@ -126,20 +162,41 @@ export function App() {
   const repositoryRef = useRef<MobileMatchRepositoryHandle | null>(null);
   const localControllerRef = useRef<LocalMatchController | null>(null);
   const nearbyControllerRef = useRef<NearbyMatchController | null>(null);
+  const onlineControllerRef = useRef<OnlineMatchController | null>(null);
+  const liveActionDispatcherRef = useRef<(actionId: string) => void>(
+    () => undefined
+  );
+  const lastAutoActedIdRef = useRef<string | null>(null);
+  const autoDiscardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<AppMode>("replays");
+  const authGenerationRef = useRef(0);
+  const handledAuthCallbackRef = useRef<string | null>(null);
+  const pendingVerifierRef = useRef<string | null>(null);
+  const [page, setPage] = useState<MobileShellPage>("home");
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const [authStatus, setAuthStatus] = useState<MobileAuthStatus>("checking");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [mobileAuthSession, setMobileAuthSession] =
+    useState<MobileAuthSession | null>(null);
+  const [controllersReady, setControllersReady] = useState(false);
+  const [shellBusy, setShellBusy] = useState(false);
+  const [gameMenuExpanded, setGameMenuExpanded] = useState(false);
+  const [liveMenuFlags, setLiveMenuFlags] = useState<LivePlayMenuFlags>(
+    buildInitialLivePlayMenuFlags
+  );
   const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
   >("loading");
   const [importError, setImportError] = useState<string | null>(null);
-  const [storageState, setStorageState] = useState<
-    "loading" | "sqlite" | "memory" | "error"
-  >("loading");
+  const [storageState, setStorageState] =
+    useState<MobileStorageState>("loading");
   const [localState, setLocalState] = useState(INITIAL_LOCAL_STATE);
-  const [nearbyState, setNearbyState] = useState(
-    INITIAL_NEARBY_MATCH_STATE
-  );
+  const [nearbyState, setNearbyState] = useState(INITIAL_NEARBY_MATCH_STATE);
+  const [onlineState, setOnlineState] = useState(INITIAL_ONLINE_MATCH_STATE);
   const [nearbyIdentity, setNearbyIdentity] = useState<NearbyIdentity>(() =>
     loadNearbyIdentity()
   );
@@ -147,13 +204,12 @@ export function App() {
   nearbyIdentityRef.current = nearbyIdentity;
   const liveView = useMatchStore();
   const replayView = useMemo(() => replayToMatchView(replay), [replay]);
-  const showingLocalMatch = localState.matchId !== null;
-  const showingNearbyMatch = nearbyState.matchId !== null;
-  const showingLiveMatch =
-    mode === "nearby" && (showingLocalMatch || showingNearbyMatch);
   const isPlayingMatch =
-    showingLiveMatch &&
-    (localState.status === "playing" || nearbyState.status === "playing");
+    hasPlayingMatch(localState.status, nearbyState.status) ||
+    onlineState.status === "playing" ||
+    onlineState.status === "spectating" ||
+    onlineState.status === "finished";
+  const showsTable = page === "game" || page === "replays";
   const renderedLiveView = useMemo(
     () =>
       liveView.mySeat !== null && liveView.mySeat !== 0
@@ -161,9 +217,121 @@ export function App() {
         : liveView,
     [liveView]
   );
-  const matchView = showingLiveMatch ? renderedLiveView : replayView;
+  const matchView = page === "game" ? renderedLiveView : replayView;
   const latestViewRef = useRef(matchView);
   latestViewRef.current = matchView;
+  liveActionDispatcherRef.current = (actionId) => {
+    const matchId = useMatchStore.getState().matchId;
+    const onlineController = onlineControllerRef.current;
+    if (onlineController?.getState().matchId === matchId) {
+      onlineController.act(actionId);
+      return;
+    }
+    const nearbyController = nearbyControllerRef.current;
+    if (nearbyController?.getState().matchId === matchId) {
+      void nearbyController.act(actionId).catch(() => undefined);
+      return;
+    }
+    void localControllerRef.current?.act(actionId);
+  };
+  const webAppBaseUrl = normalizeWebAppUrl(import.meta.env.VITE_APP_BASE_URL, {
+    allowLoopback: !Capacitor.isNativePlatform(),
+  });
+  const canOpenNearby = nearbyPageAvailable(controllersReady, storageState);
+
+  useEffect(() => {
+    window.localStorage.removeItem("kandora_mobile_auth_choice_v1");
+    const generation = ++authGenerationRef.current;
+    if (webAppBaseUrl === null) {
+      setAuthStatus("signed_out");
+      return;
+    }
+    const stored = loadMobileAuthSession(window.localStorage);
+    if (stored === null) {
+      setAuthStatus("signed_out");
+      return;
+    }
+    setAuthStatus("checking");
+    void verifyMobileAuthSession(webAppBaseUrl, stored)
+      .then((verified) => {
+        if (authGenerationRef.current !== generation) {
+          return;
+        }
+        saveMobileAuthSession(window.localStorage, verified);
+        setMobileAuthSession(verified);
+        setAuthError(null);
+        setAuthStatus("authenticated");
+      })
+      .catch((error: unknown) => {
+        if (authGenerationRef.current !== generation) {
+          return;
+        }
+        if (error instanceof MobileAuthHttpError && error.status === 401) {
+          clearMobileAuthSession(window.localStorage);
+        }
+        setMobileAuthSession(null);
+        setAuthError("Could not verify your Discord session.");
+        setAuthStatus("error");
+      });
+  }, [webAppBaseUrl]);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || mobileAuthSession === null) {
+      return;
+    }
+    const remaining = mobileAuthSession.expiresAt - Date.now();
+    if (remaining <= 0) {
+      clearMobileAuthSession(window.localStorage);
+      void onlineControllerRef.current?.leave();
+      setMobileAuthSession(null);
+      setAuthStatus("signed_out");
+      setPage("home");
+      return;
+    }
+    const timer = window.setTimeout(
+      () => {
+        clearMobileAuthSession(window.localStorage);
+        void onlineControllerRef.current?.leave();
+        setMobileAuthSession(null);
+        setAuthStatus("signed_out");
+        setPage("home");
+      },
+      Math.min(remaining, 2_147_483_647)
+    );
+    return () => window.clearTimeout(timer);
+  }, [authStatus, mobileAuthSession]);
+
+  useEffect(() => {
+    const controller = new OnlineMatchController();
+    onlineControllerRef.current = controller;
+    const unsubscribe = controller.subscribe(setOnlineState);
+    return () => {
+      unsubscribe();
+      controller.dispose();
+      if (onlineControllerRef.current === controller) {
+        onlineControllerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || mobileAuthSession === null) {
+      return;
+    }
+    const displayName = mobileAuthSession.username.trim().slice(0, 40);
+    if (
+      displayName === "" ||
+      nearbyIdentityRef.current.displayName === displayName
+    ) {
+      return;
+    }
+    const identity = updateNearbyDisplayName(
+      nearbyIdentityRef.current,
+      displayName
+    );
+    nearbyIdentityRef.current = identity;
+    setNearbyIdentity(identity);
+  }, [authStatus, mobileAuthSession]);
 
   useEffect(() => {
     let disposed = false;
@@ -184,6 +352,7 @@ export function App() {
         unsubscribeNearby = nearbyController.subscribe(setNearbyState);
         setStorageState(handle.storage);
         await nearbyController.initialize();
+        setControllersReady(true);
         const activeMatch = await handle.getActiveMatch();
         if (activeMatch?.owner === "nearby-host") {
           await nearbyController.restoreHost(nearbyIdentityRef.current);
@@ -191,14 +360,22 @@ export function App() {
           await controller.restore();
         }
         if (
+          hasPlayingMatch(
+            controller.getState().status,
+            nearbyController.getState().status
+          )
+        ) {
+          setPage("game");
+        } else if (
           controller.getState().matchId !== null ||
           nearbyController.getState().matchId !== null
         ) {
-          setMode("nearby");
+          setPage("nearby");
         }
       })
       .catch(() => {
         if (!disposed) {
+          setControllersReady(false);
           setStorageState("error");
         }
       });
@@ -224,11 +401,61 @@ export function App() {
     if (!Capacitor.isNativePlatform()) {
       return;
     }
-    void StatusBar.setStyle({ style: Style.Light });
+    void StatusBar.setStyle({ style: Style.Dark });
     if (Capacitor.getPlatform() === "android") {
       void StatusBar.setBackgroundColor({ color: "#0b1210" });
     }
-    let listener: PluginListenerHandle | null = null;
+    void SplashScreen.hide();
+    let stateListener: PluginListenerHandle | null = null;
+    let urlListener: PluginListenerHandle | null = null;
+    const handleUrl = (url: string): void => {
+      const callback = mobileAuthCallbackResult(url);
+      if (callback === null || handledAuthCallbackRef.current === url) {
+        return;
+      }
+      handledAuthCallbackRef.current = url;
+      void Browser.close().catch(() => undefined);
+      const generation = ++authGenerationRef.current;
+      const verifier =
+        pendingVerifierRef.current ??
+        loadPendingMobileAuthVerifier(window.localStorage);
+      pendingVerifierRef.current = null;
+      clearPendingMobileAuth(window.localStorage);
+      if (
+        callback.error !== null ||
+        callback.code === null ||
+        verifier === null ||
+        webAppBaseUrl === null
+      ) {
+        setMobileAuthSession(null);
+        setAuthError("Discord login could not be completed.");
+        setAuthStatus("error");
+        setPage("home");
+        return;
+      }
+      setAuthError(null);
+      setAuthStatus("exchanging");
+      void exchangeMobileAuthCode(webAppBaseUrl, callback.code, verifier)
+        .then((session) => {
+          if (authGenerationRef.current !== generation) {
+            return;
+          }
+          saveMobileAuthSession(window.localStorage, session);
+          setMobileAuthSession(session);
+          setAuthStatus("authenticated");
+          setPage("lobby");
+        })
+        .catch(() => {
+          if (authGenerationRef.current !== generation) {
+            return;
+          }
+          clearMobileAuthSession(window.localStorage);
+          setMobileAuthSession(null);
+          setAuthError("Discord login could not be completed.");
+          setAuthStatus("error");
+          setPage("home");
+        });
+    };
     void NativeApp.addListener("appStateChange", ({ isActive }) => {
       document.documentElement.dataset.appState = isActive
         ? "active"
@@ -250,26 +477,44 @@ export function App() {
         void controller?.restore().catch(() => undefined);
       }
     }).then((handle) => {
-      listener = handle;
+      stateListener = handle;
+    });
+    void NativeApp.addListener("appUrlOpen", ({ url }) => {
+      handleUrl(url);
+    }).then((handle) => {
+      urlListener = handle;
+    });
+    void NativeApp.getLaunchUrl().then((launch) => {
+      if (launch?.url) {
+        handleUrl(launch.url);
+      }
     });
     return () => {
-      void listener?.remove();
+      void stateListener?.remove();
+      void urlListener?.remove();
     };
-  }, []);
+  }, [webAppBaseUrl]);
 
   useEffect(() => {
+    if (!showsTable) {
+      return;
+    }
     const container = tableContainerRef.current;
     if (container === null) {
       return;
     }
     let disposed = false;
     let renderer: TableRenderer | null = null;
+    setRendererState("loading");
     void import("~/game/client/pixi/TableRenderer")
       .then(async ({ TableRenderer: Renderer }) => {
         renderer = new Renderer({
           layoutConfig: mobileTableLayout,
           presentation: "mobile",
         });
+        renderer.setMinimumDrawToDiscardDelayEnabled(
+          pageRef.current === "game"
+        );
         renderer.setConnectionDiagnosticsVisible(false);
         await renderer.mount(container);
         if (disposed) {
@@ -277,7 +522,16 @@ export function App() {
           return;
         }
         rendererRef.current = renderer;
-        renderer.setOnTileClick(({ tile, discardSource }) => {
+        renderer.setOnAutoSortChange((autoSort) => {
+          writePersistedAutoSort(autoSort);
+          setLiveMenuFlags((current) =>
+            current.autoSort === autoSort ? current : { ...current, autoSort }
+          );
+        });
+        renderer.setAutoSort(liveMenuFlags.autoSort);
+        renderer.setAutoWinEnabled(liveMenuFlags.autoWin);
+        renderer.setNoCallEnabled(liveMenuFlags.noCall);
+        renderer.setOnTileClick(({ index, tile, discardSource }) => {
           const store = useMatchStore.getState();
           if (store.mySeat === null) {
             return;
@@ -291,22 +545,15 @@ export function App() {
           if (action === undefined) {
             return;
           }
-          store.setPendingDiscard({ seat: store.mySeat, tile });
-          const nearbyController = nearbyControllerRef.current;
-          if (nearbyController?.getState().matchId === store.matchId) {
-            void nearbyController.act(action.id).catch(() => undefined);
-          } else {
-            void localControllerRef.current?.act(action.id);
-          }
+          store.setPendingDiscard({
+            seat: store.mySeat,
+            tile,
+            displayIndex: index,
+          });
+          liveActionDispatcherRef.current(action.id);
         });
         renderer.setOnActionClick(({ action }) => {
-          const store = useMatchStore.getState();
-          const nearbyController = nearbyControllerRef.current;
-          if (nearbyController?.getState().matchId === store.matchId) {
-            void nearbyController.act(action.id).catch(() => undefined);
-          } else {
-            void localControllerRef.current?.act(action.id);
-          }
+          liveActionDispatcherRef.current(action.id);
           useMatchStore.getState().setLegalActions([]);
         });
         renderer.setOnRenderRequest(() => {
@@ -330,27 +577,179 @@ export function App() {
     return () => {
       disposed = true;
       rendererRef.current = null;
+      renderer?.setOnAutoSortChange(null);
       renderer?.destroy();
+    };
+  }, [showsTable]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    renderer?.setMinimumDrawToDiscardDelayEnabled(page === "game");
+    renderer?.render(matchView);
+  }, [matchView, page]);
+
+  useEffect(() => {
+    rendererRef.current?.setAutoSort(liveMenuFlags.autoSort);
+  }, [liveMenuFlags.autoSort]);
+
+  useEffect(() => {
+    rendererRef.current?.setAutoWinEnabled(liveMenuFlags.autoWin);
+  }, [liveMenuFlags.autoWin]);
+
+  useEffect(() => {
+    rendererRef.current?.setNoCallEnabled(liveMenuFlags.noCall);
+  }, [liveMenuFlags.noCall]);
+
+  const handKey = `${liveView.matchId ?? "none"}:${liveView.roundWind}:${liveView.roundNumber}:${liveView.honba}:${liveView.dealer}`;
+  useEffect(() => {
+    setLiveMenuFlags((current) => resetEphemeralFlags(current));
+  }, [handKey]);
+
+  useEffect(() => {
+    if (page !== "game") {
+      setGameMenuExpanded(false);
+    }
+  }, [page]);
+
+  useEffect(() => {
+    if (page !== "game" || liveView.mySeat === null) {
+      return;
+    }
+    const actions = liveView.legalActions;
+    if (actions.length === 0) {
+      lastAutoActedIdRef.current = null;
+      if (autoDiscardTimerRef.current !== null) {
+        clearTimeout(autoDiscardTimerRef.current);
+        autoDiscardTimerRef.current = null;
+      }
+      return;
+    }
+    const fire = (actionId: string): void => {
+      if (lastAutoActedIdRef.current === actionId) {
+        return;
+      }
+      lastAutoActedIdRef.current = actionId;
+      liveActionDispatcherRef.current(actionId);
+    };
+    const hasWin = actions.some(
+      (action) => action.type === "ron" || action.type === "tsumo"
+    );
+    if (liveMenuFlags.autoWin) {
+      const win = actions.find(
+        (action) => action.type === "ron" || action.type === "tsumo"
+      );
+      if (win !== undefined) {
+        fire(win.id);
+        return;
+      }
+    }
+    const noCallPass = findNoCallAutoPass(actions, liveMenuFlags.noCall);
+    if (noCallPass !== undefined) {
+      fire(noCallPass.id);
+      return;
+    }
+    const mySeat = liveView.mySeat;
+    const inRiichi = liveView.riichiDeclared[mySeat];
+    const hasAnkan = actions.some(
+      (action) => action.type === "kan" && action.kanKind === "ankan"
+    );
+    if (
+      (!liveMenuFlags.autoDiscard && !inRiichi) ||
+      hasWin ||
+      hasAnkan ||
+      liveView.freshlyDrawnSeat !== mySeat
+    ) {
+      return;
+    }
+    const hand = liveView.hands[mySeat] ?? [];
+    const drawn = hand[hand.length - 1];
+    if (drawn === null || drawn === undefined) {
+      return;
+    }
+    const discard = findTileAction(actions, "discard", drawn, "draw");
+    if (discard === undefined || lastAutoActedIdRef.current === discard.id) {
+      return;
+    }
+    if (autoDiscardTimerRef.current !== null) {
+      clearTimeout(autoDiscardTimerRef.current);
+    }
+    autoDiscardTimerRef.current = setTimeout(() => {
+      autoDiscardTimerRef.current = null;
+      const current = useMatchStore.getState();
+      if (
+        current.mySeat !== mySeat ||
+        !current.legalActions.some((action) => action.id === discard.id)
+      ) {
+        return;
+      }
+      current.setPendingDiscard({
+        seat: mySeat,
+        tile: drawn,
+        displayIndex: hand.length - 1,
+      });
+      fire(discard.id);
+    }, DRAW_TO_DISCARD_DELAY_MS);
+    return () => {
+      if (autoDiscardTimerRef.current !== null) {
+        clearTimeout(autoDiscardTimerRef.current);
+        autoDiscardTimerRef.current = null;
+      }
+    };
+  }, [
+    page,
+    liveView.legalActions,
+    liveView.mySeat,
+    liveView.hands,
+    liveView.freshlyDrawnSeat,
+    liveView.riichiDeclared,
+    liveMenuFlags.autoWin,
+    liveMenuFlags.noCall,
+    liveMenuFlags.autoDiscard,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (autoDiscardTimerRef.current !== null) {
+        clearTimeout(autoDiscardTimerRef.current);
+      }
     };
   }, []);
 
   useEffect(() => {
-    rendererRef.current?.render(matchView);
-  }, [matchView]);
+    if (isPlayingMatch) {
+      setPage("game");
+    }
+  }, [isPlayingMatch]);
+
+  useEffect(() => {
+    if (
+      onlineState.status === "creating" ||
+      onlineState.status === "connecting" ||
+      onlineState.status === "waiting" ||
+      onlineState.status === "error"
+    ) {
+      setPage("online-room");
+    }
+  }, [onlineState.status]);
 
   const readyDeadline = liveView.readyCheck?.deadline ?? null;
   const readySeat = liveView.mySeat;
   useEffect(() => {
     if (
       (localState.status !== "playing" &&
-        nearbyState.status !== "playing") ||
+        nearbyState.status !== "playing" &&
+        onlineState.status !== "playing") ||
       readyDeadline === null ||
       readySeat === null ||
       liveView.readyCheck?.acked[readySeat]
     ) {
       return;
     }
-    if (nearbyControllerRef.current?.getState().matchId === liveView.matchId) {
+    if (onlineControllerRef.current?.getState().matchId === liveView.matchId) {
+      onlineControllerRef.current.ready();
+    } else if (
+      nearbyControllerRef.current?.getState().matchId === liveView.matchId
+    ) {
       void nearbyControllerRef.current.ready().catch(() => undefined);
     } else {
       void localControllerRef.current?.ready();
@@ -359,11 +758,13 @@ export function App() {
     liveView.readyCheck,
     localState.status,
     nearbyState.status,
+    onlineState.status,
     readyDeadline,
     readySeat,
   ]);
 
   const nearbyBusy =
+    shellBusy ||
     localState.status === "starting" ||
     localState.status === "pausing" ||
     nearbyState.status === "opening" ||
@@ -381,7 +782,10 @@ export function App() {
 
   const playSolo = async (): Promise<void> => {
     const nearbyController = nearbyControllerRef.current;
-    if (nearbyController !== null && nearbyController.getState().role !== "idle") {
+    if (
+      nearbyController !== null &&
+      nearbyController.getState().role !== "idle"
+    ) {
       await nearbyController.leave();
     }
     const controller = localControllerRef.current;
@@ -409,23 +813,178 @@ export function App() {
     await nearbyControllerRef.current?.discover(currentNearbyIdentity());
   };
 
-  const pauseOrLeaveMatch = (): void => {
-    if (nearbyState.status === "playing") {
-      const operation =
-        nearbyState.role === "host"
-          ? nearbyControllerRef.current?.pause()
-          : nearbyControllerRef.current?.leave();
-      void operation?.catch(() => undefined);
-      return;
+  const prepareOnlineMatch = async (): Promise<void> => {
+    if (nearbyControllerRef.current?.getState().role !== "idle") {
+      await nearbyControllerRef.current?.leave();
     }
-    void localControllerRef.current?.pause();
+    await retryTransientPause(
+      () => localControllerRef.current?.pause() ?? Promise.resolve(),
+      () => new Promise((resolve) => window.setTimeout(resolve, 50))
+    );
   };
 
-  const showNearbyLobby =
-    mode === "nearby" &&
-    localState.status !== "playing" &&
-    nearbyState.status !== "playing" &&
-    nearbyState.status !== "finished";
+  const createOnlineGame = async (preset: string): Promise<void> => {
+    if (
+      webAppBaseUrl === null ||
+      mobileAuthSession === null ||
+      onlineControllerRef.current === null
+    ) {
+      return;
+    }
+    setPage("online-room");
+    await prepareOnlineMatch();
+    await onlineControllerRef.current.create(
+      webAppBaseUrl,
+      mobileAuthSession,
+      preset
+    );
+  };
+
+  const joinOnlineGame = async (matchId: string): Promise<void> => {
+    if (
+      webAppBaseUrl === null ||
+      mobileAuthSession === null ||
+      onlineControllerRef.current === null
+    ) {
+      return;
+    }
+    setPage("online-room");
+    await prepareOnlineMatch();
+    onlineControllerRef.current.join(webAppBaseUrl, mobileAuthSession, matchId);
+  };
+
+  const watchOnlineGame = async (matchId: string): Promise<void> => {
+    if (
+      webAppBaseUrl === null ||
+      mobileAuthSession === null ||
+      onlineControllerRef.current === null
+    ) {
+      return;
+    }
+    setPage("online-room");
+    await prepareOnlineMatch();
+    onlineControllerRef.current.watch(
+      webAppBaseUrl,
+      mobileAuthSession,
+      matchId
+    );
+  };
+
+  const leaveOnlineRoom = async (): Promise<void> => {
+    if (shellBusy) {
+      return;
+    }
+    setShellBusy(true);
+    try {
+      await onlineControllerRef.current?.leave();
+      setPage("lobby");
+    } finally {
+      setShellBusy(false);
+    }
+  };
+
+  const quitGame = async (): Promise<void> => {
+    if (shellBusy) {
+      return;
+    }
+    setShellBusy(true);
+    try {
+      if (
+        onlineState.status === "playing" ||
+        onlineState.status === "spectating" ||
+        onlineState.status === "finished"
+      ) {
+        await onlineControllerRef.current?.leave();
+        setPage("lobby");
+      } else if (nearbyState.status === "playing") {
+        if (nearbyState.role === "guest") {
+          await nearbyControllerRef.current?.leave();
+        } else {
+          await retryTransientPause(
+            () => nearbyControllerRef.current?.pause() ?? Promise.resolve(),
+            () => new Promise((resolve) => window.setTimeout(resolve, 50))
+          );
+        }
+      } else if (localState.status === "playing") {
+        await retryTransientPause(
+          () => localControllerRef.current?.pause() ?? Promise.resolve(),
+          () => new Promise((resolve) => window.setTimeout(resolve, 50))
+        );
+      }
+      if (onlineState.mode === null) {
+        setPage("nearby");
+      }
+    } finally {
+      setShellBusy(false);
+    }
+  };
+
+  const leaveNearbyPage = async (): Promise<void> => {
+    if (nearbyState.role !== "idle") {
+      setShellBusy(true);
+      try {
+        await nearbyControllerRef.current?.leave();
+      } finally {
+        setShellBusy(false);
+      }
+    }
+    setPage("home");
+  };
+
+  const openWebPage = async (url: string): Promise<void> => {
+    if (Capacitor.isNativePlatform()) {
+      await Browser.open({
+        url,
+        toolbarColor: "#0b1210",
+        presentationStyle: "fullscreen",
+      });
+      return;
+    }
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (opened === null) {
+      window.location.assign(url);
+    }
+  };
+
+  const startDiscordLogin = async (): Promise<void> => {
+    if (webAppBaseUrl === null) {
+      return;
+    }
+    const generation = ++authGenerationRef.current;
+    setAuthError(null);
+    setAuthStatus("opening");
+    try {
+      const request = await createMobileAuthRequest();
+      if (authGenerationRef.current !== generation) {
+        return;
+      }
+      pendingVerifierRef.current = request.verifier;
+      savePendingMobileAuth(window.localStorage, request.verifier);
+      const startUrl = webAppPath(
+        webAppBaseUrl,
+        `/mobile-auth/start?challenge=${encodeURIComponent(request.challenge)}`
+      );
+      await openWebPage(startUrl);
+    } catch {
+      if (authGenerationRef.current !== generation) {
+        return;
+      }
+      pendingVerifierRef.current = null;
+      clearPendingMobileAuth(window.localStorage);
+      setAuthError("Discord login could not be opened.");
+      setAuthStatus("error");
+    }
+  };
+
+  const toggleLiveMenuOption = (key: LivePlayMenuOptionKey): void => {
+    setLiveMenuFlags((current) => {
+      const next = { ...current, [key]: !current[key] };
+      if (key === "autoSort") {
+        writePersistedAutoSort(next.autoSort);
+      }
+      return next;
+    });
+  };
 
   const importReplay = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -452,65 +1011,68 @@ export function App() {
         seatNames,
       });
       setImportError(null);
-      setMode("replays");
+      setPage("replays");
     } catch {
       setImportError("This file is not a valid Kandora replay.");
     }
   };
 
-  return (
-    <main className={`mobile-app${isPlayingMatch ? " mobile-app-ingame" : ""}`}>
-      <section className="table-stage" aria-label="Mahjong table preview">
-        <div ref={tableContainerRef} className="table-canvas" />
-        <header className="app-header">
-          <div>
-            <strong>Kandora</strong>
-            <span>
-              {showingNearbyMatch
-                ? "Nearby table"
-                : showingLocalMatch
-                  ? "Local table"
-                  : replay.id}
-            </span>
-          </div>
-          <div className={`renderer-state renderer-state-${rendererState}`}>
-            {rendererState === "loading" ? (
-              <LoaderCircle aria-hidden="true" className="spin" />
-            ) : rendererState === "ready" ? (
-              <Wifi aria-hidden="true" />
-            ) : (
-              <Radio aria-hidden="true" />
-            )}
-            <span>
-              {rendererState === "loading"
-                ? "Loading table"
-                : rendererState === "ready"
-                  ? "Table ready"
-                  : "Renderer unavailable"}
-            </span>
-          </div>
-        </header>
-        {isPlayingMatch && (
+  if (page === "game") {
+    return (
+      <main className="mobile-game-view">
+        <section className="table-stage" aria-label="Mahjong game">
+          <div ref={tableContainerRef} className="table-canvas" />
           <button
             type="button"
             className="ingame-exit-button"
-            aria-label={
-              nearbyState.role === "guest" ? "Leave match" : "Pause match"
-            }
-            title={
-              nearbyState.role === "guest" ? "Leave match" : "Pause match"
-            }
+            aria-label="Quit game"
+            title="Quit game"
             disabled={nearbyBusy}
-            onClick={pauseOrLeaveMatch}
+            onClick={() => void quitGame().catch(() => undefined)}
           >
-            {nearbyState.role === "guest" ? (
-              <LogOut aria-hidden="true" />
-            ) : (
-              <Pause aria-hidden="true" />
-            )}
+            <LogOut aria-hidden="true" />
           </button>
-        )}
-        {showNearbyLobby && (
+          {liveView.mySeat !== null && (
+            <MobileGameMenu
+              expanded={gameMenuExpanded}
+              flags={liveMenuFlags}
+              onExpandedChange={setGameMenuExpanded}
+              onToggle={toggleLiveMenuOption}
+            />
+          )}
+          {rendererState !== "ready" && (
+            <div className="renderer-loading" aria-live="polite">
+              <LoaderCircle aria-hidden="true" className="spin" />
+              <span>
+                {rendererState === "error" ? "Table unavailable" : "Loading"}
+              </span>
+            </div>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+  if (page === "nearby") {
+    return (
+      <main className="mobile-shell mobile-shell-nearby">
+        <header className="shell-topbar">
+          <button
+            type="button"
+            className="shell-icon-button"
+            aria-label="Back to home"
+            title="Back to home"
+            disabled={nearbyBusy}
+            onClick={() => void leaveNearbyPage().catch(() => undefined)}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Nearby</strong>
+            <span>{nearbyState.available ? "Device play" : "Solo play"}</span>
+          </div>
+        </header>
+        <section className="shell-nearby-content">
           <NearbyLobbyPanel
             state={nearbyState}
             localState={localState}
@@ -524,15 +1086,9 @@ export function App() {
                 updateNearbyDisplayName(identity, displayName);
               }
             }}
-            onPlaySolo={() => {
-              void playSolo().catch(() => undefined);
-            }}
-            onHost={() => {
-              void hostNearby().catch(() => undefined);
-            }}
-            onDiscover={() => {
-              void discoverNearby().catch(() => undefined);
-            }}
+            onPlaySolo={() => void playSolo().catch(() => undefined)}
+            onHost={() => void hostNearby().catch(() => undefined)}
+            onDiscover={() => void discoverNearby().catch(() => undefined)}
             onResumeHost={() => {
               void nearbyControllerRef.current
                 ?.restoreHost(currentNearbyIdentity())
@@ -577,140 +1133,223 @@ export function App() {
               void nearbyControllerRef.current?.leave().catch(() => undefined);
             }}
           />
+        </section>
+      </main>
+    );
+  }
+
+  if (page === "online-room") {
+    return (
+      <MobileOnlineRoom
+        state={onlineState}
+        onBack={() => void leaveOnlineRoom()}
+        onReconnect={() => onlineControllerRef.current?.reconnect()}
+        onReadyChange={(ready) =>
+          onlineControllerRef.current?.setWaitingRoomReady(ready)
+        }
+        onAddBot={() => onlineControllerRef.current?.addWaitingRoomBot()}
+        onKick={(seat) =>
+          onlineControllerRef.current?.kickWaitingRoomSeat(seat)
+        }
+        onStart={() => onlineControllerRef.current?.startMatch()}
+      />
+    );
+  }
+
+  if (page === "lobby" && webAppBaseUrl !== null) {
+    return (
+      <MobileLobby
+        webAppBaseUrl={webAppBaseUrl}
+        onBack={() => setPage("home")}
+        onCreateGame={(preset) =>
+          void createOnlineGame(preset).catch(() => setPage("lobby"))
+        }
+        onJoinGame={(matchId) =>
+          void joinOnlineGame(matchId).catch(() => setPage("lobby"))
+        }
+        onWatchGame={(matchId) =>
+          void watchOnlineGame(matchId).catch(() => setPage("lobby"))
+        }
+      />
+    );
+  }
+
+  if (page === "replays") {
+    return (
+      <main className="mobile-shell mobile-replay-shell">
+        <header className="shell-topbar">
+          <button
+            type="button"
+            className="shell-icon-button"
+            aria-label="Back to home"
+            title="Back to home"
+            onClick={() => setPage("home")}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Replays</strong>
+            <span>{replay.id}</span>
+          </div>
+          <div className={`renderer-state renderer-state-${rendererState}`}>
+            {rendererState === "loading" ? (
+              <LoaderCircle aria-hidden="true" className="spin" />
+            ) : rendererState === "ready" ? (
+              <Wifi aria-hidden="true" />
+            ) : (
+              <Radio aria-hidden="true" />
+            )}
+            <span>{rendererState === "ready" ? "Ready" : rendererState}</span>
+          </div>
+        </header>
+        <section className="replay-workspace">
+          <div className="replay-table-stage">
+            <div ref={tableContainerRef} className="table-canvas" />
+          </div>
+          <aside className="replay-tools">
+            <div className="mode-copy">
+              <strong>{replay.events.length} events</strong>
+              <span>
+                {importError ??
+                  (storageState === "sqlite"
+                    ? "Saved on device"
+                    : storageState === "memory"
+                      ? "Browser preview"
+                      : storageState === "error"
+                        ? "Storage unavailable"
+                        : "Opening storage")}
+              </span>
+            </div>
+            <div className="action-row">
+              <button
+                type="button"
+                className="command-button"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload aria-hidden="true" />
+                <span>Import replay</span>
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Restore demo table"
+                title="Restore demo table"
+                onClick={() => {
+                  setReplay(DEMO_REPLAY);
+                  setImportError(null);
+                }}
+              >
+                <RotateCcw aria-hidden="true" />
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              className="file-input"
+              type="file"
+              accept="application/json,.json"
+              onChange={(event) => void importReplay(event)}
+            />
+          </aside>
+        </section>
+      </main>
+    );
+  }
+
+  const onlineSelected =
+    authStatus === "authenticated" && mobileAuthSession !== null;
+  const authBusy = authStatus === "checking" || authStatus === "exchanging";
+  const accountStatus = onlineSelected
+    ? `Signed in as ${mobileAuthSession.username}`
+    : authStatus === "checking"
+      ? "Checking Discord session"
+      : authStatus === "opening"
+        ? "Complete sign-in in Discord"
+        : authStatus === "exchanging"
+          ? "Verifying Discord login"
+          : (authError ?? "Sign in for online games");
+  return (
+    <main className="mobile-shell mobile-home">
+      <header className="shell-brand">
+        <span>K</span>
+        <div>
+          <h1>Kandora</h1>
+          <p>Mahjong, wherever the table is.</p>
+        </div>
+      </header>
+
+      <section className="home-account" aria-labelledby="account-heading">
+        <div className="home-section-heading">
+          <UserRound aria-hidden="true" />
+          <div>
+            <h2 id="account-heading">Player access</h2>
+            <span>{accountStatus}</span>
+          </div>
+        </div>
+        {!onlineSelected && (
+          <div className="home-account-actions">
+            <button
+              type="button"
+              className="home-primary-action"
+              disabled={webAppBaseUrl === null || authBusy}
+              onClick={() => void startDiscordLogin()}
+            >
+              {authBusy ? (
+                <LoaderCircle aria-hidden="true" className="spin" />
+              ) : (
+                <LogIn aria-hidden="true" />
+              )}
+              <span>
+                {authStatus === "opening"
+                  ? "Open Discord again"
+                  : "Login with Discord"}
+              </span>
+            </button>
+          </div>
         )}
       </section>
 
-      <section className="control-dock" aria-label="Game mode controls">
-        <nav className="mode-switcher" aria-label="Game mode">
-          {MODES.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className={mode === id ? "active" : undefined}
-              aria-pressed={mode === id}
-              onClick={() => setMode(id)}
-            >
-              <Icon aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="mode-actions">
-          {mode === "replays" ? (
-            <>
-              <div className="mode-copy">
-                <strong>{replay.events.length} events</strong>
-                <span>
-                  {importError ??
-                    (storageState === "sqlite"
-                      ? "Saved on device"
-                      : storageState === "memory"
-                        ? "Browser preview"
-                        : storageState === "error"
-                          ? "Storage unavailable"
-                          : "Opening storage")}
-                </span>
-              </div>
-              <div className="action-row">
-                <button
-                  type="button"
-                  className="command-button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload aria-hidden="true" />
-                  <span>Import</span>
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Restore demo table"
-                  title="Restore demo table"
-                  onClick={() => {
-                    setReplay(DEMO_REPLAY);
-                    setImportError(null);
-                  }}
-                >
-                  <RotateCcw aria-hidden="true" />
-                </button>
-              </div>
-              <input
-                ref={fileInputRef}
-                className="file-input"
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => void importReplay(event)}
-              />
-            </>
-          ) : mode === "online" ? (
-            <>
-              <div className="mode-copy">
-                <strong>Cloud tables</strong>
-                <span>Account connection not configured</span>
-              </div>
-              <button type="button" className="command-button" disabled>
-                <Cloud aria-hidden="true" />
-                <span>Connect</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="mode-copy">
-                <strong>
-                  {nearbyState.status === "playing"
-                    ? "Nearby match"
-                    : nearbyState.status === "lobby"
-                      ? "Nearby lobby"
-                      : localState.status === "playing"
-                    ? "Local match"
-                    : localState.status === "paused"
-                      ? "Match saved"
-                      : localState.status === "finished"
-                        ? "Match complete"
-                        : "Solo table"}
-                </strong>
-                <span>
-                  {nearbyState.error ??
-                    localState.error ??
-                    (nearbyState.status === "playing"
-                      ? `${nearbyState.connected.length + 1} devices connected`
-                      : nearbyState.status === "lobby"
-                        ? "Pair friends or start with bots"
-                        : localState.status === "playing"
-                          ? `${liveView.wallRemaining} tiles remain`
-                          : localState.status === "paused"
-                            ? "Ready to resume"
-                            : "Host, join, or play solo")}
-                </span>
-              </div>
-              <div className="action-row">
-                {(localState.status === "playing" ||
-                  nearbyState.status === "playing") && (
-                  <button
-                    type="button"
-                    className="command-button"
-                    disabled={nearbyBusy}
-                    onClick={pauseOrLeaveMatch}
-                  >
-                    {nearbyState.role === "guest" &&
-                    nearbyState.status === "playing" ? (
-                      <LogOut aria-hidden="true" />
-                    ) : (
-                      <Pause aria-hidden="true" />
-                    )}
-                    <span>
-                      {nearbyState.role === "guest" &&
-                      nearbyState.status === "playing"
-                        ? "Leave"
-                        : "Pause"}
-                    </span>
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </section>
+      <nav className="home-destinations" aria-label="Kandora destinations">
+        <button
+          type="button"
+          disabled={!onlineSelected || webAppBaseUrl === null}
+          onClick={() => {
+            setPage("lobby");
+          }}
+        >
+          <Cloud aria-hidden="true" />
+          <span>
+            <strong>Go to lobby</strong>
+            <small>Online games</small>
+          </span>
+          <DoorOpen aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => setPage("replays")}>
+          <History aria-hidden="true" />
+          <span>
+            <strong>Replays</strong>
+            <small>Import and review saved games</small>
+          </span>
+          <ChevronRight aria-hidden="true" className="destination-arrow" />
+        </button>
+        <button
+          type="button"
+          disabled={!canOpenNearby}
+          onClick={() => setPage("nearby")}
+        >
+          <Radio aria-hidden="true" />
+          <span>
+            <strong>Nearby</strong>
+            <small>
+              {canOpenNearby
+                ? nearbyState.available
+                  ? "Solo, host, or join"
+                  : "Solo available"
+                : "Checking device"}
+            </small>
+          </span>
+          <ChevronRight aria-hidden="true" className="destination-arrow" />
+        </button>
+      </nav>
     </main>
   );
 }

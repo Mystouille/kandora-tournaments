@@ -25,6 +25,23 @@ function memoryPersistence(): MobileMatchRepositoryHandle {
   };
 }
 
+async function reachDrawDiscardWindow(
+  controller: LocalMatchController
+): Promise<ReturnType<typeof useMatchStore.getState>> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const view = useMatchStore.getState();
+    if (view.legalActions.some((action) => action.type === "discard")) {
+      return view;
+    }
+    const pass = view.legalActions.find((action) => action.type === "pass");
+    if (pass === undefined) {
+      throw new Error("expected a discard or pass action");
+    }
+    await controller.act(pass.id);
+  }
+  throw new Error("local player did not reach a discard window");
+}
+
 describe("local mobile match controller", () => {
   afterEach(() => {
     useMatchStore.getState().reset();
@@ -97,5 +114,20 @@ describe("local mobile match controller", () => {
     expect(restoredView.legalActions).toEqual(advancedView.legalActions);
 
     await restored.pause();
+  });
+
+  it("keeps the drawn tile separate after the local safety snapshot", async () => {
+    setReadyCheckMs(5_000);
+    setDelayAfterDiscardMs(0);
+    const controller = new LocalMatchController(memoryPersistence());
+
+    await controller.startSolo();
+    const view = await reachDrawDiscardWindow(controller);
+
+    expect(view.mySeat).not.toBeNull();
+    expect(view.freshlyDrawnSeat).toBe(view.mySeat);
+    expect(view.hands[view.mySeat as 0 | 1 | 2 | 3]).toHaveLength(14);
+
+    await controller.pause();
   });
 });
