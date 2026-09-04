@@ -3,6 +3,9 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "core:update": "git submodule update --init --remote app/core",
     "postinstall": "node scripts/patch-riichi.mjs",

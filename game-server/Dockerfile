@@ -26,7 +26,7 @@ RUN echo "submodule cache-bust: ${RAILWAY_GIT_COMMIT_SHA}" \
     && git clone --depth 1 --branch main https://github.com/Mystouille/kandora-game.git game \
     && rm -rf core/.git game/.git
 
-FROM node:20-slim AS deps
+FROM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Native deps required by `canvas` (transitively pulled in by the
@@ -38,12 +38,12 @@ RUN apt-get update \
         build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
     && rm -rf /var/lib/apt/lists/*
 # Pin npm to the version that generated package-lock.json (see web Dockerfile).
-# node:20's default npm (10.x) vs 11.x differ on Tailwind's bundled WASM optional
+# The base image's default npm vs 11.x differ on Tailwind's bundled WASM optional
 # deps, which otherwise makes `npm ci` fail with EUSAGE "lockfile out of sync".
 RUN npm install -g npm@11.6.2
 RUN npm ci
 
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 WORKDIR /app
 # Runtime shared libs for the prebuilt `canvas` binary.
 RUN apt-get update \

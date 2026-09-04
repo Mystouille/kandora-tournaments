@@ -11,7 +11,7 @@ For a high-level overview of the architecture, see the [README](README.md).
 
 | Requirement        | Version / Notes                                                 |
 | ------------------ | --------------------------------------------------------------- |
-| **Node.js**        | 20 or later (matches the `node:20` Docker base image).          |
+| **Node.js**        | 22 or later (matches the `node:22` Docker base image).          |
 | **npm**            | Ships with Node. The repo is locked with `package-lock.json`.   |
 | **Git**            | Required — the project uses two git **submodules** (see below). |
 | **Docker** _(opt)_ | Easiest way to run the MongoDB + Redis backing services.        |
