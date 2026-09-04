@@ -29,6 +29,7 @@ RUN echo "submodule cache-bust: ${RAILWAY_GIT_COMMIT_SHA}" \
 FROM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY scripts/patch-riichi.mjs ./scripts/patch-riichi.mjs
 # Native deps required by `canvas` (transitively pulled in by the
 # shared `app/` codebase even though the game-server itself does
 # not render images). Pre-installing the build toolchain here so

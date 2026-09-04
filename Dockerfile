@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 # lockstep with the npm used locally.
 RUN npm install -g npm@11.6.2
 COPY ./package.json package-lock.json /app/
+COPY ./scripts/patch-riichi.mjs /app/scripts/patch-riichi.mjs
 WORKDIR /app
 RUN npm ci
 COPY . /app
@@ -37,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 # (see note in the development-dependencies-env stage above).
 RUN npm install -g npm@11.6.2
 COPY ./package.json package-lock.json /app/
+COPY ./scripts/patch-riichi.mjs /app/scripts/patch-riichi.mjs
 WORKDIR /app
 RUN npm ci --omit=dev
 
