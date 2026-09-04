@@ -599,9 +599,10 @@ export const fr: Translations = {
       coverImageRemove: "Retirer",
       coverImageNone: "Aucune image de couverture",
       coverImageHint: "Affichée sur la liste des tournois. PNG, JPEG ou WebP.",
-      summaryLabel: "Résumé (affiché sur la liste des tournois)",
+      summaryLabel: "Résumé (carte du tournoi)",
       summaryPlaceholder:
         "Une courte description affichée sur la carte du tournoi.",
+      presentationLabel: "Présentation (onglet Présentation)",
       platformSection: "Plateforme & Tournoi",
       detailsSection: "Détails du tournoi",
       discordSection: "Intégration Discord",

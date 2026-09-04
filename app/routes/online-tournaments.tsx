@@ -9,6 +9,7 @@ import {
 } from "@ant-design/icons";
 import { useLocale } from "../contexts/LocaleContext";
 import { basePath } from "../utils/basePath";
+import { getTournamentText } from "../utils/tournament";
 import { PageTitle } from "../components/PageTitle";
 
 const { Title, Text, Paragraph } = Typography;
@@ -109,10 +110,7 @@ export default function OnlineTournaments() {
             {leagues.map((league) => {
               const status = getStatus(league.startTime, league.endTime);
               const meta = statusMeta[status];
-              const summaryText =
-                locale === "fr"
-                  ? league.summary?.fr
-                  : league.summary?.en || league.summary?.fr;
+              const summaryText = getTournamentText(league.summary, locale);
               const isTeamMode = league.rulesConfig?.isTeamMode ?? false;
               return (
                 <Col

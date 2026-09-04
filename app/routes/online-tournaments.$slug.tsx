@@ -1,10 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Navigate,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import {
   Typography,
   Tabs,
@@ -26,6 +21,7 @@ import {
 } from "@ant-design/icons";
 import { useLocale } from "../contexts/LocaleContext";
 import { basePath } from "../utils/basePath";
+import { getTournamentText } from "../utils/tournament";
 import { ArticleContent } from "../components/ArticleContent";
 import { TeamLogo } from "../components/TeamLogo";
 import { PlayerAvatar } from "../components/PlayerAvatar";
@@ -166,10 +162,7 @@ export default function LeagueDetailPage() {
 
   const withTeams = league.withTeams ?? false;
 
-  const presentationHtml =
-    (locale === "fr"
-      ? league.presentation?.fr
-      : league.presentation?.en || league.presentation?.fr) || "";
+  const presentationHtml = getTournamentText(league.presentation, locale);
 
   const presentationTab = (
     <div>

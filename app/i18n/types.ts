@@ -486,6 +486,7 @@ export interface Translations extends CoreTranslations {
       coverImageHint: string;
       summaryLabel: string;
       summaryPlaceholder: string;
+      presentationLabel: string;
       platformSection: string;
       detailsSection: string;
       discordSection: string;

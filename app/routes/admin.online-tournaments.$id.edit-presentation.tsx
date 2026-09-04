@@ -351,13 +351,18 @@ export default function EditLeaguePresentationPage() {
         />
       </div>
 
-      <Suspense fallback={<Spin />}>
-        <RichTextEditor
-          key={editingLocale}
-          content={currentContent}
-          onChange={setCurrentContent}
-        />
-      </Suspense>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 4, fontWeight: 500 }}>
+          {t.onlineTournaments.admin.presentationLabel}
+        </div>
+        <Suspense fallback={<Spin />}>
+          <RichTextEditor
+            key={editingLocale}
+            content={currentContent}
+            onChange={setCurrentContent}
+          />
+        </Suspense>
+      </div>
 
       <div
         style={{
