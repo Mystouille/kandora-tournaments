@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "core:update": "git submodule update --init --remote app/core",
+    "postinstall": "node scripts/patch-riichi.mjs",
     "game:update": "git submodule update --init --remote app/game",
     "submodules:init": "git submodule update --init --recursive",
     "liqi:generate": "node app/core/majsoul/data/_gen-liqi.mjs",
