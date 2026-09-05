@@ -35,6 +35,10 @@ describe("mobile App initial screen", () => {
     expect(html).toContain("Go to lobby");
     expect(html).toContain("Replays");
     expect(html).toContain("Nearby");
+    expect(html).toContain('aria-label="Settings"');
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain("Sound");
     expect(html).not.toContain("Demo table");
     expect(html).not.toContain("table-canvas");
   });

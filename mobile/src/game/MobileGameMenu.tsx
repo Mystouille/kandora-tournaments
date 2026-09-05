@@ -1,8 +1,5 @@
-import {
-  Check,
-  Menu,
-  X,
-} from "lucide-react";
+import { Check, Menu, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type {
   LivePlayMenuFlags,
   LivePlayMenuOptionKey,
@@ -21,18 +18,57 @@ const OPTIONS: Array<{
 interface MobileGameMenuProps {
   expanded: boolean;
   flags: LivePlayMenuFlags;
+  handTop: number | null;
   onExpandedChange: (expanded: boolean) => void;
+  onLeftChange: (left: number | null) => void;
   onToggle: (key: LivePlayMenuOptionKey) => void;
 }
 
 export function MobileGameMenu({
   expanded,
   flags,
+  handTop,
   onExpandedChange,
+  onLeftChange,
   onToggle,
 }: MobileGameMenuProps) {
+  const menuRef = useRef<HTMLElement>(null);
+  const onLeftChangeRef = useRef(onLeftChange);
+  onLeftChangeRef.current = onLeftChange;
+
+  useEffect(() => {
+    const menu = menuRef.current;
+    if (menu === null) {
+      return;
+    }
+    const reportLeft = (): void => {
+      onLeftChangeRef.current(menu.getBoundingClientRect().left);
+    };
+    reportLeft();
+    const observer = new ResizeObserver(reportLeft);
+    observer.observe(menu);
+    window.addEventListener("resize", reportLeft);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", reportLeft);
+    };
+  }, [expanded]);
+
+  useEffect(() => {
+    return () => {
+      onLeftChangeRef.current(null);
+    };
+  }, []);
+
   return (
-    <aside className="mobile-game-menu" aria-label="Game options">
+    <aside
+      ref={menuRef}
+      className="mobile-game-menu"
+      aria-label="Game options"
+      style={
+        handTop === null ? undefined : { bottom: `calc(100% - ${handTop}px)` }
+      }
+    >
       {expanded && (
         <div className="mobile-game-menu-options">
           {OPTIONS.map(({ key, label }) => (
@@ -44,9 +80,7 @@ export function MobileGameMenu({
               onClick={() => onToggle(key)}
             >
               <span>{label}</span>
-              <i aria-hidden="true">
-                {flags[key] && <Check />}
-              </i>
+              <i aria-hidden="true">{flags[key] && <Check />}</i>
             </button>
           ))}
         </div>

@@ -14,8 +14,10 @@ import {
   LogOut,
   Radio,
   RotateCcw,
+  Settings,
   Upload,
   UserRound,
+  Volume2,
   Wifi,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
@@ -35,6 +37,12 @@ import type { MatchView } from "~/game/client/store";
 import { useMatchStore } from "~/game/client/store";
 import { findNoCallAutoPass } from "~/game/client/callPrompt";
 import { findTileAction } from "~/game/client/discardActions";
+import {
+  installGameSoundBindings,
+  isGameSoundEnabled,
+  playGameSound,
+  setGameSoundEnabled,
+} from "~/game/client/sound";
 import {
   buildInitialLivePlayMenuFlags,
   resetEphemeralFlags,
@@ -174,6 +182,7 @@ export function App() {
   const authGenerationRef = useRef(0);
   const handledAuthCallbackRef = useRef<string | null>(null);
   const pendingVerifierRef = useRef<string | null>(null);
+  const homeSettingsRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState<MobileShellPage>("home");
   const pageRef = useRef(page);
   pageRef.current = page;
@@ -184,9 +193,15 @@ export function App() {
   const [controllersReady, setControllersReady] = useState(false);
   const [shellBusy, setShellBusy] = useState(false);
   const [gameMenuExpanded, setGameMenuExpanded] = useState(false);
+  const [gameMenuLeft, setGameMenuLeft] = useState<number | null>(null);
+  const [focusedHandTop, setFocusedHandTop] = useState<number | null>(null);
+  const [homeSettingsOpen, setHomeSettingsOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(isGameSoundEnabled);
   const [liveMenuFlags, setLiveMenuFlags] = useState<LivePlayMenuFlags>(
     buildInitialLivePlayMenuFlags
   );
+  const liveMenuFlagsRef = useRef(liveMenuFlags);
+  liveMenuFlagsRef.current = liveMenuFlags;
   const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
@@ -238,6 +253,37 @@ export function App() {
     allowLoopback: !Capacitor.isNativePlatform(),
   });
   const canOpenNearby = nearbyPageAvailable(controllersReady, storageState);
+
+  useEffect(() => {
+    return installGameSoundBindings({
+      isNoCallEnabled: () => liveMenuFlagsRef.current.noCall,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!homeSettingsOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        !homeSettingsRef.current?.contains(event.target)
+      ) {
+        setHomeSettingsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setHomeSettingsOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [homeSettingsOpen]);
 
   useEffect(() => {
     window.localStorage.removeItem("kandora_mobile_auth_choice_v1");
@@ -522,6 +568,9 @@ export function App() {
           return;
         }
         rendererRef.current = renderer;
+        renderer.setBottomHandBoundsListener((bounds) => {
+          setFocusedHandTop(bounds?.y ?? null);
+        });
         renderer.setOnAutoSortChange((autoSort) => {
           writePersistedAutoSort(autoSort);
           setLiveMenuFlags((current) =>
@@ -577,10 +626,30 @@ export function App() {
     return () => {
       disposed = true;
       rendererRef.current = null;
+      renderer?.setBottomHandBoundsListener(null);
       renderer?.setOnAutoSortChange(null);
       renderer?.destroy();
+      setFocusedHandTop(null);
     };
   }, [showsTable]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const canvas = tableContainerRef.current?.querySelector("canvas") ?? null;
+    if (
+      renderer === null ||
+      canvas === null ||
+      page !== "game" ||
+      liveView.mySeat === null ||
+      gameMenuLeft === null
+    ) {
+      renderer?.setMobileActionButtonRightBoundary(null);
+      return;
+    }
+    renderer.setMobileActionButtonRightBoundary(
+      gameMenuLeft - canvas.getBoundingClientRect().left
+    );
+  }, [gameMenuLeft, liveView.mySeat, page, rendererState]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1036,7 +1105,9 @@ export function App() {
             <MobileGameMenu
               expanded={gameMenuExpanded}
               flags={liveMenuFlags}
+              handTop={focusedHandTop}
               onExpandedChange={setGameMenuExpanded}
+              onLeftChange={setGameMenuLeft}
               onToggle={toggleLiveMenuOption}
             />
           )}
@@ -1274,6 +1345,52 @@ export function App() {
         <div>
           <h1>Kandora</h1>
           <p>Mahjong, wherever the table is.</p>
+        </div>
+        <div ref={homeSettingsRef} className="home-settings">
+          <button
+            type="button"
+            className="shell-icon-button home-settings-button"
+            aria-label="Settings"
+            aria-expanded={homeSettingsOpen}
+            aria-controls="home-settings-panel"
+            title="Settings"
+            onClick={() => setHomeSettingsOpen((open) => !open)}
+          >
+            <Settings aria-hidden="true" />
+          </button>
+          <div
+            id="home-settings-panel"
+            className="home-settings-panel"
+            role="group"
+            aria-label="Settings"
+            hidden={!homeSettingsOpen}
+          >
+            <button
+              type="button"
+              className="home-setting-toggle"
+              role="switch"
+              aria-checked={soundEnabled}
+              onClick={() => {
+                const next = !soundEnabled;
+                setGameSoundEnabled(next);
+                setSoundEnabled(next);
+                if (next) {
+                  playGameSound("draw");
+                }
+              }}
+            >
+              <span className="home-setting-label">
+                <Volume2 aria-hidden="true" />
+                <span>Sound</span>
+              </span>
+              <span
+                className={`home-setting-switch ${soundEnabled ? "enabled" : ""}`}
+                aria-hidden="true"
+              >
+                <span />
+              </span>
+            </button>
+          </div>
         </div>
       </header>
 

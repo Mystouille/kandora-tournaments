@@ -3,6 +3,7 @@
 
     <application
         android:allowBackup="false"
+        android:appCategory="game"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
@@ -16,6 +17,7 @@
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:immersive="true"
             android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
             android:exported="true">

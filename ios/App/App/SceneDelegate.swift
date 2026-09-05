@@ -1,6 +1,20 @@
 import UIKit
 import Capacitor
 
+final class GameBridgeViewController: CAPBridgeViewController {
+    override var prefersStatusBarHidden: Bool {
+        true
+    }
+
+    override var prefersHomeIndicatorAutoHidden: Bool {
+        true
+    }
+
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
+        .all
+    }
+}
+
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -8,7 +22,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        window?.rootViewController = GameBridgeViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
