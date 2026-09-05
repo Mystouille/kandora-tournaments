@@ -171,6 +171,29 @@ export class NearbyMatchController {
     return this.initializePromise;
   }
 
+  discoverSavedHost(): Promise<void> {
+    return this.enqueueControl(async () => {
+      await this.initialize();
+      if (this.match !== null || this.state.role !== "idle") {
+        return;
+      }
+      const activeMatch = await this.persistence.getActiveMatch();
+      if (activeMatch?.owner !== "nearby-host") {
+        return;
+      }
+      this.update({
+        role: "host",
+        status: "paused",
+        matchId: activeMatch.matchId,
+        roomState: null,
+        discovered: [],
+        pairings: [],
+        connected: [],
+        error: null,
+      });
+    });
+  }
+
   host(identity: NearbyIdentity): Promise<void> {
     return this.enqueueControl(async () => {
       await this.initialize();

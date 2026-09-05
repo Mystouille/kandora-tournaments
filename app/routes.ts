@@ -68,6 +68,7 @@ export default [
   route("/api/game/enrichment", "routes/api/game/enrichment.ts"),
   route("/api/mobile/lobby", "routes/api/mobile/lobby.ts"),
   route("/api/my-replays", "routes/api/my-replays.ts"),
+  route("/api/my-replays/log", "routes/api/my-replay-log.ts"),
   route("/api/mobile/auth/exchange", "routes/api/mobile/auth.exchange.ts"),
   route("/api/mobile/auth/session", "routes/api/mobile/auth.session.ts"),
 

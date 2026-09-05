@@ -13,7 +13,15 @@ import {
   parseMatchCheckpoint,
   type MatchCheckpoint,
 } from "~/game/server/src/checkpoint";
-import { REPLAY_LOG_SCHEMA_VERSION } from "~/game/replay/types";
+import {
+  REPLAY_LOG_SCHEMA_VERSION,
+  type ReplayLog,
+  type ReplaySource,
+} from "~/game/replay/types";
+import {
+  MobileReplayLogSchema,
+  parseMobileReplayLog,
+} from "../replays/replayLog";
 
 const DATABASE_NAME = "kandora_mobile";
 const DATABASE_VERSION = 2;
@@ -62,6 +70,10 @@ export type MobileStoredReplaySummary = z.infer<
 
 export interface MobileReplayStore {
   listReplaySummaries(): Promise<MobileStoredReplaySummary[]>;
+  getReplayLog(
+    source: ReplaySource,
+    sourceGameId: string
+  ): Promise<ReplayLog | null>;
 }
 
 const RecoveryRowSchema = z.object({
@@ -128,6 +140,27 @@ function storedReplaySummary(
       finalScore,
       place,
     })),
+  });
+}
+
+function storedReplayLog(
+  args: Parameters<MatchRepository["archiveReplayLog"]>[0]
+): ReplayLog {
+  return MobileReplayLogSchema.parse({
+    source: args.source ?? "ingame",
+    sourceGameId: args.sourceGameId ?? args.matchId,
+    ruleSet: args.ruleSet,
+    ...(args.ruleSetDetails ? { ruleSetDetails: args.ruleSetDetails } : {}),
+    startedAt: args.startedAt.getTime(),
+    endedAt: args.endedAt.getTime(),
+    seats: args.seats.map(({ seat, displayName, finalScore, place }) => ({
+      seat,
+      displayName,
+      finalScore,
+      place,
+    })),
+    events: args.events,
+    schemaVersion: REPLAY_LOG_SCHEMA_VERSION,
   });
 }
 
@@ -281,17 +314,7 @@ class SqliteMatchRepository
     const source = args.source ?? "ingame";
     const sourceGameId = args.sourceGameId ?? args.matchId;
     const summary = storedReplaySummary(args);
-    const payload = {
-      source,
-      sourceGameId,
-      ruleSet: args.ruleSet,
-      ...(args.ruleSetDetails ? { ruleSetDetails: args.ruleSetDetails } : {}),
-      startedAt: args.startedAt.getTime(),
-      endedAt: args.endedAt.getTime(),
-      seats: args.seats,
-      events: args.events,
-      schemaVersion: REPLAY_LOG_SCHEMA_VERSION,
-    };
+    const payload = storedReplayLog(args);
     await this.database.run(
       `INSERT INTO mobile_replays (
          source, source_game_id, payload_json, summary_json, updated_at
@@ -352,6 +375,32 @@ class SqliteMatchRepository
       }
     }
     return sortReplaySummaries(summaries);
+  }
+
+  async getReplayLog(
+    source: ReplaySource,
+    sourceGameId: string
+  ): Promise<ReplayLog | null> {
+    const result = await this.database.query(
+      `SELECT payload_json FROM mobile_replays
+       WHERE source = ? AND source_game_id = ?
+       LIMIT 1`,
+      [source, sourceGameId]
+    );
+    const row = z
+      .object({ payload_json: z.string() })
+      .safeParse(result.values?.[0]);
+    if (!row.success) {
+      return null;
+    }
+    try {
+      const log = parseMobileReplayLog(JSON.parse(row.data.payload_json));
+      return log?.source === source && log.sourceGameId === sourceGameId
+        ? log
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   async saveCheckpoint(args: { matchId: string; checkpoint: MatchCheckpoint }) {
@@ -513,6 +562,7 @@ export function createMemoryMobileMatchRepository(): {
 } {
   const baseRepository = createMemoryMatchRepository();
   const summaries = new Map<string, MobileStoredReplaySummary>();
+  const replayLogs = new Map<string, ReplayLog>();
   const repository: MemoryMatchRepository = {
     ...baseRepository,
     archiveReplayLog: async (args) => {
@@ -521,6 +571,10 @@ export function createMemoryMobileMatchRepository(): {
       summaries.set(
         JSON.stringify([summary.source, summary.sourceGameId]),
         summary
+      );
+      replayLogs.set(
+        JSON.stringify([summary.source, summary.sourceGameId]),
+        storedReplayLog(args)
       );
     },
   };
@@ -533,6 +587,8 @@ export function createMemoryMobileMatchRepository(): {
             .filter((summary) => summary.source === "ingame")
             .map((summary) => MobileStoredReplaySummarySchema.parse(summary))
         ),
+      getReplayLog: async (source, sourceGameId) =>
+        replayLogs.get(JSON.stringify([source, sourceGameId])) ?? null,
     },
   };
 }

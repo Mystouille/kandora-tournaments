@@ -103,6 +103,14 @@ describe("local mobile match controller", () => {
     expect(saved.pendingCommand).toBeNull();
 
     const restored = new LocalMatchController(persistence);
+    useMatchStore.getState().reset();
+    await restored.discoverSavedMatch();
+    expect(restored.getState()).toMatchObject({
+      status: "paused",
+      matchId: started.matchId,
+    });
+    expect(useMatchStore.getState().matchId).toBeNull();
+
     await restored.restore();
 
     const restoredView = useMatchStore.getState();

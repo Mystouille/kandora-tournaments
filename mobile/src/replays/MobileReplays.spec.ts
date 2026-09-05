@@ -87,4 +87,30 @@ describe("mobile replay library view", () => {
     expect(html).not.toContain('role="button"');
     expect(html).not.toContain('tabindex="0"');
   });
+
+  it("makes the full row keyboard-openable when a viewer handler exists", () => {
+    const html = renderToStaticMarkup(
+      createElement(ReplayLibraryList, {
+        rows: [
+          {
+            key: "online:tenhou:one",
+            mode: "online",
+            source: "tenhou",
+            sourceGameId: "one",
+            replayUrl: "/watch/replay/one",
+            gameDate: 1_700_000_000_000,
+            seats: [],
+            context: { kind: "external" },
+            ruleset: { id: "platform:tenhou", label: "Tenhou" },
+            reasons: ["played"],
+          },
+        ],
+        onOpenReplay: vi.fn(),
+      })
+    );
+
+    expect(html).toContain('role="button"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain("is-interactive");
+  });
 });

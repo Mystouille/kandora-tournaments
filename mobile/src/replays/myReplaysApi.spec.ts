@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MobileAuthSession } from "../auth/mobileAuth";
-import { fetchMyReplays, MyReplaysHttpError } from "./myReplaysApi";
+import {
+  fetchMyReplayLog,
+  fetchMyReplays,
+  MyReplaysHttpError,
+} from "./myReplaysApi";
 
 const session: MobileAuthSession = {
   token: "game-token",
@@ -67,7 +71,10 @@ describe("common My Replays API client", () => {
       fetcher
     );
     await expect(request).rejects.toBeInstanceOf(MyReplaysHttpError);
-    await expect(request).rejects.toMatchObject({ status: 401 });
+    await expect(request).rejects.toMatchObject({
+      status: 401,
+      code: null,
+    });
   });
 
   it("rejects incomplete web or mobile payloads", async () => {
@@ -78,5 +85,78 @@ describe("common My Replays API client", () => {
     await expect(
       fetchMyReplays("https://play.example.com", session, fetcher)
     ).rejects.toThrow();
+  });
+
+  it("preserves stable JSON errors and distinguishes an HTML 404", async () => {
+    const missingFetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ error: "replay_not_found" }, { status: 404 })
+      );
+    await expect(
+      fetchMyReplayLog(
+        "https://play.example.com",
+        session,
+        "tenhou",
+        "missing",
+        missingFetcher
+      )
+    ).rejects.toMatchObject({ status: 404, code: "replay_not_found" });
+
+    const undeployedFetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("<!doctype html>", {
+        status: 404,
+        headers: { "content-type": "text/html" },
+      })
+    );
+    await expect(
+      fetchMyReplayLog(
+        "https://play.example.com",
+        session,
+        "tenhou",
+        "missing",
+        undeployedFetcher
+      )
+    ).rejects.toMatchObject({ status: 404, code: null });
+  });
+
+  it("loads one full replay log lazily", async () => {
+    const log = {
+      source: "ingame",
+      sourceGameId: "game-1",
+      ruleSet: "m-league",
+      startedAt: 1_000,
+      endedAt: 2_000,
+      seats: [0, 1, 2, 3].map((seat) => ({
+        seat,
+        displayName: `Player ${seat}`,
+        finalScore: 40_000 - seat * 10_000,
+        place: seat + 1,
+      })),
+      events: [],
+      schemaVersion: 6,
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ log }));
+
+    await expect(
+      fetchMyReplayLog(
+        "https://play.example.com",
+        session,
+        "ingame",
+        "game-1",
+        fetcher
+      )
+    ).resolves.toEqual(log);
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://play.example.com/api/my-replays/log",
+      { method: "POST", body: expect.any(URLSearchParams) }
+    );
+    const request = fetcher.mock.calls[0][1];
+    expect(request?.body).toBeInstanceOf(URLSearchParams);
+    expect((request?.body as URLSearchParams).get("sourceGameId")).toBe(
+      "game-1"
+    );
   });
 });

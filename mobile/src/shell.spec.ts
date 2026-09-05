@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  backgroundResumeTarget,
   hasPlayingMatch,
   isMobileAuthCallback,
   isTransientPauseError,
@@ -9,6 +10,23 @@ import {
   retryTransientPause,
   webAppPath,
 } from "./shell";
+
+describe("mobile background resume policy", () => {
+  it("resumes only a match that this session backgrounded from Game", () => {
+    expect(backgroundResumeTarget("game", "playing", "idle", "idle")).toBe(
+      "solo"
+    );
+    expect(backgroundResumeTarget("game", "idle", "host", "playing")).toBe(
+      "nearby-host"
+    );
+    expect(
+      backgroundResumeTarget("home", "playing", "idle", "idle")
+    ).toBeNull();
+    expect(
+      backgroundResumeTarget("game", "paused", "host", "paused")
+    ).toBeNull();
+  });
+});
 
 describe("mobile shell policy", () => {
   it("accepts only absolute HTTP web origins", () => {
@@ -39,10 +57,7 @@ describe("mobile shell policy", () => {
       "https://play.example.com/lobby"
     );
     expect(
-      webAppPath(
-        "https://play.example.com",
-        "/sign-in?returnTo=%2Flobby"
-      )
+      webAppPath("https://play.example.com", "/sign-in?returnTo=%2Flobby")
     ).toBe("https://play.example.com/sign-in?returnTo=%2Flobby");
   });
 

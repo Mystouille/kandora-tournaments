@@ -76,6 +76,22 @@ export class LocalMatchController {
     return this.state;
   }
 
+  discoverSavedMatch(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.match !== null) {
+        return;
+      }
+      const activeMatch = await this.persistence.getActiveMatch();
+      if (activeMatch?.owner === "solo") {
+        this.update({
+          status: "paused",
+          matchId: activeMatch.matchId,
+          error: null,
+        });
+      }
+    });
+  }
+
   restore(): Promise<void> {
     return this.enqueue(async () => {
       if (this.match !== null) {

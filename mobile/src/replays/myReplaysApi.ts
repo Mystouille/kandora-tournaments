@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import { webAppPath } from "../shell";
+import { MobileReplayLogSchema } from "./replayLog";
 
 const ReplaySourceSchema = z.enum([
   "ingame",
@@ -57,16 +58,35 @@ const MyReplaysApiResponseSchema = z.object({
   replays: z.array(MyReplayApiGroupSchema),
 });
 
+const MyReplayLogApiResponseSchema = z.object({
+  log: MobileReplayLogSchema,
+});
+
 export type MyReplayApiGroup = z.infer<typeof MyReplayApiGroupSchema>;
 
 export class MyReplaysHttpError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly code: string | null
   ) {
     super(message);
     this.name = "MyReplaysHttpError";
   }
+}
+
+async function myReplaysHttpError(
+  response: Response,
+  message: string
+): Promise<MyReplaysHttpError> {
+  let code: string | null = null;
+  if (response.headers.get("content-type")?.includes("application/json")) {
+    try {
+      const body = (await response.json()) as { error?: unknown };
+      code = typeof body.error === "string" ? body.error : null;
+    } catch {}
+  }
+  return new MyReplaysHttpError(message, response.status, code);
 }
 
 export async function fetchMyReplays(
@@ -79,10 +99,34 @@ export async function fetchMyReplays(
     body: new URLSearchParams({ token: session.token }),
   });
   if (!response.ok) {
-    throw new MyReplaysHttpError(
-      `My Replays request failed (${response.status})`,
-      response.status
+    throw await myReplaysHttpError(
+      response,
+      `My Replays request failed (${response.status})`
     );
   }
   return MyReplaysApiResponseSchema.parse(await response.json()).replays;
+}
+
+export async function fetchMyReplayLog(
+  baseUrl: string,
+  session: MobileAuthSession,
+  source: MyReplayApiGroup["source"],
+  sourceGameId: string,
+  fetcher: typeof fetch = fetch
+) {
+  const response = await fetcher(webAppPath(baseUrl, "/api/my-replays/log"), {
+    method: "POST",
+    body: new URLSearchParams({
+      token: session.token,
+      source,
+      sourceGameId,
+    }),
+  });
+  if (!response.ok) {
+    throw await myReplaysHttpError(
+      response,
+      `Replay log request failed (${response.status})`
+    );
+  }
+  return MyReplayLogApiResponseSchema.parse(await response.json()).log;
 }

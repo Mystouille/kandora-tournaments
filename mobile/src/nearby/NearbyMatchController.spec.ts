@@ -152,6 +152,26 @@ function serverFrames(transport: FakeNearbyTransport, endpointId: string) {
 }
 
 describe("Nearby mobile match controller", () => {
+  it("discovers a saved host without restoring or advertising it", async () => {
+    const persistence = memoryPersistence();
+    await persistence.setActiveMatch({
+      matchId: "nearby-saved",
+      owner: "nearby-host",
+    });
+    const transport = new FakeNearbyTransport();
+    const controller = new NearbyMatchController(persistence, transport);
+
+    await controller.discoverSavedHost();
+
+    expect(controller.getState()).toMatchObject({
+      role: "host",
+      status: "paused",
+      matchId: "nearby-saved",
+    });
+    expect(transport.advertisingName).toBeNull();
+    expect(useMatchStore.getState().matchId).toBeNull();
+  });
+
   it("waits for active command work and closes intake before pausing", async () => {
     const controller = new NearbyMatchController(
       memoryPersistence(),

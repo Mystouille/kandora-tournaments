@@ -256,6 +256,34 @@ describe("mobile SQLite match repository", () => {
     );
   });
 
+  it("loads the full replay payload by source and game id", async () => {
+    const database = new RecordingDatabase();
+    const archive = replayArchive("local-replay", 1_700_000_000_000);
+    database.rows = [
+      {
+        payload_json: JSON.stringify({
+          source: "ingame",
+          sourceGameId: archive.matchId,
+          ruleSet: archive.ruleSet,
+          startedAt: archive.startedAt.getTime(),
+          endedAt: archive.endedAt.getTime(),
+          seats: archive.seats,
+          events: archive.events,
+          schemaVersion: 6,
+        }),
+      },
+    ];
+    const repository = createSqliteMatchRepository(database);
+
+    await expect(
+      repository.getReplayLog("ingame", "local-replay")
+    ).resolves.toMatchObject({
+      source: "ingame",
+      sourceGameId: "local-replay",
+      events: [],
+    });
+  });
+
   it("isolates malformed replay rows", async () => {
     const database = new RecordingDatabase();
     database.rows = [
@@ -291,5 +319,8 @@ describe("mobile SQLite match repository", () => {
       expect.objectContaining({ sourceGameId: "newer" }),
       expect.objectContaining({ sourceGameId: "older" }),
     ]);
+    await expect(
+      replayStore.getReplayLog("ingame", "newer")
+    ).resolves.toMatchObject({ sourceGameId: "newer", events: [] });
   });
 });

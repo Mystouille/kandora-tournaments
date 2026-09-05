@@ -7,12 +7,9 @@ export type MobileShellPage =
   | "online-room"
   | "nearby"
   | "replays"
+  | "replay-viewer"
   | "game";
-export type MobileStorageState =
-  | "loading"
-  | "sqlite"
-  | "memory"
-  | "error";
+export type MobileStorageState = "loading" | "sqlite" | "memory" | "error";
 
 export function normalizeWebAppUrl(
   value: string | undefined,
@@ -49,7 +46,11 @@ export function webAppPath(baseUrl: string, path: string): string {
 export function isMobileAuthCallback(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "kandora:" && url.host === "auth" && url.pathname === "/complete";
+    return (
+      url.protocol === "kandora:" &&
+      url.host === "auth" &&
+      url.pathname === "/complete"
+    );
   } catch {
     return false;
   }
@@ -60,8 +61,7 @@ export function nearbyPageAvailable(
   storageState: MobileStorageState
 ): boolean {
   return (
-    controllersReady &&
-    (storageState === "sqlite" || storageState === "memory")
+    controllersReady && (storageState === "sqlite" || storageState === "memory")
   );
 }
 
@@ -70,6 +70,21 @@ export function hasPlayingMatch(
   nearbyStatus: NearbyMatchControllerState["status"]
 ): boolean {
   return localStatus === "playing" || nearbyStatus === "playing";
+}
+
+export function backgroundResumeTarget(
+  page: MobileShellPage,
+  localStatus: LocalMatchControllerState["status"],
+  nearbyRole: NearbyMatchControllerState["role"],
+  nearbyStatus: NearbyMatchControllerState["status"]
+): "solo" | "nearby-host" | null {
+  if (page !== "game") {
+    return null;
+  }
+  if (nearbyRole === "host" && nearbyStatus === "playing") {
+    return "nearby-host";
+  }
+  return localStatus === "playing" ? "solo" : null;
 }
 
 export function isTransientPauseError(error: unknown): boolean {

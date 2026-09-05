@@ -319,7 +319,13 @@ export function MobileReplays({
           unauthorizedRef.current();
           return;
         }
-        setOnlineError("Online replays could not be loaded.");
+        setOnlineError(
+          error instanceof MyReplaysHttpError &&
+            error.status === 404 &&
+            error.code === null
+            ? "Online replays are not available on this server."
+            : "Online replays could not be loaded."
+        );
         setOnlineState("error");
       });
     return () => {

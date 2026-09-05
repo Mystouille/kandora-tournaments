@@ -56,6 +56,10 @@ import { MobileLobby } from "./online/MobileLobby";
 import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
 import { MobileGameMenu } from "./game/MobileGameMenu";
 import { MobileReplays } from "./replays/MobileReplays";
+import { MobileReplayViewer } from "./replays/MobileReplayViewer";
+import { loadReplayForRow, ReplayLoadError } from "./replays/replayLoader";
+import type { ReplayLibraryRow } from "./replays/replayLibrary";
+import type { ReplayLog } from "~/game/replay/types";
 import {
   INITIAL_ONLINE_MATCH_STATE,
   OnlineMatchController,
@@ -74,6 +78,7 @@ import {
   type MobileAuthSession,
 } from "./auth/mobileAuth";
 import {
+  backgroundResumeTarget,
   hasPlayingMatch,
   mobileAuthCallbackResult,
   nearbyPageAvailable,
@@ -100,6 +105,13 @@ type MobileAuthStatus =
   | "authenticated"
   | "error";
 
+interface MobileReplayViewerState {
+  row: ReplayLibraryRow | null;
+  log: ReplayLog | null;
+  loading: boolean;
+  error: string | null;
+}
+
 export function App() {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<TableRenderer | null>(null);
@@ -117,6 +129,8 @@ export function App() {
   const authGenerationRef = useRef(0);
   const handledAuthCallbackRef = useRef<string | null>(null);
   const pendingVerifierRef = useRef<string | null>(null);
+  const replayLoadGenerationRef = useRef(0);
+  const resumeAfterBackgroundRef = useRef<"solo" | "nearby-host" | null>(null);
   const homeSettingsRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState<MobileShellPage>("home");
   const pageRef = useRef(page);
@@ -140,6 +154,13 @@ export function App() {
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
   >("loading");
+  const [replayViewerState, setReplayViewerState] =
+    useState<MobileReplayViewerState>({
+      row: null,
+      log: null,
+      loading: false,
+      error: null,
+    });
   const [storageState, setStorageState] =
     useState<MobileStorageState>("loading");
   const [localState, setLocalState] = useState(INITIAL_LOCAL_STATE);
@@ -329,26 +350,9 @@ export function App() {
         unsubscribeNearby = nearbyController.subscribe(setNearbyState);
         setStorageState(handle.storage);
         await nearbyController.initialize();
+        await controller.discoverSavedMatch();
+        await nearbyController.discoverSavedHost();
         setControllersReady(true);
-        const activeMatch = await handle.getActiveMatch();
-        if (activeMatch?.owner === "nearby-host") {
-          await nearbyController.restoreHost(nearbyIdentityRef.current);
-        } else {
-          await controller.restore();
-        }
-        if (
-          hasPlayingMatch(
-            controller.getState().status,
-            nearbyController.getState().status
-          )
-        ) {
-          setPage("game");
-        } else if (
-          controller.getState().matchId !== null ||
-          nearbyController.getState().matchId !== null
-        ) {
-          setPage("nearby");
-        }
       })
       .catch(() => {
         if (!disposed) {
@@ -440,17 +444,25 @@ export function App() {
       const controller = localControllerRef.current;
       const nearbyController = nearbyControllerRef.current;
       if (!isActive) {
+        resumeAfterBackgroundRef.current = backgroundResumeTarget(
+          pageRef.current,
+          controller?.getState().status ?? "idle",
+          nearbyController?.getState().role ?? "idle",
+          nearbyController?.getState().status ?? "idle"
+        );
         void Promise.allSettled([
           controller?.pause() ?? Promise.resolve(),
           nearbyController?.pause() ?? Promise.resolve(),
         ]);
         return;
       }
-      if (nearbyController?.getState().role === "host") {
+      const resume = resumeAfterBackgroundRef.current;
+      resumeAfterBackgroundRef.current = null;
+      if (resume === "nearby-host") {
         void nearbyController
-          .restoreHost(nearbyIdentityRef.current)
+          ?.restoreHost(nearbyIdentityRef.current)
           .catch(() => undefined);
-      } else if (nearbyController?.getState().role !== "guest") {
+      } else if (resume === "solo") {
         void controller?.restore().catch(() => undefined);
       }
     }).then((handle) => {
@@ -986,6 +998,62 @@ export function App() {
     });
   };
 
+  const clearUnauthorizedMobileSession = (): void => {
+    authGenerationRef.current += 1;
+    clearMobileAuthSession(window.localStorage);
+    void onlineControllerRef.current?.leave();
+    setMobileAuthSession(null);
+    setAuthError(null);
+    setAuthStatus("signed_out");
+  };
+
+  const openReplay = async (row: ReplayLibraryRow): Promise<void> => {
+    const generation = ++replayLoadGenerationRef.current;
+    setReplayViewerState({ row, log: null, loading: true, error: null });
+    setPage("replay-viewer");
+    try {
+      const log = await loadReplayForRow(row, {
+        replayStore: repositoryRef.current?.replayStore ?? null,
+        webAppBaseUrl,
+        authSession: authStatus === "authenticated" ? mobileAuthSession : null,
+      });
+      if (replayLoadGenerationRef.current === generation) {
+        setReplayViewerState({ row, log, loading: false, error: null });
+      }
+    } catch (error) {
+      if (replayLoadGenerationRef.current !== generation) {
+        return;
+      }
+      const code =
+        error instanceof ReplayLoadError ? error.code : "unavailable";
+      if (code === "authentication_required") {
+        clearUnauthorizedMobileSession();
+      }
+      const message =
+        code === "authentication_required"
+          ? "Sign in again to open this replay."
+          : code === "not_found"
+            ? "This replay is no longer available."
+            : code === "server_update_required"
+              ? "Online replay viewing is not available on this server."
+              : code === "storage_unavailable"
+                ? "Device storage is unavailable."
+                : "Replay could not be loaded.";
+      setReplayViewerState({ row, log: null, loading: false, error: message });
+    }
+  };
+
+  const closeReplayViewer = (): void => {
+    replayLoadGenerationRef.current += 1;
+    setReplayViewerState({
+      row: null,
+      log: null,
+      loading: false,
+      error: null,
+    });
+    setPage("replays");
+  };
+
   if (page === "game") {
     return (
       <main className="mobile-game-view">
@@ -1021,6 +1089,22 @@ export function App() {
           )}
         </section>
       </main>
+    );
+  }
+
+  if (page === "replay-viewer") {
+    return (
+      <MobileReplayViewer
+        log={replayViewerState.log}
+        loading={replayViewerState.loading}
+        error={replayViewerState.error}
+        onClose={closeReplayViewer}
+        onRetry={() => {
+          if (replayViewerState.row !== null) {
+            void openReplay(replayViewerState.row);
+          }
+        }}
+      />
     );
   }
 
@@ -1159,14 +1243,8 @@ export function App() {
         }
         onBack={() => setPage("home")}
         onSignIn={startDiscordLogin}
-        onUnauthorized={() => {
-          authGenerationRef.current += 1;
-          clearMobileAuthSession(window.localStorage);
-          void onlineControllerRef.current?.leave();
-          setMobileAuthSession(null);
-          setAuthError(null);
-          setAuthStatus("signed_out");
-        }}
+        onUnauthorized={clearUnauthorizedMobileSession}
+        onOpenReplay={(row) => void openReplay(row)}
       />
     );
   }
