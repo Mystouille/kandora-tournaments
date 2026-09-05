@@ -14,6 +14,13 @@ export interface MyReplayRuleset {
   label: string;
 }
 
+export interface MyReplaySeat {
+  seat: 0 | 1 | 2 | 3;
+  displayName: string;
+  finalScore: number;
+  place: 1 | 2 | 3 | 4;
+}
+
 export interface MyReplayReview {
   key: string;
   shortId: string;
@@ -30,6 +37,7 @@ export interface MyReplayGroup {
   sourceGameId: string;
   reasons: MyReplayReason[];
   gameDate: number | null;
+  seats: MyReplaySeat[];
   context: MyReplayContext;
   ruleset: MyReplayRuleset;
   replayUrl: string;

@@ -1,19 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getAuthenticatedUser: vi.fn(),
-  connectToDatabase: vi.fn(),
-  getMyReplays: vi.fn(),
+  getAuthenticatedPrincipal: vi.fn(),
+  getMyReplaysApiResponse: vi.fn(),
 }));
 
-vi.mock("~/utils/jwt.server", () => ({
-  getAuthenticatedUser: mocks.getAuthenticatedUser,
+vi.mock("~/utils/requestAuth.server", () => ({
+  getAuthenticatedPrincipal: mocks.getAuthenticatedPrincipal,
 }));
-vi.mock("~/utils/dbConnection.server", () => ({
-  connectToDatabase: mocks.connectToDatabase,
-}));
-vi.mock("~/services/myReplays.server", () => ({
-  getMyReplays: mocks.getMyReplays,
+vi.mock("~/services/myReplaysApi.server", () => ({
+  getMyReplaysApiResponse: mocks.getMyReplaysApiResponse,
 }));
 
 import { loader, meta } from "./my-replays";
@@ -21,9 +17,8 @@ import { loader, meta } from "./my-replays";
 describe("My Replays route loader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getAuthenticatedUser.mockResolvedValue(null);
-    mocks.connectToDatabase.mockResolvedValue(undefined);
-    mocks.getMyReplays.mockResolvedValue([]);
+    mocks.getAuthenticatedPrincipal.mockResolvedValue(null);
+    mocks.getMyReplaysApiResponse.mockResolvedValue({ replays: [] });
   });
 
   it("redirects signed-out users through the auth-only continuation", async () => {
@@ -39,13 +34,16 @@ describe("My Replays route loader", () => {
     expect((thrown as Response).headers.get("Location")).toBe(
       "/sign-in?mode=auth&returnTo=%2Fmy-replays"
     );
-    expect(mocks.connectToDatabase).not.toHaveBeenCalled();
+    expect(mocks.getMyReplaysApiResponse).not.toHaveBeenCalled();
   });
 
   it("loads only the authenticated user's related groups", async () => {
     const groups = [{ key: "tenhou:game-1" }];
-    mocks.getAuthenticatedUser.mockResolvedValue({ sub: "user-1" });
-    mocks.getMyReplays.mockResolvedValue(groups);
+    mocks.getAuthenticatedPrincipal.mockResolvedValue({
+      userId: "user-1",
+      transport: "web-cookie",
+    });
+    mocks.getMyReplaysApiResponse.mockResolvedValue({ replays: groups });
 
     await expect(
       loader({ request: new Request("http://app.test/my-replays") })
@@ -55,7 +53,11 @@ describe("My Replays route loader", () => {
       imageUrl: "http://app.test/banner/TNT_logo-WHITE.png",
       previewOnly: false,
     });
-    expect(mocks.getMyReplays).toHaveBeenCalledWith("user-1");
+    expect(mocks.getAuthenticatedPrincipal).toHaveBeenCalledWith(
+      expect.any(Request),
+      { transport: "web-cookie" }
+    );
+    expect(mocks.getMyReplaysApiResponse).toHaveBeenCalledWith("user-1");
   });
 
   it("serves a data-free metadata shell to Discord's crawler", async () => {
@@ -75,8 +77,8 @@ describe("My Replays route loader", () => {
       imageUrl: "https://tournaments.example.test/banner/TNT_logo-WHITE.png",
       previewOnly: true,
     });
-    expect(mocks.getAuthenticatedUser).not.toHaveBeenCalled();
-    expect(mocks.connectToDatabase).not.toHaveBeenCalled();
+    expect(mocks.getAuthenticatedPrincipal).not.toHaveBeenCalled();
+    expect(mocks.getMyReplaysApiResponse).not.toHaveBeenCalled();
 
     expect(meta({ data })).toEqual(
       expect.arrayContaining([
@@ -95,8 +97,11 @@ describe("My Replays route loader", () => {
   });
 
   it("rejects a stale token whose user no longer exists", async () => {
-    mocks.getAuthenticatedUser.mockResolvedValue({ sub: "user-1" });
-    mocks.getMyReplays.mockResolvedValue(null);
+    mocks.getAuthenticatedPrincipal.mockResolvedValue({
+      userId: "user-1",
+      transport: "web-cookie",
+    });
+    mocks.getMyReplaysApiResponse.mockResolvedValue(null);
 
     await expect(
       loader({ request: new Request("http://app.test/my-replays") })

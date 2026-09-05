@@ -16,6 +16,7 @@ import type {
   MyReplayReason,
   MyReplayRuleset,
   MyReplayReview,
+  MyReplaySeat,
 } from "~/types/myReplays";
 import { slugify } from "~/utils/slugify";
 
@@ -34,6 +35,7 @@ interface ReplayLogListDocument {
   endedAt: number;
   creationTriggeredBy?: mongoose.Types.ObjectId;
   seats?: Array<{
+    seat?: number;
     userDbId?: mongoose.Types.ObjectId;
     displayName: string;
     finalScore?: number;
@@ -213,6 +215,38 @@ function resolveRuleset(
     id: `platform:${source}`,
     label: SOURCE_LABELS[source],
   };
+}
+
+function publicReplaySeats(
+  replay: ReplayLogListDocument | undefined
+): MyReplaySeat[] {
+  return (replay?.seats ?? [])
+    .flatMap((seat) => {
+      if (
+        !Number.isInteger(seat.seat) ||
+        seat.seat === undefined ||
+        seat.seat < 0 ||
+        seat.seat > 3 ||
+        typeof seat.displayName !== "string" ||
+        typeof seat.finalScore !== "number" ||
+        !Number.isFinite(seat.finalScore) ||
+        !Number.isInteger(seat.place) ||
+        seat.place === undefined ||
+        seat.place < 1 ||
+        seat.place > 4
+      ) {
+        return [];
+      }
+      return [
+        {
+          seat: seat.seat as MyReplaySeat["seat"],
+          displayName: seat.displayName,
+          finalScore: seat.finalScore,
+          place: seat.place as MyReplaySeat["place"],
+        },
+      ];
+    })
+    .sort((left, right) => left.place - right.place || left.seat - right.seat);
 }
 
 function addSeed(
@@ -458,6 +492,7 @@ export async function getMyReplays(
         startedAt: 1,
         endedAt: 1,
         creationTriggeredBy: 1,
+        "seats.seat": 1,
         "seats.userDbId": 1,
         "seats.displayName": 1,
         "seats.finalScore": 1,
@@ -604,6 +639,7 @@ export async function getMyReplays(
         ruleSet: 1,
         startedAt: 1,
         endedAt: 1,
+        "seats.seat": 1,
         "seats.displayName": 1,
         "seats.finalScore": 1,
         "seats.place": 1,
@@ -742,6 +778,7 @@ export async function getMyReplays(
       sourceGameId: seed.sourceGameId,
       reasons: PARENT_REASON_ORDER.filter((reason) => seed.reasons.has(reason)),
       gameDate,
+      seats: publicReplaySeats(replay),
       context: resolveContext(seed.source, game, league),
       ruleset: resolveRuleset(seed.source, replay, match, game),
       replayUrl: replayUrl(seed.sourceGameId),

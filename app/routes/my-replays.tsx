@@ -4,15 +4,14 @@ import { isbot } from "isbot";
 import { PageTitle } from "~/components/PageTitle";
 import { MyReplaysTable } from "~/components/my-replays/MyReplaysTable";
 import { useLocale } from "~/contexts/LocaleContext";
-import { getMyReplays } from "~/services/myReplays.server";
+import { getMyReplaysApiResponse } from "~/services/myReplaysApi.server";
 import type { MyReplayGroup } from "~/types/myReplays";
 import { basePath } from "~/utils/basePath";
-import { connectToDatabase } from "~/utils/dbConnection.server";
 import {
   authSignInPath,
   localReturnPathFromRequest,
 } from "~/utils/gameReturnPath";
-import { getAuthenticatedUser } from "~/utils/jwt.server";
+import { getAuthenticatedPrincipal } from "~/utils/requestAuth.server";
 
 const META_TITLE = "My Replays | TNT Paris Mahjong";
 const META_DESCRIPTION =
@@ -84,20 +83,21 @@ export async function loader({
     return { groups: [], ...metadata, previewOnly: true };
   }
 
-  const authenticatedUser = await getAuthenticatedUser(request);
-  if (!authenticatedUser) {
+  const principal = await getAuthenticatedPrincipal(request, {
+    transport: "web-cookie",
+  });
+  if (principal === null) {
     throw redirect(
       authSignInPath(localReturnPathFromRequest(request, basePath))
     );
   }
-  await connectToDatabase();
-  const groups = await getMyReplays(authenticatedUser.sub);
-  if (!groups) {
+  const response = await getMyReplaysApiResponse(principal.userId);
+  if (response === null) {
     throw new Response("Authenticated user no longer exists.", {
       status: 401,
     });
   }
-  return { groups, ...metadata, previewOnly: false };
+  return { groups: response.replays, ...metadata, previewOnly: false };
 }
 
 export default function MyReplaysRoute({

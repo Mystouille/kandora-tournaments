@@ -74,8 +74,19 @@ describe("getMyReplays", () => {
             endedAt: 1_700_000_003_000,
             creationTriggeredBy: new mongoose.Types.ObjectId(userId),
             seats: [
-              { seat: 0, displayName: "TenhouName" },
-              { seat: 2, displayName: "Reviewed Player" },
+              {
+                seat: 0,
+                displayName: "TenhouName",
+                finalScore: 31_200,
+                place: 2,
+                userDbId: new mongoose.Types.ObjectId(userId),
+              },
+              {
+                seat: 2,
+                displayName: "Reviewed Player",
+                finalScore: 42_100,
+                place: 1,
+              },
             ],
           },
           {
@@ -205,6 +216,20 @@ describe("getMyReplays", () => {
       },
       ruleset: { id: "m-league", label: "M-League" },
       reasons: ["created", "played"],
+      seats: [
+        {
+          seat: 2,
+          displayName: "Reviewed Player",
+          finalScore: 42_100,
+          place: 1,
+        },
+        {
+          seat: 0,
+          displayName: "TenhouName",
+          finalScore: 31_200,
+          place: 2,
+        },
+      ],
       commentCount: 4,
       reviews: [
         {
@@ -502,8 +527,11 @@ describe("getMyReplays", () => {
     expect(replayProjection).not.toHaveProperty("events");
     expect(replayProjection).toMatchObject({
       creationTriggeredBy: 1,
+      "seats.seat": 1,
       "seats.userDbId": 1,
       "seats.displayName": 1,
+      "seats.finalScore": 1,
+      "seats.place": 1,
     });
 
     const pipeline = mocks.aggregateReviews.mock.calls[0][0];

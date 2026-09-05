@@ -53,6 +53,14 @@ with a spectator handshake. The production web service must be deployed with
 the mobile API and auth routes before a newly built APK can create or connect to
 live rooms.
 
+Web and mobile share the canonical `/api/my-replays` contract and replay-query
+service. Authentication logic resolves both clients to the same user principal,
+while session transport remains platform-specific: web requests use the HttpOnly
+site cookie and the native shell sends its scoped game token in a CORS-simple
+form POST. The web route consumes the same response builder directly during SSR;
+the mobile replay library flattens review relationship metadata for its compact
+filters after validating the shared response.
+
 `@capacitor-community/sqlite` packages SQLCipher on Android and iOS even when
 database encryption is disabled. App Store release work must complete Apple's
 encryption/export-compliance questionnaire and any required annual

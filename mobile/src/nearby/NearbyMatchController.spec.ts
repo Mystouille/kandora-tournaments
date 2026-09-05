@@ -6,8 +6,10 @@ import {
   setDelayAfterDiscardMs,
   setReadyCheckMs,
 } from "~/game/server/src/match";
-import { createMemoryMatchRepository } from "~/game/server/src/repository";
-import type { MobileMatchRepositoryHandle } from "../persistence/mobileMatchRepository";
+import {
+  createMemoryMobileMatchRepository,
+  type MobileMatchRepositoryHandle,
+} from "../persistence/mobileMatchRepository";
 import {
   NearbyMatchController,
   type NearbyTransport,
@@ -128,10 +130,11 @@ function memoryPersistence(): MobileMatchRepositoryHandle {
   let activeMatch: Awaited<
     ReturnType<MobileMatchRepositoryHandle["getActiveMatch"]>
   > = null;
-  const repository = createMemoryMatchRepository();
+  const { repository, replayStore } = createMemoryMobileMatchRepository();
   return {
     repository,
     eventJournalStore: repository,
+    replayStore,
     storage: "memory",
     getActiveMatch: async () => activeMatch,
     setActiveMatch: async (nextActiveMatch) => {

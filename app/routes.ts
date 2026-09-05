@@ -67,14 +67,9 @@ export default [
   route("/api/game/watch", "routes/api/game/watch.ts"),
   route("/api/game/enrichment", "routes/api/game/enrichment.ts"),
   route("/api/mobile/lobby", "routes/api/mobile/lobby.ts"),
-  route(
-    "/api/mobile/auth/exchange",
-    "routes/api/mobile/auth.exchange.ts"
-  ),
-  route(
-    "/api/mobile/auth/session",
-    "routes/api/mobile/auth.session.ts"
-  ),
+  route("/api/my-replays", "routes/api/my-replays.ts"),
+  route("/api/mobile/auth/exchange", "routes/api/mobile/auth.exchange.ts"),
+  route("/api/mobile/auth/session", "routes/api/mobile/auth.session.ts"),
 
   // ---------------------------------------------------------------------
   // Admin — online tournaments

@@ -116,8 +116,9 @@ try {
   Invoke-External $npx @(
     "vitest",
     "run",
-    "mobile/src/App.spec.ts"
-  ) "Verify mobile Home shell"
+    "mobile/src/App.spec.ts",
+    "mobile/src/auth/nativeDeepLinks.spec.ts"
+  ) "Verify mobile shell and auth callback"
   Invoke-External $npm @("run", "mobile:build") "Build mobile web assets"
   Invoke-External $npx @("cap", "copy", "android") "Copy assets into Android"
   Invoke-External $gradle @(
@@ -155,6 +156,30 @@ try {
 
   Invoke-External $adb @("-s", $Serial, "wait-for-device") "Wait for $Serial"
   Invoke-External $adb @("-s", $Serial, "install", "-r", $apk) "Install APK on $Serial"
+
+  Write-Host "`n==> Verify mobile auth callback on $Serial" -ForegroundColor Cyan
+  $callbackHandler = @(& $adb @(
+    "-s",
+    $Serial,
+    "shell",
+    "cmd",
+    "package",
+    "resolve-activity",
+    "--brief",
+    "-a",
+    "android.intent.action.VIEW",
+    "-c",
+    "android.intent.category.BROWSABLE",
+    "-d",
+    "kandora://auth/complete?code=probe"
+  ))
+  if (
+    $LASTEXITCODE -ne 0 -or
+    $callbackHandler -notcontains "com.kandora.app/.MainActivity"
+  ) {
+    throw "Installed APK does not handle the mobile authentication callback."
+  }
+
   Invoke-External $adb @(
     "-s",
     $Serial,

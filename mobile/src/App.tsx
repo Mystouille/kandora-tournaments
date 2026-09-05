@@ -13,27 +13,12 @@ import {
   LogIn,
   LogOut,
   Radio,
-  RotateCcw,
   Settings,
-  Upload,
   UserRound,
   Volume2,
-  Wifi,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { z } from "zod";
-import {
-  GameEventSchema,
-  type GameEvent,
-  type Seat,
-} from "~/game/protocol/messages";
-import {
-  applyReplayEvent,
-  initialView,
-  replayViewToMatchView,
-  rotateMatchView,
-} from "~/game/replay/player";
-import type { MatchView } from "~/game/client/store";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { rotateMatchView } from "~/game/replay/player";
 import { useMatchStore } from "~/game/client/store";
 import { findNoCallAutoPass } from "~/game/client/callPrompt";
 import { findTileAction } from "~/game/client/discardActions";
@@ -52,7 +37,6 @@ import {
 } from "~/game/client/LivePlayMenu";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import { mobileTableLayout } from "~/game/client/pixi/layouts/mobileTableLayout";
-import { DEMO_EVENTS, DEMO_SEAT_NAMES } from "./demoReplay";
 import {
   openMobileMatchRepository,
   type MobileMatchRepositoryHandle,
@@ -71,6 +55,7 @@ import { loadNearbyIdentity, updateNearbyDisplayName } from "./nearby/identity";
 import { MobileLobby } from "./online/MobileLobby";
 import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
 import { MobileGameMenu } from "./game/MobileGameMenu";
+import { MobileReplays } from "./replays/MobileReplays";
 import {
   INITIAL_ONLINE_MATCH_STATE,
   OnlineMatchController,
@@ -99,43 +84,6 @@ import {
   type MobileStorageState,
 } from "./shell";
 
-interface LoadedReplay {
-  id: string;
-  events: GameEvent[];
-  seatNames: [string, string, string, string];
-}
-
-const SeatSchema = z.union([
-  z.literal(0),
-  z.literal(1),
-  z.literal(2),
-  z.literal(3),
-]);
-
-const ImportedReplaySchema = z
-  .object({
-    source: z.string().optional(),
-    sourceGameId: z.string().optional(),
-    seats: z
-      .array(
-        z
-          .object({
-            seat: SeatSchema,
-            displayName: z.string(),
-          })
-          .passthrough()
-      )
-      .length(4),
-    events: z.array(GameEventSchema).min(1),
-  })
-  .passthrough();
-
-const DEMO_REPLAY: LoadedReplay = {
-  id: "Demo table",
-  events: DEMO_EVENTS,
-  seatNames: DEMO_SEAT_NAMES,
-};
-
 const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   status: "idle",
   matchId: null,
@@ -152,18 +100,6 @@ type MobileAuthStatus =
   | "authenticated"
   | "error";
 
-function replayToMatchView(replay: LoadedReplay): MatchView {
-  let view = initialView();
-  for (const event of replay.events) {
-    view = applyReplayEvent(view, event);
-  }
-  return replayViewToMatchView(view, {
-    index: replay.events.length - 1,
-    matchId: replay.id,
-    seatNames: replay.seatNames,
-  });
-}
-
 export function App() {
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<TableRenderer | null>(null);
@@ -178,7 +114,6 @@ export function App() {
   const autoDiscardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const authGenerationRef = useRef(0);
   const handledAuthCallbackRef = useRef<string | null>(null);
   const pendingVerifierRef = useRef<string | null>(null);
@@ -202,11 +137,9 @@ export function App() {
   );
   const liveMenuFlagsRef = useRef(liveMenuFlags);
   liveMenuFlagsRef.current = liveMenuFlags;
-  const [replay, setReplay] = useState<LoadedReplay>(DEMO_REPLAY);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
   >("loading");
-  const [importError, setImportError] = useState<string | null>(null);
   const [storageState, setStorageState] =
     useState<MobileStorageState>("loading");
   const [localState, setLocalState] = useState(INITIAL_LOCAL_STATE);
@@ -218,13 +151,12 @@ export function App() {
   const nearbyIdentityRef = useRef(nearbyIdentity);
   nearbyIdentityRef.current = nearbyIdentity;
   const liveView = useMatchStore();
-  const replayView = useMemo(() => replayToMatchView(replay), [replay]);
   const isPlayingMatch =
     hasPlayingMatch(localState.status, nearbyState.status) ||
     onlineState.status === "playing" ||
     onlineState.status === "spectating" ||
     onlineState.status === "finished";
-  const showsTable = page === "game" || page === "replays";
+  const showsTable = page === "game";
   const renderedLiveView = useMemo(
     () =>
       liveView.mySeat !== null && liveView.mySeat !== 0
@@ -232,9 +164,8 @@ export function App() {
         : liveView,
     [liveView]
   );
-  const matchView = page === "game" ? renderedLiveView : replayView;
-  const latestViewRef = useRef(matchView);
-  latestViewRef.current = matchView;
+  const latestViewRef = useRef(renderedLiveView);
+  latestViewRef.current = renderedLiveView;
   liveActionDispatcherRef.current = (actionId) => {
     const matchId = useMatchStore.getState().matchId;
     const onlineController = onlineControllerRef.current;
@@ -654,8 +585,8 @@ export function App() {
   useEffect(() => {
     const renderer = rendererRef.current;
     renderer?.setMinimumDrawToDiscardDelayEnabled(page === "game");
-    renderer?.render(matchView);
-  }, [matchView, page]);
+    renderer?.render(renderedLiveView);
+  }, [renderedLiveView, page]);
 
   useEffect(() => {
     rendererRef.current?.setAutoSort(liveMenuFlags.autoSort);
@@ -1055,37 +986,6 @@ export function App() {
     });
   };
 
-  const importReplay = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (file === undefined) {
-      return;
-    }
-    try {
-      const parsed = ImportedReplaySchema.parse(
-        JSON.parse(await file.text()) as unknown
-      );
-      const seatNames: [string, string, string, string] = [
-        "East",
-        "South",
-        "West",
-        "North",
-      ];
-      for (const seat of parsed.seats) {
-        seatNames[seat.seat as Seat] = seat.displayName;
-      }
-      setReplay({
-        id: parsed.sourceGameId ?? file.name,
-        events: parsed.events,
-        seatNames,
-      });
-      setImportError(null);
-      setPage("replays");
-    } catch {
-      setImportError("This file is not a valid Kandora replay.");
-    }
-  };
-
   if (page === "game") {
     return (
       <main className="mobile-game-view">
@@ -1247,82 +1147,27 @@ export function App() {
 
   if (page === "replays") {
     return (
-      <main className="mobile-shell mobile-replay-shell">
-        <header className="shell-topbar">
-          <button
-            type="button"
-            className="shell-icon-button"
-            aria-label="Back to home"
-            title="Back to home"
-            onClick={() => setPage("home")}
-          >
-            <ArrowLeft aria-hidden="true" />
-          </button>
-          <div>
-            <strong>Replays</strong>
-            <span>{replay.id}</span>
-          </div>
-          <div className={`renderer-state renderer-state-${rendererState}`}>
-            {rendererState === "loading" ? (
-              <LoaderCircle aria-hidden="true" className="spin" />
-            ) : rendererState === "ready" ? (
-              <Wifi aria-hidden="true" />
-            ) : (
-              <Radio aria-hidden="true" />
-            )}
-            <span>{rendererState === "ready" ? "Ready" : rendererState}</span>
-          </div>
-        </header>
-        <section className="replay-workspace">
-          <div className="replay-table-stage">
-            <div ref={tableContainerRef} className="table-canvas" />
-          </div>
-          <aside className="replay-tools">
-            <div className="mode-copy">
-              <strong>{replay.events.length} events</strong>
-              <span>
-                {importError ??
-                  (storageState === "sqlite"
-                    ? "Saved on device"
-                    : storageState === "memory"
-                      ? "Browser preview"
-                      : storageState === "error"
-                        ? "Storage unavailable"
-                        : "Opening storage")}
-              </span>
-            </div>
-            <div className="action-row">
-              <button
-                type="button"
-                className="command-button"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload aria-hidden="true" />
-                <span>Import replay</span>
-              </button>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Restore demo table"
-                title="Restore demo table"
-                onClick={() => {
-                  setReplay(DEMO_REPLAY);
-                  setImportError(null);
-                }}
-              >
-                <RotateCcw aria-hidden="true" />
-              </button>
-            </div>
-            <input
-              ref={fileInputRef}
-              className="file-input"
-              type="file"
-              accept="application/json,.json"
-              onChange={(event) => void importReplay(event)}
-            />
-          </aside>
-        </section>
-      </main>
+      <MobileReplays
+        replayStore={repositoryRef.current?.replayStore ?? null}
+        storageState={storageState}
+        webAppBaseUrl={webAppBaseUrl}
+        authSession={authStatus === "authenticated" ? mobileAuthSession : null}
+        authPending={
+          authStatus === "checking" ||
+          authStatus === "opening" ||
+          authStatus === "exchanging"
+        }
+        onBack={() => setPage("home")}
+        onSignIn={startDiscordLogin}
+        onUnauthorized={() => {
+          authGenerationRef.current += 1;
+          clearMobileAuthSession(window.localStorage);
+          void onlineControllerRef.current?.leave();
+          setMobileAuthSession(null);
+          setAuthError(null);
+          setAuthStatus("signed_out");
+        }}
+      />
     );
   }
 
@@ -1444,7 +1289,7 @@ export function App() {
           <History aria-hidden="true" />
           <span>
             <strong>Replays</strong>
-            <small>Import and review saved games</small>
+            <small>Saved and account games</small>
           </span>
           <ChevronRight aria-hidden="true" className="destination-arrow" />
         </button>

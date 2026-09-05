@@ -7,6 +7,7 @@ import {
   type MatchEventJournalStore,
   type MatchRecoveryRecord,
   type MatchRepository,
+  type MemoryMatchRepository,
 } from "~/game/server/src/repository";
 import {
   parseMatchCheckpoint,
@@ -15,7 +16,53 @@ import {
 import { REPLAY_LOG_SCHEMA_VERSION } from "~/game/replay/types";
 
 const DATABASE_NAME = "kandora_mobile";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
+
+const MOBILE_REPLAYS_V1_SCHEMA = `CREATE TABLE IF NOT EXISTS mobile_replays (
+  source TEXT NOT NULL,
+  source_game_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (source, source_game_id)
+)`;
+
+const ReplaySourceSchema = z.enum([
+  "ingame",
+  "majsoul",
+  "tenhou",
+  "riichicity",
+]);
+
+const MobileReplaySeatSchema = z.object({
+  seat: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+  displayName: z.string(),
+  finalScore: z.number().finite(),
+  place: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+});
+
+const MobileStoredReplaySummarySchema = z.object({
+  source: ReplaySourceSchema,
+  sourceGameId: z.string().min(1),
+  ruleSet: z.string().min(1),
+  startedAt: z.number().finite(),
+  endedAt: z.number().finite(),
+  seats: z.array(MobileReplaySeatSchema).max(4),
+});
+
+const StoredReplayRowSchema = z.object({
+  source: z.string(),
+  source_game_id: z.string(),
+  payload_json: z.string(),
+  summary_json: z.string().nullable().optional(),
+});
+
+export type MobileStoredReplaySummary = z.infer<
+  typeof MobileStoredReplaySummarySchema
+>;
+
+export interface MobileReplayStore {
+  listReplaySummaries(): Promise<MobileStoredReplaySummary[]>;
+}
 
 const RecoveryRowSchema = z.object({
   checkpoint_json: z.string().nullable(),
@@ -31,6 +78,7 @@ const JournalStateRowSchema = z.object({
 export interface MobileMatchRepositoryHandle {
   repository: MatchRepository;
   eventJournalStore: MatchEventJournalStore;
+  replayStore: MobileReplayStore;
   storage: "sqlite" | "memory";
   getActiveMatch(): Promise<MobileActiveMatch | null>;
   setActiveMatch(activeMatch: MobileActiveMatch | null): Promise<void>;
@@ -65,7 +113,48 @@ function affectedRows(result: { changes?: { changes?: number } }): number {
   return result.changes?.changes ?? 0;
 }
 
-class SqliteMatchRepository implements MatchRepository, MatchEventJournalStore {
+function storedReplaySummary(
+  args: Parameters<MatchRepository["archiveReplayLog"]>[0]
+): MobileStoredReplaySummary {
+  return MobileStoredReplaySummarySchema.parse({
+    source: args.source ?? "ingame",
+    sourceGameId: args.sourceGameId ?? args.matchId,
+    ruleSet: args.ruleSet,
+    startedAt: args.startedAt.getTime(),
+    endedAt: args.endedAt.getTime(),
+    seats: args.seats.map(({ seat, displayName, finalScore, place }) => ({
+      seat,
+      displayName,
+      finalScore,
+      place,
+    })),
+  });
+}
+
+function parseStoredReplaySummary(
+  raw: string
+): MobileStoredReplaySummary | null {
+  try {
+    return MobileStoredReplaySummarySchema.parse(JSON.parse(raw) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function sortReplaySummaries(
+  summaries: MobileStoredReplaySummary[]
+): MobileStoredReplaySummary[] {
+  return summaries.sort(
+    (left, right) =>
+      right.startedAt - left.startedAt ||
+      right.endedAt - left.endedAt ||
+      left.sourceGameId.localeCompare(right.sourceGameId)
+  );
+}
+
+class SqliteMatchRepository
+  implements MatchRepository, MatchEventJournalStore, MobileReplayStore
+{
   constructor(private readonly database: MobileSqliteDatabase) {}
 
   async createMatch(args: Parameters<MatchRepository["createMatch"]>[0]) {
@@ -191,6 +280,7 @@ class SqliteMatchRepository implements MatchRepository, MatchEventJournalStore {
   ) {
     const source = args.source ?? "ingame";
     const sourceGameId = args.sourceGameId ?? args.matchId;
+    const summary = storedReplaySummary(args);
     const payload = {
       source,
       sourceGameId,
@@ -204,13 +294,64 @@ class SqliteMatchRepository implements MatchRepository, MatchEventJournalStore {
     };
     await this.database.run(
       `INSERT INTO mobile_replays (
-         source, source_game_id, payload_json, updated_at
-       ) VALUES (?, ?, ?, ?)
+         source, source_game_id, payload_json, summary_json, updated_at
+       ) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(source, source_game_id) DO UPDATE SET
          payload_json = excluded.payload_json,
+         summary_json = excluded.summary_json,
          updated_at = excluded.updated_at`,
-      [source, sourceGameId, serialize(payload), Date.now()]
+      [source, sourceGameId, serialize(payload), serialize(summary), Date.now()]
     );
+  }
+
+  async listReplaySummaries(): Promise<MobileStoredReplaySummary[]> {
+    const result = await this.database.query(
+      `SELECT source, source_game_id, payload_json, summary_json
+       FROM mobile_replays
+       WHERE source = ?`,
+      ["ingame"]
+    );
+    const summaries: MobileStoredReplaySummary[] = [];
+    const backfills: Array<{ statement: string; values: unknown[] }> = [];
+    for (const value of result.values ?? []) {
+      const row = StoredReplayRowSchema.safeParse(value);
+      if (!row.success) {
+        console.error("Skipping an invalid mobile replay row");
+        continue;
+      }
+      const stored = row.data.summary_json
+        ? parseStoredReplaySummary(row.data.summary_json)
+        : null;
+      const summary = stored ?? parseStoredReplaySummary(row.data.payload_json);
+      if (summary === null || summary.source !== "ingame") {
+        console.error(
+          `Skipping invalid mobile replay ${row.data.source}/${row.data.source_game_id}`
+        );
+        continue;
+      }
+      summaries.push(summary);
+      if (!row.data.summary_json) {
+        backfills.push({
+          statement: `UPDATE mobile_replays
+                      SET summary_json = ?
+                      WHERE source = ? AND source_game_id = ?
+                        AND summary_json IS NULL`,
+          values: [
+            serialize(summary),
+            row.data.source,
+            row.data.source_game_id,
+          ],
+        });
+      }
+    }
+    if (backfills.length > 0) {
+      try {
+        await this.database.executeTransaction(backfills);
+      } catch (error) {
+        console.error("Failed to backfill mobile replay summaries:", error);
+      }
+    }
+    return sortReplaySummaries(summaries);
   }
 
   async saveCheckpoint(args: { matchId: string; checkpoint: MatchCheckpoint }) {
@@ -348,6 +489,7 @@ async function initializeSchema(database: MobileSqliteDatabase) {
        source TEXT NOT NULL,
        source_game_id TEXT NOT NULL,
        payload_json TEXT NOT NULL,
+       summary_json TEXT,
        updated_at INTEGER NOT NULL,
        PRIMARY KEY (source, source_game_id)
      );
@@ -361,17 +503,48 @@ async function initializeSchema(database: MobileSqliteDatabase) {
 
 export function createSqliteMatchRepository(
   database: MobileSqliteDatabase
-): MatchRepository & MatchEventJournalStore {
+): MatchRepository & MatchEventJournalStore & MobileReplayStore {
   return new SqliteMatchRepository(database);
+}
+
+export function createMemoryMobileMatchRepository(): {
+  repository: MemoryMatchRepository;
+  replayStore: MobileReplayStore;
+} {
+  const baseRepository = createMemoryMatchRepository();
+  const summaries = new Map<string, MobileStoredReplaySummary>();
+  const repository: MemoryMatchRepository = {
+    ...baseRepository,
+    archiveReplayLog: async (args) => {
+      await baseRepository.archiveReplayLog(args);
+      const summary = storedReplaySummary(args);
+      summaries.set(
+        JSON.stringify([summary.source, summary.sourceGameId]),
+        summary
+      );
+    },
+  };
+  return {
+    repository,
+    replayStore: {
+      listReplaySummaries: async () =>
+        sortReplaySummaries(
+          [...summaries.values()]
+            .filter((summary) => summary.source === "ingame")
+            .map((summary) => MobileStoredReplaySummarySchema.parse(summary))
+        ),
+    },
+  };
 }
 
 export async function openMobileMatchRepository(): Promise<MobileMatchRepositoryHandle> {
   if (!Capacitor.isNativePlatform()) {
     let activeMatch: MobileActiveMatch | null = null;
-    const repository = createMemoryMatchRepository();
+    const { repository, replayStore } = createMemoryMobileMatchRepository();
     return {
       repository,
       eventJournalStore: repository,
+      replayStore,
       storage: "memory",
       getActiveMatch: async () => activeMatch,
       setActiveMatch: async (nextActiveMatch) => {
@@ -384,6 +557,16 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
   const { CapacitorSQLite, SQLiteConnection } =
     await import("@capacitor-community/sqlite");
   const sqlite = new SQLiteConnection(CapacitorSQLite);
+  await sqlite.addUpgradeStatement(DATABASE_NAME, [
+    {
+      toVersion: 1,
+      statements: [MOBILE_REPLAYS_V1_SCHEMA],
+    },
+    {
+      toVersion: 2,
+      statements: ["ALTER TABLE mobile_replays ADD COLUMN summary_json TEXT"],
+    },
+  ]);
   const existing = await sqlite.isConnection(DATABASE_NAME, false);
   const database = existing.result
     ? await sqlite.retrieveConnection(DATABASE_NAME, false)
@@ -405,6 +588,7 @@ export async function openMobileMatchRepository(): Promise<MobileMatchRepository
   return {
     repository,
     eventJournalStore: repository,
+    replayStore: repository,
     storage: "sqlite",
     getActiveMatch: async () => {
       const metadata = await database.query(

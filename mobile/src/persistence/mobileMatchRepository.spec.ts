@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MatchProcess,
   setDelayAfterDiscardMs,
@@ -9,6 +9,7 @@ import {
   type MatchRecoveryRecord,
 } from "~/game/server/src/repository";
 import {
+  createMemoryMobileMatchRepository,
   createSqliteMatchRepository,
   type MobileSqliteDatabase,
 } from "./mobileMatchRepository";
@@ -48,6 +49,23 @@ function players() {
     displayName: `Human ${seat}`,
     isBot: false,
   }));
+}
+
+function replayArchive(sourceGameId: string, startedAt: number) {
+  return {
+    matchId: sourceGameId,
+    startedAt: new Date(startedAt),
+    endedAt: new Date(startedAt + 1_000),
+    ruleSet: "m-league",
+    events: [],
+    seats: [0, 1, 2, 3].map((seat) => ({
+      seat: seat as 0 | 1 | 2 | 3,
+      userDbId: `user-${seat}`,
+      displayName: `Player ${seat}`,
+      finalScore: 40_000 - seat * 10_000,
+      place: (seat + 1) as 1 | 2 | 3 | 4,
+    })),
+  };
 }
 
 describe("mobile SQLite match repository", () => {
@@ -175,6 +193,103 @@ describe("mobile SQLite match repository", () => {
       123_456,
       expect.any(Number),
       "mobile-sqlite-tombstone",
+    ]);
+  });
+
+  it("archives an ID-free replay summary beside the full payload", async () => {
+    const database = new RecordingDatabase();
+    const repository = createSqliteMatchRepository(database);
+
+    await repository.archiveReplayLog(
+      replayArchive("mobile-replay-summary", 1_700_000_000_000)
+    );
+
+    expect(database.runs).toHaveLength(1);
+    expect(database.runs[0].statement).toContain("summary_json");
+    expect(JSON.parse(String(database.runs[0].values[3]))).toEqual({
+      source: "ingame",
+      sourceGameId: "mobile-replay-summary",
+      ruleSet: "m-league",
+      startedAt: 1_700_000_000_000,
+      endedAt: 1_700_000_001_000,
+      seats: [
+        { seat: 0, displayName: "Player 0", finalScore: 40_000, place: 1 },
+        { seat: 1, displayName: "Player 1", finalScore: 30_000, place: 2 },
+        { seat: 2, displayName: "Player 2", finalScore: 20_000, place: 3 },
+        { seat: 3, displayName: "Player 3", finalScore: 10_000, place: 4 },
+      ],
+    });
+    expect(String(database.runs[0].values[3])).not.toContain("userDbId");
+  });
+
+  it("loads, sorts, and backfills legacy replay summaries", async () => {
+    const database = new RecordingDatabase();
+    const older = replayArchive("older", 1_700_000_000_000);
+    const newer = replayArchive("newer", 1_800_000_000_000);
+    database.rows = [newer, older].map((archive) => ({
+      source: "ingame",
+      source_game_id: archive.matchId,
+      payload_json: JSON.stringify({
+        source: "ingame",
+        sourceGameId: archive.matchId,
+        ruleSet: archive.ruleSet,
+        startedAt: archive.startedAt.getTime(),
+        endedAt: archive.endedAt.getTime(),
+        seats: archive.seats,
+        events: [{ type: "match_start" }],
+      }),
+      summary_json: null,
+    }));
+    const repository = createSqliteMatchRepository(database);
+
+    const summaries = await repository.listReplaySummaries();
+
+    expect(summaries.map((summary) => summary.sourceGameId)).toEqual([
+      "newer",
+      "older",
+    ]);
+    expect(summaries[0].seats[0]).not.toHaveProperty("userDbId");
+    expect(database.transactions).toHaveLength(1);
+    expect(database.transactions[0]).toHaveLength(2);
+    expect(database.transactions[0][0].statement).toContain(
+      "SET summary_json = ?"
+    );
+  });
+
+  it("isolates malformed replay rows", async () => {
+    const database = new RecordingDatabase();
+    database.rows = [
+      {
+        source: "ingame",
+        source_game_id: "broken",
+        payload_json: "not-json",
+        summary_json: null,
+      },
+    ];
+    const repository = createSqliteMatchRepository(database);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await expect(repository.listReplaySummaries()).resolves.toEqual([]);
+    expect(consoleError).toHaveBeenCalledWith(
+      "Skipping invalid mobile replay ingame/broken"
+    );
+    consoleError.mockRestore();
+  });
+
+  it("lists replay archives created by the browser-memory repository", async () => {
+    const { repository, replayStore } = createMemoryMobileMatchRepository();
+    await repository.archiveReplayLog(
+      replayArchive("older", 1_700_000_000_000)
+    );
+    await repository.archiveReplayLog(
+      replayArchive("newer", 1_800_000_000_000)
+    );
+
+    await expect(replayStore.listReplaySummaries()).resolves.toEqual([
+      expect.objectContaining({ sourceGameId: "newer" }),
+      expect.objectContaining({ sourceGameId: "older" }),
     ]);
   });
 });
