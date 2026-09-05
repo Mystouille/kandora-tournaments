@@ -1310,8 +1310,7 @@ button {
   overflow-y: auto;
   overscroll-behavior: contain;
   color: #f2f4ef;
-  background: rgba(3, 8, 6, 0.78);
-  backdrop-filter: blur(3px);
+  background: rgba(0, 0, 0, 0.28);
   -webkit-overflow-scrolling: touch;
 }
 

@@ -9,6 +9,7 @@ import type {
   MyReplaysApiResponse,
 } from "~/types/myReplaysApi";
 import { connectToDatabase } from "~/utils/dbConnection.server";
+import { normalizeLegacyReplayEvent } from "~/utils/replayLogCompatibility";
 import { getMyReplays } from "./myReplays.server";
 import { resolveSeatEnrichmentForReplay } from "./replayEnrichment.server";
 import { resolveReviewersForDoc, serializeReview } from "./replayReview.server";
@@ -94,7 +95,9 @@ export async function getMyReplayLogApiResponse(
       finalScore: seat.finalScore,
       place: seat.place as 1 | 2 | 3 | 4,
     })),
-    events: annotateWallSchedule(doc.events as GameEvent[]),
+    events: annotateWallSchedule(
+      doc.events.map(normalizeLegacyReplayEvent) as GameEvent[]
+    ),
     schemaVersion: doc.schemaVersion,
   };
   const resolvedEnrichment = await resolveSeatEnrichmentForReplay(

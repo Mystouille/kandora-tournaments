@@ -3,6 +3,24 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MobileReplays, ReplayLibraryList } from "./MobileReplays";
 
+function memoryStorage(initialValues: Record<string, string> = {}): Storage {
+  const values = new Map(Object.entries(initialValues));
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => {
+      values.delete(key);
+    },
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -52,6 +70,62 @@ describe("mobile replay library view", () => {
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Online<\/button>/);
     expect(html).toContain(
       'title="Online replays require an internet connection"'
+    );
+  });
+
+  it("defaults to Online for an authenticated user", () => {
+    const html = renderToStaticMarkup(
+      createElement(MobileReplays, {
+        replayStore: null,
+        storageState: "loading",
+        webAppBaseUrl: "https://play.example.com",
+        authSession: {
+          token: "game-token",
+          username: "Alice",
+          expiresAt: Date.now() + 60_000,
+        },
+        authPending: false,
+        onBack: vi.fn(),
+        onSignIn: vi.fn(),
+        onUnauthorized: vi.fn(),
+      })
+    );
+
+    expect(html).toMatch(
+      /<button[^>]*aria-pressed="true"[^>]*>Online<\/button>/
+    );
+    expect(html).toMatch(
+      /<button[^>]*aria-pressed="false"[^>]*>Offline<\/button>/
+    );
+  });
+
+  it("restores a saved Offline choice for an authenticated user", () => {
+    vi.stubGlobal(
+      "localStorage",
+      memoryStorage({ "kandora.mobile.replays.mode.v1": "offline" })
+    );
+    const html = renderToStaticMarkup(
+      createElement(MobileReplays, {
+        replayStore: null,
+        storageState: "loading",
+        webAppBaseUrl: "https://play.example.com",
+        authSession: {
+          token: "game-token",
+          username: "Alice",
+          expiresAt: Date.now() + 60_000,
+        },
+        authPending: false,
+        onBack: vi.fn(),
+        onSignIn: vi.fn(),
+        onUnauthorized: vi.fn(),
+      })
+    );
+
+    expect(html).toMatch(
+      /<button[^>]*aria-pressed="true"[^>]*>Offline<\/button>/
+    );
+    expect(html).toMatch(
+      /<button[^>]*aria-pressed="false"[^>]*>Online<\/button>/
     );
   });
 

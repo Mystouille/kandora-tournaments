@@ -217,4 +217,54 @@ describe("common My Replays API client", () => {
       "review-1"
     );
   });
+
+  it("normalizes legacy nulls in optional replay event fields", async () => {
+    const legacyLog = {
+      source: "ingame",
+      sourceGameId: "legacy-game",
+      ruleSet: "m-league",
+      startedAt: 1_000,
+      endedAt: 2_000,
+      seats: [0, 1, 2, 3].map((seat) => ({
+        seat,
+        displayName: `Player ${seat}`,
+        finalScore: 40_000 - seat * 10_000,
+        place: seat + 1,
+      })),
+      events: [
+        {
+          type: "hand_start",
+          round: 0,
+          dealer: 0,
+          hand: null,
+          doraIndicators: ["1m"],
+        },
+        {
+          type: "win",
+          seat: 0,
+          uraDoraIndicators: null,
+        },
+      ],
+      schemaVersion: 6,
+    };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        log: legacyLog,
+        seatEnrichment: [null, null, null, null],
+        review: null,
+      })
+    );
+
+    const details = await fetchMyReplayLog(
+      "https://play.example.com",
+      session,
+      "ingame",
+      "legacy-game",
+      null,
+      fetcher
+    );
+
+    expect(details.log.events[0]).not.toHaveProperty("hand");
+    expect(details.log.events[1]).not.toHaveProperty("uraDoraIndicators");
+  });
 });

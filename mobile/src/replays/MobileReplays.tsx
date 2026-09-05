@@ -32,6 +32,11 @@ import {
   type ReplayLibraryMode,
   type ReplayLibraryRow,
 } from "./replayLibrary";
+import {
+  defaultReplayLibraryMode,
+  loadReplayLibraryMode,
+  saveReplayLibraryMode,
+} from "./replayModePreference";
 
 type ReplayLoadState = "idle" | "loading" | "ready" | "error";
 
@@ -96,6 +101,14 @@ function contextLabel(row: ReplayLibraryRow): string {
 
 function browserIsOnline(): boolean {
   return typeof navigator === "undefined" || navigator.onLine !== false;
+}
+
+function browserStorage(): Storage | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function ReplayLibraryRowView({
@@ -234,8 +247,15 @@ export function MobileReplays({
   const filterRootRef = useRef<HTMLDivElement>(null);
   const unauthorizedRef = useRef(onUnauthorized);
   unauthorizedRef.current = onUnauthorized;
-  const [mode, setMode] = useState<ReplayLibraryMode>("offline");
+  const [savedModeAtMount] = useState(() =>
+    loadReplayLibraryMode(browserStorage())
+  );
+  const hasExplicitModeRef = useRef(savedModeAtMount !== null);
+  const [preferredMode, setPreferredMode] = useState<ReplayLibraryMode>(() =>
+    defaultReplayLibraryMode(savedModeAtMount, authSession !== null)
+  );
   const [deviceOnline, setDeviceOnline] = useState(browserIsOnline);
+  const mode = deviceOnline ? preferredMode : "offline";
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<ReplayLibraryFilters>(
     EMPTY_REPLAY_LIBRARY_FILTERS
@@ -254,12 +274,17 @@ export function MobileReplays({
   const [onlineRefresh, setOnlineRefresh] = useState(0);
 
   useEffect(() => {
+    if (authSession !== null && !hasExplicitModeRef.current) {
+      setPreferredMode("online");
+    }
+  }, [authSession]);
+
+  useEffect(() => {
     const handleOnline = (): void => {
       setDeviceOnline(true);
     };
     const handleOffline = (): void => {
       setDeviceOnline(false);
-      setMode("offline");
       setFilterOpen(false);
     };
     window.addEventListener("online", handleOnline);
@@ -399,6 +424,12 @@ export function MobileReplays({
     setToDate("");
   };
 
+  const selectMode = (nextMode: ReplayLibraryMode): void => {
+    hasExplicitModeRef.current = true;
+    setPreferredMode(nextMode);
+    saveReplayLibraryMode(browserStorage(), nextMode);
+  };
+
   const state = mode === "offline" ? offlineState : onlineState;
   const error = mode === "offline" ? offlineError : onlineError;
   const sourceUnavailable =
@@ -487,7 +518,7 @@ export function MobileReplays({
           <button
             type="button"
             aria-pressed={mode === "offline"}
-            onClick={() => setMode("offline")}
+            onClick={() => selectMode("offline")}
           >
             Offline
           </button>
@@ -500,7 +531,7 @@ export function MobileReplays({
                 ? undefined
                 : "Online replays require an internet connection"
             }
-            onClick={() => setMode("online")}
+            onClick={() => selectMode("online")}
           >
             Online
           </button>

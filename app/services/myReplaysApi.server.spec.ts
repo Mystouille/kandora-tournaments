@@ -84,7 +84,20 @@ describe("My Replays API service", () => {
           finalScore: 40_000 - seat * 10_000,
           place: seat + 1,
         })),
-        events: [],
+        events: [
+          {
+            type: "hand_start",
+            round: 0,
+            dealer: 0,
+            hand: null,
+            doraIndicators: ["1m"],
+          },
+          {
+            type: "win",
+            seat: 0,
+            uraDoraIndicators: null,
+          },
+        ],
         schemaVersion: 6,
       })
     );
@@ -107,7 +120,7 @@ describe("My Replays API service", () => {
     expect(result).toMatchObject({
       status: "found",
       response: {
-        log: { source: "ingame", sourceGameId: "game-1", events: [] },
+        log: { source: "ingame", sourceGameId: "game-1" },
         seatEnrichment: [
           {
             teamName: "East Club",
@@ -121,6 +134,10 @@ describe("My Replays API service", () => {
     });
     if (result.status === "found") {
       expect(result.response.log.seats[0]).not.toHaveProperty("userDbId");
+      expect(result.response.log.events[0]).not.toHaveProperty("hand");
+      expect(result.response.log.events[1]).not.toHaveProperty(
+        "uraDoraIndicators"
+      );
     }
     expect(mocks.resolveSeatEnrichmentForReplay).toHaveBeenCalledWith(
       "game-1",
