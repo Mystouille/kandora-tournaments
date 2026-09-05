@@ -58,11 +58,41 @@ const MyReplaysApiResponseSchema = z.object({
   replays: z.array(MyReplayApiGroupSchema),
 });
 
+const MyReplayReviewDetailsSchema = z.object({
+  shortId: z.string().min(1),
+  seat: z.number().int().min(0).max(3).nullable(),
+  targetName: z.string().nullable(),
+  edits: z.array(
+    z.object({
+      eventIndex: z.number().int().nonnegative(),
+      authorName: z.string(),
+      colorIndex: z.number().int().nonnegative(),
+      text: z.string(),
+      drawingBase64: z.string().nullable(),
+      updatedAt: z.string(),
+    })
+  ),
+});
+
 const MyReplayLogApiResponseSchema = z.object({
   log: MobileReplayLogSchema,
+  seatEnrichment: z
+    .array(
+      z
+        .object({
+          teamName: z.string().nullable(),
+          teamLogoUrl: z.string().nullable(),
+        })
+        .nullable()
+    )
+    .length(4),
+  review: MyReplayReviewDetailsSchema.nullable()
+    .optional()
+    .transform((review) => review ?? null),
 });
 
 export type MyReplayApiGroup = z.infer<typeof MyReplayApiGroupSchema>;
+export type MyReplayLogDetails = z.infer<typeof MyReplayLogApiResponseSchema>;
 
 export class MyReplaysHttpError extends Error {
   constructor(
@@ -112,15 +142,20 @@ export async function fetchMyReplayLog(
   session: MobileAuthSession,
   source: MyReplayApiGroup["source"],
   sourceGameId: string,
+  reviewShortId: string | null = null,
   fetcher: typeof fetch = fetch
 ) {
+  const body = new URLSearchParams({
+    token: session.token,
+    source,
+    sourceGameId,
+  });
+  if (reviewShortId !== null) {
+    body.set("reviewShortId", reviewShortId);
+  }
   const response = await fetcher(webAppPath(baseUrl, "/api/my-replays/log"), {
     method: "POST",
-    body: new URLSearchParams({
-      token: session.token,
-      source,
-      sourceGameId,
-    }),
+    body,
   });
   if (!response.ok) {
     throw await myReplaysHttpError(
@@ -128,5 +163,28 @@ export async function fetchMyReplayLog(
       `Replay log request failed (${response.status})`
     );
   }
-  return MyReplayLogApiResponseSchema.parse(await response.json()).log;
+  const details = MyReplayLogApiResponseSchema.parse(await response.json());
+  if (reviewShortId !== null && details.review === null) {
+    throw new MyReplaysHttpError(
+      "Replay review response is unavailable",
+      501,
+      "review_unavailable"
+    );
+  }
+  return {
+    ...details,
+    seatEnrichment: details.seatEnrichment.map((enrichment) => {
+      if (enrichment === null || enrichment.teamLogoUrl === null) {
+        return enrichment;
+      }
+      try {
+        return {
+          ...enrichment,
+          teamLogoUrl: webAppPath(baseUrl, enrichment.teamLogoUrl),
+        };
+      } catch {
+        return { ...enrichment, teamLogoUrl: null };
+      }
+    }),
+  };
 }

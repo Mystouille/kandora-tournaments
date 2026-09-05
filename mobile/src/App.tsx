@@ -60,6 +60,7 @@ import { MobileReplayViewer } from "./replays/MobileReplayViewer";
 import { loadReplayForRow, ReplayLoadError } from "./replays/replayLoader";
 import type { ReplayLibraryRow } from "./replays/replayLibrary";
 import type { ReplayLog } from "~/game/replay/types";
+import type { MyReplayLogDetails } from "./replays/myReplaysApi";
 import {
   INITIAL_ONLINE_MATCH_STATE,
   OnlineMatchController,
@@ -108,6 +109,8 @@ type MobileAuthStatus =
 interface MobileReplayViewerState {
   row: ReplayLibraryRow | null;
   log: ReplayLog | null;
+  seatEnrichment: MyReplayLogDetails["seatEnrichment"];
+  review: MyReplayLogDetails["review"];
   loading: boolean;
   error: string | null;
 }
@@ -158,6 +161,8 @@ export function App() {
     useState<MobileReplayViewerState>({
       row: null,
       log: null,
+      seatEnrichment: [null, null, null, null],
+      review: null,
       loading: false,
       error: null,
     });
@@ -1009,16 +1014,30 @@ export function App() {
 
   const openReplay = async (row: ReplayLibraryRow): Promise<void> => {
     const generation = ++replayLoadGenerationRef.current;
-    setReplayViewerState({ row, log: null, loading: true, error: null });
+    setReplayViewerState({
+      row,
+      log: null,
+      seatEnrichment: [null, null, null, null],
+      review: null,
+      loading: true,
+      error: null,
+    });
     setPage("replay-viewer");
     try {
-      const log = await loadReplayForRow(row, {
+      const details = await loadReplayForRow(row, {
         replayStore: repositoryRef.current?.replayStore ?? null,
         webAppBaseUrl,
         authSession: authStatus === "authenticated" ? mobileAuthSession : null,
       });
       if (replayLoadGenerationRef.current === generation) {
-        setReplayViewerState({ row, log, loading: false, error: null });
+        setReplayViewerState({
+          row,
+          log: details.log,
+          seatEnrichment: details.seatEnrichment,
+          review: details.review,
+          loading: false,
+          error: null,
+        });
       }
     } catch (error) {
       if (replayLoadGenerationRef.current !== generation) {
@@ -1034,12 +1053,21 @@ export function App() {
           ? "Sign in again to open this replay."
           : code === "not_found"
             ? "This replay is no longer available."
-            : code === "server_update_required"
-              ? "Online replay viewing is not available on this server."
-              : code === "storage_unavailable"
-                ? "Device storage is unavailable."
-                : "Replay could not be loaded.";
-      setReplayViewerState({ row, log: null, loading: false, error: message });
+            : code === "review_not_found"
+              ? "This review is no longer available."
+              : code === "server_update_required"
+                ? "Online replay viewing is not available on this server."
+                : code === "storage_unavailable"
+                  ? "Device storage is unavailable."
+                  : "Replay could not be loaded.";
+      setReplayViewerState({
+        row,
+        log: null,
+        seatEnrichment: [null, null, null, null],
+        review: null,
+        loading: false,
+        error: message,
+      });
     }
   };
 
@@ -1048,6 +1076,8 @@ export function App() {
     setReplayViewerState({
       row: null,
       log: null,
+      seatEnrichment: [null, null, null, null],
+      review: null,
       loading: false,
       error: null,
     });
@@ -1096,6 +1126,8 @@ export function App() {
     return (
       <MobileReplayViewer
         log={replayViewerState.log}
+        seatEnrichment={replayViewerState.seatEnrichment}
+        review={replayViewerState.review}
         loading={replayViewerState.loading}
         error={replayViewerState.error}
         onClose={closeReplayViewer}
@@ -1267,7 +1299,7 @@ export function App() {
         <span>K</span>
         <div>
           <h1>Kandora</h1>
-          <p>Mahjong, wherever the table is.</p>
+          <p>Mahjong everywhere.</p>
         </div>
         <div ref={homeSettingsRef} className="home-settings">
           <button

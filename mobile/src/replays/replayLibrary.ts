@@ -12,12 +12,19 @@ import type { MyReplayApiGroup } from "./myReplaysApi";
 
 export type ReplayLibraryMode = "offline" | "online";
 export type ReplayLibrarySortOrder = "newest" | "oldest";
+export type ReplayLibraryRowKind = "replay" | "review";
 
 export interface ReplayLibraryRow {
   key: string;
+  groupKey: string;
+  kind: ReplayLibraryRowKind;
   mode: ReplayLibraryMode;
   source: ReplaySource;
   sourceGameId: string;
+  reviewShortId: string | null;
+  reviewedPlayerName: string | null;
+  commentCount: number;
+  treeBranch: "middle" | "last" | null;
   replayUrl: string | null;
   gameDate: number | null;
   seats: MyReplaySeat[];
@@ -82,45 +89,65 @@ function orderedSeats(seats: MyReplaySeat[]): MyReplaySeat[] {
 export function offlineReplayRows(
   summaries: MobileStoredReplaySummary[]
 ): ReplayLibraryRow[] {
-  return summaries.map((summary) => ({
-    key: `offline:${summary.source}:${summary.sourceGameId}`,
-    mode: "offline",
-    source: summary.source,
-    sourceGameId: summary.sourceGameId,
-    replayUrl: null,
-    gameDate: summary.startedAt,
-    seats: orderedSeats(summary.seats),
-    context: { kind: "friendly" },
-    ruleset: {
-      id: summary.ruleSet,
-      label: PRESET_LABELS.get(summary.ruleSet) ?? summary.ruleSet,
-    },
-    reasons: [],
-  }));
+  return summaries.map((summary) => {
+    const key = `offline:${summary.source}:${summary.sourceGameId}`;
+    return {
+      key,
+      groupKey: key,
+      kind: "replay",
+      mode: "offline",
+      source: summary.source,
+      sourceGameId: summary.sourceGameId,
+      reviewShortId: null,
+      reviewedPlayerName: null,
+      commentCount: 0,
+      treeBranch: null,
+      replayUrl: null,
+      gameDate: summary.startedAt,
+      seats: orderedSeats(summary.seats),
+      context: { kind: "friendly" },
+      ruleset: {
+        id: summary.ruleSet,
+        label: PRESET_LABELS.get(summary.ruleSet) ?? summary.ruleSet,
+      },
+      reasons: [],
+    };
+  });
 }
 
 export function onlineReplayRows(
   replays: MyReplayApiGroup[]
 ): ReplayLibraryRow[] {
-  return replays.map((replay) => {
-    const reasons = new Set<MyReplayReason>(replay.reasons);
-    for (const review of replay.reviews) {
-      for (const reason of review.reasons) {
-        reasons.add(reason);
-      }
-    }
-    return {
+  return replays.flatMap((replay) => {
+    const parent: ReplayLibraryRow = {
       key: replay.key,
+      groupKey: replay.key,
+      kind: "replay",
       mode: "online",
       source: replay.source,
       sourceGameId: replay.sourceGameId,
+      reviewShortId: null,
+      reviewedPlayerName: null,
+      commentCount: replay.commentCount,
+      treeBranch: null,
       replayUrl: replay.replayUrl,
       gameDate: replay.gameDate,
       seats: orderedSeats(replay.seats),
       context: replay.context,
       ruleset: replay.ruleset,
-      reasons: REASON_ORDER.filter((reason) => reasons.has(reason)),
+      reasons: replay.reasons,
     };
+    const reviews = replay.reviews.map<ReplayLibraryRow>((review, index) => ({
+      ...parent,
+      key: `${replay.key}:review:${review.shortId}`,
+      kind: "review",
+      reviewShortId: review.shortId,
+      reviewedPlayerName: review.reviewedPlayerName,
+      commentCount: review.commentCount,
+      treeBranch: index === replay.reviews.length - 1 ? "last" : "middle",
+      reasons: review.reasons,
+    }));
+    return [parent, ...reviews];
   });
 }
 
@@ -142,7 +169,17 @@ function compareDates(
     order === "newest"
       ? right.gameDate - left.gameDate
       : left.gameDate - right.gameDate;
-  return difference || left.key.localeCompare(right.key);
+  if (difference !== 0) {
+    return difference;
+  }
+  const groupDifference = left.groupKey.localeCompare(right.groupKey);
+  if (groupDifference !== 0) {
+    return groupDifference;
+  }
+  if (left.kind !== right.kind) {
+    return left.kind === "replay" ? -1 : 1;
+  }
+  return left.key.localeCompare(right.key);
 }
 
 export function filterReplayLibraryRows(

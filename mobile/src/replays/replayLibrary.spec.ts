@@ -101,13 +101,38 @@ describe("mobile replay library policy", () => {
 
     expect(rows[0]).toMatchObject({
       key: "offline:ingame:local-1",
+      groupKey: "offline:ingame:local-1",
+      kind: "replay",
       mode: "offline",
+      reviewShortId: null,
       gameDate: 2_000,
       context: { kind: "friendly" },
       ruleset: { id: "m-league", label: "M-League" },
       replayUrl: null,
     });
     expect(rows[0].seats.map((seat) => seat.place)).toEqual([1, 2]);
+  });
+
+  it("emits a selectable child row for each online review", () => {
+    const rows = onlineReplayRows(onlineReplays);
+
+    expect(rows.slice(0, 2)).toMatchObject([
+      {
+        key: "tenhou:newer",
+        groupKey: "tenhou:newer",
+        kind: "replay",
+        reviewShortId: null,
+      },
+      {
+        key: "tenhou:newer:review:newer",
+        groupKey: "tenhou:newer",
+        kind: "review",
+        reviewShortId: "newer",
+        reviewedPlayerName: "First",
+        commentCount: 1,
+        treeBranch: "last",
+      },
+    ]);
   });
 
   it("applies inclusive shared and online-only filters", () => {
@@ -150,15 +175,31 @@ describe("mobile replay library policy", () => {
 
     expect(
       filterReplayLibraryRows(rows, "online", EMPTY_REPLAY_LIBRARY_FILTERS).map(
-        (row) => row.sourceGameId
+        (row) => `${row.sourceGameId}:${row.kind}`
       )
-    ).toEqual(["a-tie", "newer", "older", "unknown"]);
+    ).toEqual([
+      "a-tie:replay",
+      "a-tie:review",
+      "newer:replay",
+      "newer:review",
+      "older:replay",
+      "unknown:replay",
+      "unknown:review",
+    ]);
     expect(
       filterReplayLibraryRows(rows, "online", {
         ...EMPTY_REPLAY_LIBRARY_FILTERS,
         sortOrder: "oldest",
       }).map((row) => row.sourceGameId)
-    ).toEqual(["older", "a-tie", "newer", "unknown"]);
+    ).toEqual([
+      "older",
+      "a-tie",
+      "a-tie",
+      "newer",
+      "newer",
+      "unknown",
+      "unknown",
+    ]);
   });
 
   it("derives stable options and counts only active mode filters", () => {

@@ -1,13 +1,17 @@
-import type { ReplayLog } from "~/game/replay/types";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import type { MobileReplayStore } from "../persistence/mobileMatchRepository";
-import { fetchMyReplayLog, MyReplaysHttpError } from "./myReplaysApi";
+import {
+  fetchMyReplayLog,
+  MyReplaysHttpError,
+  type MyReplayLogDetails,
+} from "./myReplaysApi";
 import type { ReplayLibraryRow } from "./replayLibrary";
 
 export type ReplayLoadErrorCode =
   | "storage_unavailable"
   | "authentication_required"
   | "not_found"
+  | "review_not_found"
   | "server_update_required"
   | "unavailable";
 
@@ -25,7 +29,7 @@ export async function loadReplayForRow(
     webAppBaseUrl: string | null;
     authSession: MobileAuthSession | null;
   }
-): Promise<ReplayLog> {
+): Promise<MyReplayLogDetails> {
   if (row.mode === "offline") {
     if (dependencies.replayStore === null) {
       throw new ReplayLoadError("storage_unavailable");
@@ -37,7 +41,11 @@ export async function loadReplayForRow(
     if (log === null) {
       throw new ReplayLoadError("not_found");
     }
-    return log;
+    return {
+      log,
+      seatEnrichment: [null, null, null, null],
+      review: null,
+    };
   }
 
   if (
@@ -51,7 +59,8 @@ export async function loadReplayForRow(
       dependencies.webAppBaseUrl,
       dependencies.authSession,
       row.source,
-      row.sourceGameId
+      row.sourceGameId,
+      row.reviewShortId
     );
   } catch (error) {
     if (error instanceof MyReplaysHttpError) {
@@ -61,7 +70,13 @@ export async function loadReplayForRow(
       if (error.status === 404 && error.code === "replay_not_found") {
         throw new ReplayLoadError("not_found");
       }
+      if (error.status === 404 && error.code === "review_not_found") {
+        throw new ReplayLoadError("review_not_found");
+      }
       if (error.status === 404 && error.code === null) {
+        throw new ReplayLoadError("server_update_required");
+      }
+      if (error.code === "review_unavailable") {
         throw new ReplayLoadError("server_update_required");
       }
     }

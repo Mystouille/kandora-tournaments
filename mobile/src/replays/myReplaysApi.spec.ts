@@ -99,6 +99,7 @@ describe("common My Replays API client", () => {
         session,
         "tenhou",
         "missing",
+        null,
         missingFetcher
       )
     ).rejects.toMatchObject({ status: 404, code: "replay_not_found" });
@@ -115,6 +116,7 @@ describe("common My Replays API client", () => {
         session,
         "tenhou",
         "missing",
+        null,
         undeployedFetcher
       )
     ).rejects.toMatchObject({ status: 404, code: null });
@@ -136,9 +138,35 @@ describe("common My Replays API client", () => {
       events: [],
       schemaVersion: 6,
     };
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(Response.json({ log }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        log,
+        seatEnrichment: [
+          {
+            teamName: "East Club",
+            teamLogoUrl: "/api/uploads/east.webp",
+          },
+          null,
+          null,
+          null,
+        ],
+        review: {
+          shortId: "review-1",
+          seat: 1,
+          targetName: "Player 1",
+          edits: [
+            {
+              eventIndex: 3,
+              authorName: "Reviewer",
+              colorIndex: 0,
+              text: "<p>Comment</p>",
+              drawingBase64: null,
+              updatedAt: "2026-01-02T03:04:05.000Z",
+            },
+          ],
+        },
+      })
+    );
 
     await expect(
       fetchMyReplayLog(
@@ -146,9 +174,36 @@ describe("common My Replays API client", () => {
         session,
         "ingame",
         "game-1",
+        "review-1",
         fetcher
       )
-    ).resolves.toEqual(log);
+    ).resolves.toEqual({
+      log,
+      seatEnrichment: [
+        {
+          teamName: "East Club",
+          teamLogoUrl: "https://play.example.com/api/uploads/east.webp",
+        },
+        null,
+        null,
+        null,
+      ],
+      review: {
+        shortId: "review-1",
+        seat: 1,
+        targetName: "Player 1",
+        edits: [
+          {
+            eventIndex: 3,
+            authorName: "Reviewer",
+            colorIndex: 0,
+            text: "<p>Comment</p>",
+            drawingBase64: null,
+            updatedAt: "2026-01-02T03:04:05.000Z",
+          },
+        ],
+      },
+    });
     expect(fetcher).toHaveBeenCalledWith(
       "https://play.example.com/api/my-replays/log",
       { method: "POST", body: expect.any(URLSearchParams) }
@@ -157,6 +212,9 @@ describe("common My Replays API client", () => {
     expect(request?.body).toBeInstanceOf(URLSearchParams);
     expect((request?.body as URLSearchParams).get("sourceGameId")).toBe(
       "game-1"
+    );
+    expect((request?.body as URLSearchParams).get("reviewShortId")).toBe(
+      "review-1"
     );
   });
 });

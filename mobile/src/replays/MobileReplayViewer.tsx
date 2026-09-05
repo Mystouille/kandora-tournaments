@@ -8,21 +8,33 @@ import {
   EyeOff,
   LoaderCircle,
   Menu,
+  MessageSquareText,
   RotateCcw,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Seat } from "~/game/protocol/messages";
 import {
+  base64ToBytes,
+  decodeDrawing,
+  reviewerColor,
+  smoothDrawingForDisplay,
+  type Stroke,
+} from "~/game/replay/reviewDrawing";
+import {
   replayBounds,
   replayReducer,
   replayViewToMatchView,
+  rotateSeatValues,
   roundBoundaries,
 } from "~/game/replay/player";
 import type { ReplayLog } from "~/game/replay/types";
 import { waitsForReplayView } from "~/game/replay/waits";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import { mobileTableLayout } from "~/game/client/pixi/layouts/mobileTableLayout";
+import { ReplayDrawingOverlay } from "~/game/routes/ReplayDrawingOverlay";
+import { MobileReviewContent } from "./MobileReviewContent";
+import type { MyReplayLogDetails } from "./myReplaysApi";
 
 export interface MobileReplayDisplayOptions {
   showWaits: boolean;
@@ -55,6 +67,45 @@ export interface ReplayNavigationState {
   nextRound: number | null;
 }
 
+export interface ReplayCommentNavigationState {
+  previousComment: number | null;
+  nextComment: number | null;
+}
+
+export function reviewCommentIndices(
+  review: MyReplayLogDetails["review"]
+): number[] {
+  if (review === null) {
+    return [];
+  }
+  return [
+    ...new Set(
+      review.edits
+        .filter(
+          (edit) => edit.text.trim().length > 0 || edit.drawingBase64 !== null
+        )
+        .map((edit) => edit.eventIndex)
+    ),
+  ].sort((left, right) => left - right);
+}
+
+export function replayCommentNavigationState(
+  commentIndices: number[],
+  index: number
+): ReplayCommentNavigationState {
+  let previousComment: number | null = null;
+  let nextComment: number | null = null;
+  for (const commentIndex of commentIndices) {
+    if (commentIndex < index) {
+      previousComment = commentIndex;
+    } else if (commentIndex > index) {
+      nextComment = commentIndex;
+      break;
+    }
+  }
+  return { previousComment, nextComment };
+}
+
 export function replayNavigationState(
   rounds: number[],
   index: number
@@ -75,6 +126,13 @@ export function replayNavigationState(
   };
 }
 
+export function replaySeatEnrichmentForFocus(
+  seatEnrichment: MyReplayLogDetails["seatEnrichment"],
+  focusSeat: Seat
+) {
+  return rotateSeatValues(seatEnrichment, focusSeat);
+}
+
 interface MobileReplayNavigationMenuProps {
   expanded: boolean;
   handTop: number | null;
@@ -83,6 +141,7 @@ interface MobileReplayNavigationMenuProps {
   focusSeat: Seat;
   rounds: number[];
   bounds: { min: number; max: number };
+  commentIndices?: number[];
   onExpandedChange: (expanded: boolean) => void;
   onFocusSeatChange: (seat: Seat) => void;
   onGoTo: (index: number) => void;
@@ -97,12 +156,17 @@ export function MobileReplayNavigationMenu({
   focusSeat,
   rounds,
   bounds,
+  commentIndices,
   onExpandedChange,
   onFocusSeatChange,
   onGoTo,
   onStep,
 }: MobileReplayNavigationMenuProps) {
   const navigation = replayNavigationState(rounds, index);
+  const commentNavigation = replayCommentNavigationState(
+    commentIndices ?? [],
+    index
+  );
   return (
     <aside
       className="mobile-replay-navigation-menu"
@@ -176,8 +240,8 @@ export function MobileReplayNavigationMenu({
             </button>
             <button
               type="button"
-              aria-label="Previous event"
-              title="Previous event"
+              aria-label="Previous move"
+              title="Previous move"
               disabled={index <= bounds.min}
               onClick={() => onStep(-1)}
             >
@@ -185,8 +249,8 @@ export function MobileReplayNavigationMenu({
             </button>
             <button
               type="button"
-              aria-label="Next event"
-              title="Next event"
+              aria-label="Next move"
+              title="Next move"
               disabled={index >= bounds.max}
               onClick={() => onStep(1)}
             >
@@ -206,6 +270,38 @@ export function MobileReplayNavigationMenu({
               <ChevronsRight aria-hidden="true" />
             </button>
           </div>
+          {commentIndices !== undefined && (
+            <div className="mobile-replay-comment-buttons">
+              <button
+                type="button"
+                aria-label="Previous comment"
+                title="Previous comment"
+                disabled={commentNavigation.previousComment === null}
+                onClick={() => {
+                  if (commentNavigation.previousComment !== null) {
+                    onGoTo(commentNavigation.previousComment);
+                  }
+                }}
+              >
+                <ChevronLeft aria-hidden="true" />
+                <MessageSquareText aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next comment"
+                title="Next comment"
+                disabled={commentNavigation.nextComment === null}
+                onClick={() => {
+                  if (commentNavigation.nextComment !== null) {
+                    onGoTo(commentNavigation.nextComment);
+                  }
+                }}
+              >
+                <MessageSquareText aria-hidden="true" />
+                <ChevronRight aria-hidden="true" />
+              </button>
+            </div>
+          )}
           <output className="mobile-replay-event-count">
             {index + 1} / {log.events.length}
           </output>
@@ -230,16 +326,22 @@ interface MobileReplayDisplayMenuProps {
   expanded: boolean;
   handTop: number | null;
   options: MobileReplayDisplayOptions;
+  reviewAvailable?: boolean;
+  commentsVisible?: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onToggle: (key: keyof MobileReplayDisplayOptions) => void;
+  onCommentsVisibleChange?: (visible: boolean) => void;
 }
 
 export function MobileReplayDisplayMenu({
   expanded,
   handTop,
   options,
+  reviewAvailable = false,
+  commentsVisible = false,
   onExpandedChange,
   onToggle,
+  onCommentsVisibleChange,
 }: MobileReplayDisplayMenuProps) {
   return (
     <aside
@@ -249,15 +351,37 @@ export function MobileReplayDisplayMenu({
         handTop === null ? undefined : { bottom: `calc(100% - ${handTop}px)` }
       }
     >
-      <button
-        type="button"
-        className="mobile-replay-menu-toggle"
-        aria-label={expanded ? "Hide display options" : "Show display options"}
-        aria-expanded={expanded}
-        onClick={() => onExpandedChange(!expanded)}
-      >
-        {expanded ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-      </button>
+      <div className="mobile-replay-left-controls">
+        <button
+          type="button"
+          className="mobile-replay-menu-toggle"
+          aria-label={
+            expanded ? "Hide display options" : "Show display options"
+          }
+          aria-expanded={expanded}
+          onClick={() => onExpandedChange(!expanded)}
+        >
+          {expanded ? (
+            <EyeOff aria-hidden="true" />
+          ) : (
+            <Eye aria-hidden="true" />
+          )}
+        </button>
+        {reviewAvailable && (
+          <button
+            type="button"
+            className="mobile-replay-menu-toggle mobile-replay-comment-toggle"
+            aria-label={
+              commentsVisible ? "Hide review comments" : "Show review comments"
+            }
+            aria-controls="mobile-replay-comments"
+            aria-pressed={commentsVisible}
+            onClick={() => onCommentsVisibleChange?.(!commentsVisible)}
+          >
+            <MessageSquareText aria-hidden="true" />
+          </button>
+        )}
+      </div>
       {expanded && (
         <div className="mobile-replay-display-options">
           {DISPLAY_OPTIONS.map(({ key, label }) => (
@@ -280,8 +404,83 @@ export function MobileReplayDisplayMenu({
   );
 }
 
+type MobileReplayReviewEdit = NonNullable<
+  MyReplayLogDetails["review"]
+>["edits"][number];
+
+const REVIEW_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function reviewTimestamp(value: string): string | null {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : REVIEW_TIMESTAMP_FORMATTER.format(date);
+}
+
+export function MobileReplayCommentsOverlay({
+  edits,
+  targetName,
+}: {
+  edits: MobileReplayReviewEdit[];
+  targetName: string | null;
+}) {
+  return (
+    <section
+      id="mobile-replay-comments"
+      className="mobile-replay-comments-overlay"
+      aria-label="Review comments"
+    >
+      <div className="mobile-replay-comments-content">
+        <header className="mobile-replay-comments-heading">
+          <MessageSquareText aria-hidden="true" />
+          <strong>
+            {targetName ? `Review of ${targetName}` : "Review comments"}
+          </strong>
+        </header>
+        {edits.length === 0 ? (
+          <p className="mobile-replay-comments-empty">
+            No text comments at this move.
+          </p>
+        ) : (
+          edits.map((edit) => {
+            const color = reviewerColor(edit.colorIndex);
+            const timestamp = reviewTimestamp(edit.updatedAt);
+            return (
+              <article
+                key={`${edit.colorIndex}:${edit.authorName}:${edit.updatedAt}`}
+                className="mobile-replay-comment"
+                style={{ borderLeftColor: color }}
+              >
+                <header>
+                  <strong style={{ color }}>
+                    {edit.authorName || "Reviewer"}
+                  </strong>
+                  {timestamp !== null && (
+                    <time dateTime={edit.updatedAt}>{timestamp}</time>
+                  )}
+                </header>
+                <div className="mobile-replay-comment-body">
+                  <MobileReviewContent html={edit.text} />
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+}
+
 interface MobileReplayViewerProps {
   log: ReplayLog | null;
+  seatEnrichment: MyReplayLogDetails["seatEnrichment"];
+  review: MyReplayLogDetails["review"];
   loading: boolean;
   error: string | null;
   onClose: () => void;
@@ -322,6 +521,8 @@ export function MobileReplayViewer(props: MobileReplayViewerProps) {
 
 function LoadedMobileReplayViewer({
   log,
+  seatEnrichment,
+  review,
   onClose,
 }: MobileReplayViewerProps & { log: ReplayLog }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -331,12 +532,29 @@ function LoadedMobileReplayViewer({
   );
   const bounds = useMemo(() => replayBounds(log), [log]);
   const rounds = useMemo(() => roundBoundaries(log), [log]);
-  const [index, setIndex] = useState(rounds[0] ?? bounds.min);
-  const [focusSeat, setFocusSeat] = useState<Seat>(0);
+  const commentIndices = useMemo(
+    () =>
+      reviewCommentIndices(review).filter(
+        (eventIndex) => eventIndex >= bounds.min && eventIndex <= bounds.max
+      ),
+    [bounds.max, bounds.min, review]
+  );
+  const [index, setIndex] = useState(
+    commentIndices[0] ?? rounds[0] ?? bounds.min
+  );
+  const [focusSeat, setFocusSeat] = useState<Seat>(
+    review?.seat === 0 ||
+      review?.seat === 1 ||
+      review?.seat === 2 ||
+      review?.seat === 3
+      ? review.seat
+      : 0
+  );
   const [displayOptions, setDisplayOptions] =
     useState<MobileReplayDisplayOptions>(DEFAULT_MOBILE_REPLAY_DISPLAY_OPTIONS);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
+  const [commentsVisible, setCommentsVisible] = useState(review !== null);
   const [handTop, setHandTop] = useState<number | null>(null);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
@@ -363,6 +581,43 @@ function LoadedMobileReplayViewer({
   );
   latestViewRef.current = matchView;
 
+  const textEditsAtIndex = useMemo(
+    () =>
+      review?.edits
+        .filter(
+          (edit) => edit.eventIndex === index && edit.text.trim().length > 0
+        )
+        .sort((left, right) => left.colorIndex - right.colorIndex) ?? [],
+    [index, review]
+  );
+  const drawingLayers = useMemo(() => {
+    if (
+      review === null ||
+      (review.seat !== null && review.seat !== focusSeat)
+    ) {
+      return [];
+    }
+    const layers: Array<{ key: string; color: string; strokes: Stroke[] }> = [];
+    for (const edit of review.edits) {
+      if (edit.eventIndex !== index || edit.drawingBase64 === null) {
+        continue;
+      }
+      try {
+        const drawing = smoothDrawingForDisplay(
+          decodeDrawing(base64ToBytes(edit.drawingBase64))
+        );
+        if (drawing.strokes.length > 0) {
+          layers.push({
+            key: `${edit.colorIndex}:${edit.updatedAt}`,
+            color: reviewerColor(edit.colorIndex),
+            strokes: drawing.strokes,
+          });
+        }
+      } catch {}
+    }
+    return layers;
+  }, [focusSeat, index, review]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (container === null) {
@@ -380,6 +635,9 @@ function LoadedMobileReplayViewer({
         renderer.setConnectionDiagnosticsVisible(false);
         renderer.setMinimumDrawToDiscardDelayEnabled(false);
         renderer.setStagedRevealEnabled(false);
+        renderer.setSeatEnrichment(
+          replaySeatEnrichmentForFocus(seatEnrichment, focusSeat)
+        );
         renderer.setOnRenderRequest(() => {
           const current = latestViewRef.current;
           if (current !== null) {
@@ -421,8 +679,11 @@ function LoadedMobileReplayViewer({
     renderer.setShowHands(displayOptions.showHands);
     renderer.setShowTsumogiri(displayOptions.showTsumogiri);
     renderer.setShowNames(displayOptions.showNames);
+    renderer.setSeatEnrichment(
+      replaySeatEnrichmentForFocus(seatEnrichment, focusSeat)
+    );
     renderer.render(matchView);
-  }, [displayOptions, matchView, rendererState]);
+  }, [displayOptions, focusSeat, matchView, rendererState, seatEnrichment]);
 
   const goTo = (nextIndex: number): void => {
     rendererRef.current?.snapNextAnimation();
@@ -439,6 +700,26 @@ function LoadedMobileReplayViewer({
     <main className="mobile-game-view mobile-replay-viewer">
       <section className="table-stage" aria-label="Mahjong replay">
         <div ref={containerRef} className="table-canvas" />
+        <div className="mobile-replay-drawing-layers" aria-hidden="true">
+          {drawingLayers.map((layer) => (
+            <ReplayDrawingOverlay
+              key={layer.key}
+              strokes={layer.strokes}
+              drawing={false}
+              color={layer.color}
+              aspectRatio={
+                mobileTableLayout.viewport.w / mobileTableLayout.viewport.h
+              }
+              onStrokesChange={() => undefined}
+            />
+          ))}
+        </div>
+        {commentsVisible && review !== null && (
+          <MobileReplayCommentsOverlay
+            edits={textEditsAtIndex}
+            targetName={review.targetName}
+          />
+        )}
         <button
           type="button"
           className="ingame-exit-button"
@@ -452,6 +733,8 @@ function LoadedMobileReplayViewer({
           expanded={displayOpen}
           handTop={handTop}
           options={displayOptions}
+          reviewAvailable={review !== null}
+          commentsVisible={commentsVisible}
           onExpandedChange={(expanded) => {
             setDisplayOpen(expanded);
             if (expanded) {
@@ -464,6 +747,7 @@ function LoadedMobileReplayViewer({
               [key]: !current[key],
             }))
           }
+          onCommentsVisibleChange={setCommentsVisible}
         />
         <MobileReplayNavigationMenu
           expanded={navigationOpen}
@@ -473,6 +757,7 @@ function LoadedMobileReplayViewer({
           focusSeat={focusSeat}
           rounds={rounds}
           bounds={bounds}
+          commentIndices={review === null ? undefined : commentIndices}
           onExpandedChange={(expanded) => {
             setNavigationOpen(expanded);
             if (expanded) {

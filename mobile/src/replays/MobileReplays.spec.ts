@@ -61,9 +61,15 @@ describe("mobile replay library view", () => {
         rows: [
           {
             key: "offline:ingame:one",
+            groupKey: "offline:ingame:one",
+            kind: "replay",
             mode: "offline",
             source: "ingame",
             sourceGameId: "one",
+            reviewShortId: null,
+            reviewedPlayerName: null,
+            commentCount: 0,
+            treeBranch: null,
             replayUrl: null,
             gameDate: 1_700_000_000_000,
             seats: [
@@ -94,9 +100,15 @@ describe("mobile replay library view", () => {
         rows: [
           {
             key: "online:tenhou:one",
+            groupKey: "online:tenhou:one",
+            kind: "replay",
             mode: "online",
             source: "tenhou",
             sourceGameId: "one",
+            reviewShortId: null,
+            reviewedPlayerName: null,
+            commentCount: 0,
+            treeBranch: null,
             replayUrl: "/watch/replay/one",
             gameDate: 1_700_000_000_000,
             seats: [],
@@ -112,5 +124,38 @@ describe("mobile replay library view", () => {
     expect(html).toContain('role="button"');
     expect(html).toContain('tabindex="0"');
     expect(html).toContain("is-interactive");
+  });
+
+  it("renders an online review as a distinct openable child row", () => {
+    const html = renderToStaticMarkup(
+      createElement(ReplayLibraryList, {
+        rows: [
+          {
+            key: "tenhou:one:review:review-one",
+            groupKey: "tenhou:one",
+            kind: "review",
+            mode: "online",
+            source: "tenhou",
+            sourceGameId: "one",
+            reviewShortId: "review-one",
+            reviewedPlayerName: "Alice",
+            commentCount: 2,
+            treeBranch: "last",
+            replayUrl: "/watch/replay/one",
+            gameDate: 1_700_000_000_000,
+            seats: [],
+            context: { kind: "external" },
+            ruleset: { id: "platform:tenhou", label: "Tenhou" },
+            reasons: ["reviewed"],
+          },
+        ],
+        onOpenReplay: vi.fn(),
+      })
+    );
+
+    expect(html).toContain('aria-label="Open Review of Alice"');
+    expect(html).toContain("Review of Alice");
+    expect(html).toContain("2 comments");
+    expect(html).toContain("is-review");
   });
 });

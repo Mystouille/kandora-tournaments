@@ -707,6 +707,10 @@ button {
   background: rgba(20, 35, 28, 0.56);
 }
 
+.replay-library-row.is-review {
+  background: rgba(22, 43, 33, 0.7);
+}
+
 .replay-library-row.is-interactive {
   cursor: pointer;
 }
@@ -750,6 +754,79 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 3px 7px;
   min-width: 0;
+}
+
+.replay-players-cell.is-review {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.replay-review-branch {
+  position: relative;
+  display: grid;
+  width: 28px;
+  height: 42px;
+  flex: 0 0 28px;
+  place-items: center end;
+  color: #8fd4ad;
+}
+
+.replay-review-branch::before,
+.replay-review-branch::after {
+  position: absolute;
+  content: "";
+  border-color: rgba(143, 212, 173, 0.35);
+}
+
+.replay-review-branch::before {
+  top: -8px;
+  bottom: -8px;
+  left: 4px;
+  border-left: 1px solid rgba(143, 212, 173, 0.35);
+}
+
+.replay-review-branch.is-last::before {
+  bottom: 50%;
+}
+
+.replay-review-branch::after {
+  top: 50%;
+  right: 17px;
+  left: 4px;
+  border-top: 1px solid rgba(143, 212, 173, 0.35);
+}
+
+.replay-review-branch svg {
+  position: relative;
+  z-index: 1;
+  width: 15px;
+  height: 15px;
+  padding: 2px;
+  background: #162b21;
+}
+
+.replay-review-summary {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.replay-review-summary strong,
+.replay-review-summary small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-review-summary strong {
+  color: #eaf7ee;
+  font-size: 10px;
+}
+
+.replay-review-summary small {
+  color: rgba(237, 244, 238, 0.5);
+  font-size: 9px;
 }
 
 .replay-player-result {
@@ -1010,7 +1087,7 @@ button {
 .mobile-replay-navigation-menu,
 .mobile-replay-display-menu {
   position: absolute;
-  z-index: 35;
+  z-index: 60;
   bottom: calc(108px + env(safe-area-inset-bottom));
   display: flex;
   align-items: flex-end;
@@ -1028,7 +1105,8 @@ button {
 
 .mobile-replay-menu-toggle,
 .mobile-replay-display-option,
-.mobile-replay-navigation-buttons button {
+.mobile-replay-navigation-buttons button,
+.mobile-replay-comment-buttons button {
   min-width: 0;
   height: 78px;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -1051,6 +1129,18 @@ button {
 .mobile-replay-menu-toggle svg {
   width: 36px;
   height: 36px;
+}
+
+.mobile-replay-left-controls {
+  display: grid;
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.mobile-replay-comment-toggle[aria-pressed="true"] {
+  border-color: rgba(99, 207, 141, 0.62);
+  color: #f5fff8;
+  background: rgba(26, 75, 51, 0.94);
 }
 
 .mobile-replay-display-options {
@@ -1106,13 +1196,24 @@ button {
   grid-template-rows: auto auto auto;
   gap: 5px;
   width: 251px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  background: #020504;
+  box-shadow: 0 7px 24px rgba(0, 0, 0, 0.42);
   pointer-events: auto;
 }
 
 .mobile-replay-navigation-selectors,
-.mobile-replay-navigation-buttons {
+.mobile-replay-comment-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.mobile-replay-navigation-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
 }
 
@@ -1143,19 +1244,32 @@ button {
   text-transform: none;
 }
 
-.mobile-replay-navigation-buttons button {
+.mobile-replay-navigation-buttons button,
+.mobile-replay-comment-buttons button {
   display: grid;
   place-items: center;
   padding: 0;
 }
 
-.mobile-replay-navigation-buttons button:disabled {
+.mobile-replay-comment-buttons button {
+  grid-auto-flow: column;
+  gap: 4px;
+}
+
+.mobile-replay-navigation-buttons button:disabled,
+.mobile-replay-comment-buttons button:disabled {
   color: rgba(242, 244, 239, 0.28);
 }
 
-.mobile-replay-navigation-buttons svg {
+.mobile-replay-navigation-buttons svg,
+.mobile-replay-comment-buttons svg {
   width: 32px;
   height: 32px;
+}
+
+.mobile-replay-comment-buttons svg {
+  width: 24px;
+  height: 24px;
 }
 
 .mobile-replay-event-count {
@@ -1172,8 +1286,167 @@ button {
 
 .mobile-replay-menu-toggle:active,
 .mobile-replay-display-option:active,
-.mobile-replay-navigation-buttons button:not(:disabled):active {
+.mobile-replay-navigation-buttons button:not(:disabled):active,
+.mobile-replay-comment-buttons button:not(:disabled):active {
   transform: translateY(1px);
+}
+
+.mobile-replay-drawing-layers,
+.mobile-replay-drawing-layers > div {
+  position: absolute;
+  z-index: 31;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mobile-replay-comments-overlay {
+  position: absolute;
+  z-index: 50;
+  inset: 0;
+  padding: calc(64px + env(safe-area-inset-top))
+    calc(94px + env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom))
+    calc(94px + env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #f2f4ef;
+  background: rgba(3, 8, 6, 0.78);
+  backdrop-filter: blur(3px);
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-replay-comments-content {
+  display: grid;
+  width: min(720px, 100%);
+  min-height: 100%;
+  align-content: start;
+  gap: 9px;
+  margin: 0 auto;
+}
+
+.mobile-replay-comments-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #eef8f1;
+}
+
+.mobile-replay-comments-heading svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: #8fd4ad;
+}
+
+.mobile-replay-comments-heading strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-replay-comments-empty {
+  margin: auto;
+  color: rgba(242, 244, 239, 0.62);
+  font-size: 13px;
+  text-align: center;
+}
+
+.mobile-replay-comment {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-left: 4px solid;
+  border-radius: 5px;
+  background: rgba(10, 18, 14, 0.92);
+  box-shadow: 0 7px 22px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-replay-comment > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px 3px;
+}
+
+.mobile-replay-comment > header strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-replay-comment > header time {
+  flex: 0 0 auto;
+  color: rgba(242, 244, 239, 0.48);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.mobile-replay-comment-body {
+  padding: 4px 12px 10px;
+  color: #e5ece7;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.mobile-replay-comment-body .mobile-review-rich-text > :first-child {
+  margin-top: 0;
+}
+
+.mobile-replay-comment-body .mobile-review-rich-text > :last-child {
+  margin-bottom: 0;
+}
+
+.mobile-replay-comment-body .mobile-review-rich-text p,
+.mobile-replay-comment-body .mobile-review-rich-text ul,
+.mobile-replay-comment-body .mobile-review-rich-text ol,
+.mobile-replay-comment-body .mobile-review-rich-text blockquote {
+  margin: 0.55em 0;
+}
+
+.mobile-replay-comment-body .mobile-review-rich-text a {
+  color: #8fd4ff;
+}
+
+.mobile-replay-comment-body .mobile-review-rich-text img,
+.mobile-replay-comment-body .mobile-review-rich-text video,
+.mobile-replay-comment-body .mobile-review-rich-text iframe {
+  max-width: 100%;
+}
+
+.mobile-review-tile {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  background-repeat: no-repeat;
+}
+
+.mobile-review-rich-text > .mobile-review-tile {
+  margin: -6px 2px;
+}
+
+.mobile-review-hand {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0;
+  justify-items: center;
+}
+
+.mobile-review-hand > span {
+  display: flex;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.mobile-review-hand figcaption {
+  color: rgba(242, 244, 239, 0.52);
+  font-size: 10px;
+}
+
+.mobile-replay-viewer .ingame-exit-button {
+  z-index: 65;
 }
 
 .mobile-replay-viewer .renderer-loading {
@@ -1229,7 +1502,8 @@ button {
 
   .mobile-replay-menu-toggle,
   .mobile-replay-display-option,
-  .mobile-replay-navigation-buttons button {
+  .mobile-replay-navigation-buttons button,
+  .mobile-replay-comment-buttons button {
     height: 66px;
   }
 
@@ -1265,6 +1539,12 @@ button {
   .mobile-replay-navigation-selectors select {
     height: 26px;
     font-size: 10px;
+  }
+
+  .mobile-replay-comments-overlay {
+    padding-top: calc(52px + env(safe-area-inset-top));
+    padding-right: calc(78px + env(safe-area-inset-right));
+    padding-left: calc(78px + env(safe-area-inset-left));
   }
 }
 

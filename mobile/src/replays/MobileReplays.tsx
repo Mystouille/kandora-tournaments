@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   LoaderCircle,
   LogIn,
+  MessageSquareText,
   RefreshCw,
   RotateCcw,
   SlidersHorizontal,
@@ -105,14 +106,24 @@ function ReplayLibraryRowView({
   onOpenReplay?: (row: ReplayLibraryRow) => void;
 }) {
   const interactive = onOpenReplay !== undefined;
+  const reviewLabel = row.reviewedPlayerName
+    ? `Review of ${row.reviewedPlayerName}`
+    : "Replay review";
   const open = (): void => {
     onOpenReplay?.(row);
   };
   return (
     <li
-      className={`replay-library-row ${interactive ? "is-interactive" : ""}`}
+      className={`replay-library-row ${row.kind === "review" ? "is-review" : ""} ${interactive ? "is-interactive" : ""}`}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
+      aria-label={
+        interactive
+          ? row.kind === "review"
+            ? `Open ${reviewLabel}`
+            : "Open replay"
+          : undefined
+      }
       onClick={interactive ? open : undefined}
       onKeyDown={
         interactive
@@ -135,8 +146,26 @@ function ReplayLibraryRowView({
           </>
         )}
       </div>
-      <div className="replay-players-cell">
-        {row.seats.length === 0 ? (
+      <div
+        className={`replay-players-cell ${row.kind === "review" ? "is-review" : ""}`}
+      >
+        {row.kind === "review" ? (
+          <>
+            <span
+              className={`replay-review-branch is-${row.treeBranch ?? "last"}`}
+              aria-hidden="true"
+            >
+              <MessageSquareText />
+            </span>
+            <span className="replay-review-summary">
+              <strong title={reviewLabel}>{reviewLabel}</strong>
+              <small>
+                {row.commentCount}{" "}
+                {row.commentCount === 1 ? "comment" : "comments"}
+              </small>
+            </span>
+          </>
+        ) : row.seats.length === 0 ? (
           <span className="replay-metadata-unknown">Results unavailable</span>
         ) : (
           row.seats.map((seat) => (

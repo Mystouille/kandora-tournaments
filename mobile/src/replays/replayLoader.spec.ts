@@ -21,9 +21,15 @@ const log = {
 
 const row: ReplayLibraryRow = {
   key: "offline:ingame:game-1",
+  groupKey: "offline:ingame:game-1",
+  kind: "replay",
   mode: "offline",
   source: "ingame",
   sourceGameId: "game-1",
+  reviewShortId: null,
+  reviewedPlayerName: null,
+  commentCount: 0,
+  treeBranch: null,
   replayUrl: null,
   gameDate: 1_000,
   seats: log.seats,
@@ -48,7 +54,11 @@ describe("mobile replay row loading", () => {
         webAppBaseUrl: null,
         authSession: null,
       })
-    ).resolves.toEqual(log);
+    ).resolves.toEqual({
+      log,
+      seatEnrichment: [null, null, null, null],
+      review: null,
+    });
     expect(getReplayLog).toHaveBeenCalledWith("ingame", "game-1");
   });
 
@@ -101,6 +111,73 @@ describe("mobile replay row loading", () => {
     await expect(request).rejects.toMatchObject({
       code: "server_update_required",
     });
+    fetcher.mockRestore();
+  });
+
+  it("requests the selected online review and preserves its details", async () => {
+    const review = {
+      shortId: "review-1",
+      seat: 1,
+      targetName: "Player 1",
+      edits: [],
+    };
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        log,
+        seatEnrichment: [null, null, null, null],
+        review,
+      })
+    );
+
+    await expect(
+      loadReplayForRow(
+        {
+          ...row,
+          key: "ingame:game-1:review:review-1",
+          groupKey: "ingame:game-1",
+          kind: "review",
+          mode: "online",
+          reviewShortId: "review-1",
+          reviewedPlayerName: "Player 1",
+          replayUrl: "/watch/replay/game-1",
+        },
+        {
+          replayStore: null,
+          webAppBaseUrl: "https://play.example.com",
+          authSession: session,
+        }
+      )
+    ).resolves.toMatchObject({ review });
+    const request = fetcher.mock.calls[0][1];
+    expect((request?.body as URLSearchParams).get("reviewShortId")).toBe(
+      "review-1"
+    );
+    fetcher.mockRestore();
+  });
+
+  it("reports a review that was removed from the online library", async () => {
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        Response.json({ error: "review_not_found" }, { status: 404 })
+      );
+
+    const request = loadReplayForRow(
+      {
+        ...row,
+        kind: "review",
+        mode: "online",
+        reviewShortId: "removed-review",
+        replayUrl: "/watch/replay/game-1",
+      },
+      {
+        replayStore: null,
+        webAppBaseUrl: "https://play.example.com",
+        authSession: session,
+      }
+    );
+
+    await expect(request).rejects.toMatchObject({ code: "review_not_found" });
     fetcher.mockRestore();
   });
 });

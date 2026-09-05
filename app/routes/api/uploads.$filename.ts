@@ -45,6 +45,7 @@ export async function loader({
   const data = await readFile(filePath);
   return new Response(data, {
     headers: {
+      "Access-Control-Allow-Origin": "*",
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=31536000, immutable",
     },
@@ -61,6 +62,7 @@ function placeholderResponse(): Response {
 </svg>`;
   return new Response(svg, {
     headers: {
+      "Access-Control-Allow-Origin": "*",
       "Content-Type": "image/svg+xml",
       "Cache-Control": "no-cache",
     },

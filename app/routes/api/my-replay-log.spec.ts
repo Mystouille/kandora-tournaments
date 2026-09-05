@@ -25,6 +25,16 @@ const logResponse = {
     events: [],
     schemaVersion: 6,
   },
+  seatEnrichment: [
+    {
+      teamName: "East Club",
+      teamLogoUrl: "/api/uploads/east.webp",
+    },
+    null,
+    null,
+    null,
+  ],
+  review: null,
 };
 
 describe("common My Replay log API", () => {
@@ -53,6 +63,7 @@ describe("common My Replay log API", () => {
           token: "game-token",
           source: "ingame",
           sourceGameId: "game-1",
+          reviewShortId: "review-1",
         }),
       }),
     });
@@ -65,13 +76,15 @@ describe("common My Replay log API", () => {
       1,
       "user-1",
       "ingame",
-      "game-1"
+      "game-1",
+      null
     );
     expect(mocks.getMyReplayLogApiResponse).toHaveBeenNthCalledWith(
       2,
       "user-1",
       "ingame",
-      "game-1"
+      "game-1",
+      "review-1"
     );
   });
 
@@ -102,6 +115,25 @@ describe("common My Replay log API", () => {
       }),
     });
     expect(missing.status).toBe(404);
+
+    mocks.getMyReplayLogApiResponse.mockResolvedValueOnce({
+      status: "review_not_found",
+    });
+    const missingReview = await action({
+      request: new Request("https://app.test/api/my-replays/log", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: "game-token",
+          source: "tenhou",
+          sourceGameId: "private-game",
+          reviewShortId: "missing-review",
+        }),
+      }),
+    });
+    expect(missingReview.status).toBe(404);
+    await expect(missingReview.json()).resolves.toEqual({
+      error: "review_not_found",
+    });
   });
 
   it("rejects missing auth and handles OPTIONS", async () => {

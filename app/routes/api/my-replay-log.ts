@@ -25,8 +25,13 @@ function json(body: unknown, status = 200): Response {
 
 function replayIdentity(
   sourceValue: FormDataEntryValue | string | null,
-  sourceGameIdValue: FormDataEntryValue | string | null
-): { source: ReplaySource; sourceGameId: string } | null {
+  sourceGameIdValue: FormDataEntryValue | string | null,
+  reviewShortIdValue: FormDataEntryValue | string | null
+): {
+  source: ReplaySource;
+  sourceGameId: string;
+  reviewShortId: string | null;
+} | null {
   if (
     typeof sourceValue !== "string" ||
     !REPLAY_SOURCES.has(sourceValue as ReplaySource) ||
@@ -35,9 +40,16 @@ function replayIdentity(
   ) {
     return null;
   }
+  if (
+    reviewShortIdValue !== null &&
+    (typeof reviewShortIdValue !== "string" || reviewShortIdValue.trim() === "")
+  ) {
+    return null;
+  }
   return {
     source: sourceValue as ReplaySource,
     sourceGameId: sourceGameIdValue,
+    reviewShortId: reviewShortIdValue?.trim() ?? null,
   };
 }
 
@@ -55,13 +67,17 @@ async function replayLogResponse(
     const result = await getMyReplayLogApiResponse(
       principal.userId,
       identity.source,
-      identity.sourceGameId
+      identity.sourceGameId,
+      identity.reviewShortId
     );
     if (result.status === "user_missing") {
       return json({ error: "invalid_or_expired_session" }, 401);
     }
     if (result.status === "not_found") {
       return json({ error: "replay_not_found" }, 404);
+    }
+    if (result.status === "review_not_found") {
+      return json({ error: "review_not_found" }, 404);
     }
     return json(result.response);
   } catch (error) {
@@ -80,7 +96,8 @@ export async function loader({
     await getAuthenticatedPrincipal(request, { transport: "web-cookie" }),
     replayIdentity(
       url.searchParams.get("source"),
-      url.searchParams.get("sourceGameId")
+      url.searchParams.get("sourceGameId"),
+      url.searchParams.get("reviewShortId")
     )
   );
 }
@@ -108,6 +125,10 @@ export async function action({
       transport: "game-token",
       token: form.get("token"),
     }),
-    replayIdentity(form.get("source"), form.get("sourceGameId"))
+    replayIdentity(
+      form.get("source"),
+      form.get("sourceGameId"),
+      form.get("reviewShortId")
+    )
   );
 }
