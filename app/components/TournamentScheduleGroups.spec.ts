@@ -59,7 +59,9 @@ describe("partitionScheduledGames", () => {
     };
     const markup = renderToStaticMarkup(
       createElement(TournamentScheduleGroups, {
-        groups: [{ phase: { id: null, kind: "tournament" }, days: [["day", [game]]] }],
+        groups: [
+          { phase: { id: null, kind: "tournament" }, days: [["day", [game]]] },
+        ],
         data: {
           leagueId: "league-1",
           leagueName: "League",

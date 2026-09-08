@@ -24,12 +24,7 @@ export function WatchReplayButton({
 
   return (
     <Tooltip title={t.statistics.bracketWatchReplay}>
-      <Button
-        type="text"
-        size={size}
-        icon={<EyeOutlined />}
-        href={href}
-      />
+      <Button type="text" size={size} icon={<EyeOutlined />} href={href} />
     </Tooltip>
   );
 }

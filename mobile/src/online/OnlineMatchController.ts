@@ -5,11 +5,7 @@ import {
   type GameWSOptions,
 } from "~/game/client/ws";
 import { useMatchStore } from "~/game/client/store";
-import type {
-  RoomState,
-  Seat,
-  ServerMessage,
-} from "~/game/protocol/messages";
+import type { RoomState, Seat, ServerMessage } from "~/game/protocol/messages";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   createOnlineRoom,
@@ -42,6 +38,10 @@ export const INITIAL_ONLINE_MATCH_STATE: OnlineMatchControllerState = {
   roomState: null,
   error: null,
 };
+
+interface OnlineJoinOptions {
+  autoStart?: boolean;
+}
 
 interface OnlineSocket {
   connect(): void;
@@ -80,10 +80,10 @@ export class OnlineMatchController {
   private socket: OnlineSocket | null = null;
   private baseUrl: string | null = null;
   private session: MobileAuthSession | null = null;
+  private autoStartRequested = false;
 
   constructor(
-    private readonly dependencies: OnlineMatchControllerDependencies =
-      DEFAULT_DEPENDENCIES
+    private readonly dependencies: OnlineMatchControllerDependencies = DEFAULT_DEPENDENCIES
   ) {}
 
   subscribe(listener: StateListener): () => void {
@@ -101,6 +101,7 @@ export class OnlineMatchController {
     session: MobileAuthSession,
     preset: string
   ): Promise<void> {
+    this.autoStartRequested = false;
     this.setState({
       status: "creating",
       mode: "player",
@@ -120,12 +121,31 @@ export class OnlineMatchController {
     }
   }
 
-  join(baseUrl: string, session: MobileAuthSession, matchId: string): void {
-    this.attach(baseUrl, session, matchId, "player");
+  join(
+    baseUrl: string,
+    session: MobileAuthSession,
+    matchId: string,
+    options: OnlineJoinOptions = {}
+  ): void {
+    this.attach(
+      baseUrl,
+      session,
+      matchId,
+      "player",
+      options.autoStart === true
+    );
   }
 
   watch(baseUrl: string, session: MobileAuthSession, matchId: string): void {
     this.attach(baseUrl, session, matchId, "spectator");
+  }
+
+  requestWaitingRoomAutoStart(): void {
+    if (this.state.mode !== "player") {
+      return;
+    }
+    this.autoStartRequested = true;
+    this.maybeAutoStartWaitingRoom(this.state.roomState);
   }
 
   setWaitingRoomReady(ready: boolean): void {
@@ -180,11 +200,13 @@ export class OnlineMatchController {
     baseUrl: string,
     session: MobileAuthSession,
     matchId: string,
-    mode: "player" | "spectator"
+    mode: "player" | "spectator",
+    autoStart = false
   ): void {
     this.socket?.close();
     this.baseUrl = baseUrl;
     this.session = session;
+    this.autoStartRequested = mode === "player" && autoStart;
     useMatchStore.getState().setMatch(matchId);
     this.setState({
       status: "connecting",
@@ -243,6 +265,7 @@ export class OnlineMatchController {
               ? "spectating"
               : "playing";
       this.setState({ ...this.state, status, roomState: message, error: null });
+      this.maybeAutoStartWaitingRoom(message);
       return;
     }
     if (message.type === "snapshot" || message.type === "event") {
@@ -271,6 +294,28 @@ export class OnlineMatchController {
     this.setState({ ...this.state, error: message });
   }
 
+  private maybeAutoStartWaitingRoom(room: RoomState | null): void {
+    if (!this.autoStartRequested || room?.status !== "waiting") {
+      return;
+    }
+    const mySeat = room.mySeat;
+    if (mySeat === null || room.hostSeat !== mySeat) {
+      return;
+    }
+    const ownSeat = room.seats[mySeat];
+    if (ownSeat.occupant.kind !== "human") {
+      return;
+    }
+    if (!ownSeat.ready) {
+      this.socket?.setWaitingRoomReady(true);
+      return;
+    }
+    if (room.canStart) {
+      this.autoStartRequested = false;
+      this.socket?.startMatch();
+    }
+  }
+
   private fail(error: unknown): void {
     this.socket?.close();
     this.socket = null;
@@ -289,6 +334,7 @@ export class OnlineMatchController {
     this.socket = null;
     this.baseUrl = null;
     this.session = null;
+    this.autoStartRequested = false;
     useMatchStore.getState().reset();
     this.setState(
       error === null

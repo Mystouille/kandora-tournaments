@@ -52,6 +52,88 @@ function setup() {
 }
 
 describe("online match controller", () => {
+  it("readies and starts an explicitly requested solo room once", () => {
+    const { controller, socket, options } = setup();
+    controller.join("https://play.test", session, "solo-room", {
+      autoStart: true,
+    });
+    const waitingRoom = {
+      type: "room_state" as const,
+      matchId: "solo-room",
+      status: "waiting" as const,
+      mySeat: 0 as const,
+      hostSeat: 0 as const,
+      canStart: false,
+      seats: [0, 1, 2, 3].map((seat) => ({
+        seat: seat as 0 | 1 | 2 | 3,
+        occupant:
+          seat === 0
+            ? {
+                kind: "human" as const,
+                userId: "user-1",
+                displayName: "Alice",
+                connected: true,
+              }
+            : { kind: "empty" as const },
+        ready: false,
+      })),
+    };
+
+    options().onMessage?.(waitingRoom);
+    expect(socket.setWaitingRoomReady).toHaveBeenCalledWith(true);
+    expect(socket.startMatch).not.toHaveBeenCalled();
+
+    options().onMessage?.({
+      ...waitingRoom,
+      canStart: true,
+      seats: waitingRoom.seats.map((seat) =>
+        seat.seat === 0 ? { ...seat, ready: true } : seat
+      ),
+    });
+    options().onMessage?.({
+      ...waitingRoom,
+      canStart: true,
+      seats: waitingRoom.seats.map((seat) =>
+        seat.seat === 0 ? { ...seat, ready: true } : seat
+      ),
+    });
+
+    expect(socket.startMatch).toHaveBeenCalledOnce();
+  });
+
+  it("does not carry solo auto-start into a later ordinary join", () => {
+    const { controller, socket, options } = setup();
+    controller.join("https://play.test", session, "solo-room", {
+      autoStart: true,
+    });
+    controller.join("https://play.test", session, "shared-room");
+
+    options().onMessage?.({
+      type: "room_state",
+      matchId: "shared-room",
+      status: "waiting",
+      mySeat: 0,
+      hostSeat: 0,
+      canStart: true,
+      seats: [0, 1, 2, 3].map((seat) => ({
+        seat: seat as 0 | 1 | 2 | 3,
+        occupant:
+          seat === 0
+            ? {
+                kind: "human" as const,
+                userId: "user-1",
+                displayName: "Alice",
+                connected: true,
+              }
+            : { kind: "empty" as const },
+        ready: seat === 0,
+      })),
+    });
+
+    expect(socket.setWaitingRoomReady).not.toHaveBeenCalled();
+    expect(socket.startMatch).not.toHaveBeenCalled();
+  });
+
   it("creates a room, renders waiting state, then enters play", async () => {
     const { controller, socket, options } = setup();
     await controller.create("https://play.test", session, "m-league");

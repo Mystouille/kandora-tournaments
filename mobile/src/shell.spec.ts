@@ -7,6 +7,7 @@ import {
   mobileAuthCallbackResult,
   nearbyPageAvailable,
   normalizeWebAppUrl,
+  pendingContentAuthenticationAction,
   retryTransientPause,
   webAppPath,
 } from "./shell";
@@ -29,6 +30,21 @@ describe("mobile background resume policy", () => {
 });
 
 describe("mobile shell policy", () => {
+  it("starts login for a protected pending link when signed out", () => {
+    expect(pendingContentAuthenticationAction(true, "signed_out", false)).toBe(
+      "start-login"
+    );
+    expect(pendingContentAuthenticationAction(true, "opening", false)).toBe(
+      "wait"
+    );
+    expect(
+      pendingContentAuthenticationAction(true, "authenticated", true)
+    ).toBe("continue");
+    expect(pendingContentAuthenticationAction(false, "signed_out", false)).toBe(
+      "continue"
+    );
+  });
+
   it("accepts only absolute HTTP web origins", () => {
     expect(normalizeWebAppUrl("https://play.example.com/")).toBe(
       "https://play.example.com"

@@ -19,8 +19,7 @@ export function meta() {
     { title: "Online tools - TNT Mahjong" },
     {
       name: "description",
-      content:
-        "Open replays and use online analysis tools for riichi mahjong",
+      content: "Open replays and use online analysis tools for riichi mahjong",
     },
   ];
 }
@@ -102,18 +101,11 @@ export async function action({ request }: { request: Request }) {
       sessionId,
       meta: { outcome: "sign-in-required", source, gameId },
     });
-    return Response.json(
-      { ok: false, error: "unauthorized" },
-      { status: 401 }
-    );
+    return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
   let fetched;
   try {
-    fetched = await fetchOrphanReplayLog(
-      source,
-      gameId,
-      authenticatedUser.sub
-    );
+    fetched = await fetchOrphanReplayLog(source, gameId, authenticatedUser.sub);
   } catch (error) {
     console.error(
       `[review] connector fetch failed for ${source}/${gameId}`,
@@ -179,9 +171,7 @@ export default function ReviewRoute() {
   const fetcher = useFetcher<ImportResponse>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [gameId, setGameId] = useState(
-    () => searchParams.get("gameId") ?? ""
-  );
+  const [gameId, setGameId] = useState(() => searchParams.get("gameId") ?? "");
 
   // Strip the same viewer-suffixes / share-URLs client-side so the
   // recognition checkmark matches what the server will look up.

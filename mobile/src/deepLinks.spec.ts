@@ -15,6 +15,9 @@ describe("mobile content deep links", () => {
       parseMobileContentIntent(`${baseUrl}/game/match-1`, baseUrl)
     ).toEqual({ kind: "join-game", matchId: "match-1" });
     expect(
+      parseMobileContentIntent(`${baseUrl}/game/match-1?solo=1`, baseUrl)
+    ).toEqual({ kind: "start-solo", matchId: "match-1" });
+    expect(
       parseMobileContentIntent(`${baseUrl}/spectate/match-2`, baseUrl)
     ).toEqual({ kind: "spectate-match", matchId: "match-2" });
     expect(
@@ -54,6 +57,15 @@ describe("mobile content deep links", () => {
         `${baseUrl}/kandora`
       )
     ).toEqual({ kind: "watch-replay", gameId: "game-1", state: {} });
+  });
+
+  it("requires the exact solo marker", () => {
+    expect(
+      parseMobileContentIntent(`${baseUrl}/game/match-1?solo=true`, baseUrl)
+    ).toEqual({ kind: "join-game", matchId: "match-1" });
+    expect(
+      mobileContentIntentKey({ kind: "start-solo", matchId: "match-1" })
+    ).toBe("start-solo:match-1");
   });
 
   it("rejects unsupported and malformed paths", () => {

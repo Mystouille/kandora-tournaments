@@ -1,16 +1,5 @@
-import {
-  Avatar,
-  Button,
-  List,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
-import {
-  EyeOutlined,
-  QuestionOutlined,
-  TeamOutlined,
-} from "@ant-design/icons";
+import { Avatar, Button, List, Tag, Tooltip, Typography } from "antd";
+import { EyeOutlined, QuestionOutlined, TeamOutlined } from "@ant-design/icons";
 import type { PicturePair } from "../types/pictures";
 import { basePath } from "../utils/basePath";
 import { PlayerAvatar } from "./PlayerAvatar";
@@ -199,7 +188,9 @@ export function TournamentScheduleGroups({
                                 />
                               )}
                               <Text
-                                type={slot.participant ? undefined : "secondary"}
+                                type={
+                                  slot.participant ? undefined : "secondary"
+                                }
                                 ellipsis
                               >
                                 {slot.participant?.name ?? labels.tbd}

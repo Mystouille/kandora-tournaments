@@ -77,12 +77,20 @@ is reserved for the Discord OAuth callback.
 | `/watch/live/:watchId`  | Resolve the tracked Tenhou relay, then spectate its internal match.                         |
 | `/watch/replay/:gameId` | Open the replay viewer, preserving valid `seat`, `round`, `event`, and `review` parameters. |
 
+The web lobby's **Start solo match** action appends the internal `solo=1`
+marker to its newly created `/game/:matchId` handoff. The native shell uses
+that one-shot marker to ready the room host and start the match; the game
+server then fills the empty seats with bots. Ordinary `/game/:matchId` links
+remain multiplayer room joins.
+
 Cached replays and matching reviews remain anonymously readable. A replay cache
-miss and every live-game link require the native Discord session. The original
-link is stored for 30 minutes and resumed after sign-in, including after a
-process restart. Opening a different destination while a table is active asks
-before leaving it. The developer-only `/watch/replay/tenhou-har` route and other
-site pages are not native destinations.
+miss and every live-game link require the native Discord session. When a
+protected link opens while signed out, the shell starts Discord login
+automatically. The original link is stored for 30 minutes and resumed after
+sign-in, including after a process restart. Opening a different destination
+while a table is active asks before leaving it. The developer-only
+`/watch/replay/tenhou-har` route and other site pages are not native
+destinations.
 
 The web service generates its association documents from these runtime values:
 

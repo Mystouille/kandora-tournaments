@@ -9,6 +9,7 @@ export interface ReplayDeepLinkState {
 
 export type MobileContentIntent =
   | { kind: "join-game"; matchId: string }
+  | { kind: "start-solo"; matchId: string }
   | { kind: "spectate-match"; matchId: string }
   | { kind: "watch-live"; watchId: string }
   | {
@@ -143,6 +144,9 @@ export function parseMobileContentIntent(
   }
 
   if (match[1] === "game") {
+    if (url.searchParams.get("solo") === "1") {
+      return { kind: "start-solo", matchId: identifier };
+    }
     return { kind: "join-game", matchId: identifier };
   }
   if (match[1] === "spectate") {
@@ -162,7 +166,11 @@ export function parseMobileContentIntent(
 }
 
 export function mobileContentIntentKey(intent: MobileContentIntent): string {
-  if (intent.kind === "join-game" || intent.kind === "spectate-match") {
+  if (
+    intent.kind === "join-game" ||
+    intent.kind === "start-solo" ||
+    intent.kind === "spectate-match"
+  ) {
     return `${intent.kind}:${intent.matchId}`;
   }
   if (intent.kind === "watch-live") {

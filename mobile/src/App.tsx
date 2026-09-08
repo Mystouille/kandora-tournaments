@@ -93,8 +93,10 @@ import {
   mobileAuthCallbackResult,
   nearbyPageAvailable,
   normalizeWebAppUrl,
+  pendingContentAuthenticationAction,
   retryTransientPause,
   webAppPath,
+  type MobileContentAuthStatus,
   type MobileShellPage,
   type MobileStorageState,
 } from "./shell";
@@ -119,14 +121,6 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
 };
 
 const DRAW_TO_DISCARD_DELAY_MS = 700;
-
-type MobileAuthStatus =
-  | "checking"
-  | "signed_out"
-  | "opening"
-  | "exchanging"
-  | "authenticated"
-  | "error";
 
 interface MobileReplayViewerState {
   row: ReplayLibraryRow | null;
@@ -173,7 +167,8 @@ export function App() {
   const [page, setPage] = useState<MobileShellPage>("home");
   const pageRef = useRef(page);
   pageRef.current = page;
-  const [authStatus, setAuthStatus] = useState<MobileAuthStatus>("checking");
+  const [authStatus, setAuthStatus] =
+    useState<MobileContentAuthStatus>("checking");
   const [authError, setAuthError] = useState<string | null>(null);
   const [pendingContentIntent, setPendingContentIntent] =
     useState<PendingMobileContentIntent | null>(null);
@@ -335,6 +330,10 @@ export function App() {
         }
         if (error instanceof MobileAuthHttpError && error.status === 401) {
           clearMobileAuthSession(window.localStorage);
+          setMobileAuthSession(null);
+          setAuthError(null);
+          setAuthStatus("signed_out");
+          return;
         }
         setMobileAuthSession(null);
         setAuthError("Could not verify your Discord session.");
@@ -1121,6 +1120,10 @@ export function App() {
     }
   };
 
+  const startPendingContentLogin = useEffectEvent(() => {
+    void startDiscordLogin();
+  });
+
   const toggleLiveMenuOption = (key: LivePlayMenuOptionKey): void => {
     setLiveMenuFlags((current) => {
       const next = { ...current, [key]: !current[key] };
@@ -1398,7 +1401,8 @@ export function App() {
       }
       let matchId: string;
       let mode: "player" | "spectator";
-      if (intent.kind === "join-game") {
+      const autoStart = intent.kind === "start-solo";
+      if (intent.kind === "join-game" || intent.kind === "start-solo") {
         matchId = intent.matchId;
         mode = "player";
       } else if (intent.kind === "spectate-match") {
@@ -1414,6 +1418,9 @@ export function App() {
 
       const currentOnline = onlineControllerRef.current?.getState();
       if (currentOnline?.matchId === matchId && currentOnline.mode === mode) {
+        if (autoStart) {
+          onlineControllerRef.current?.requestWaitingRoomAutoStart();
+        }
         setPage(
           currentOnline.status === "playing" ||
             currentOnline.status === "spectating" ||
@@ -1447,7 +1454,7 @@ export function App() {
       }
       setPage("online-room");
       if (mode === "player") {
-        onlineController.join(baseUrl, session, matchId);
+        onlineController.join(baseUrl, session, matchId, { autoStart });
       } else {
         onlineController.watch(baseUrl, session, matchId);
       }
@@ -1469,13 +1476,18 @@ export function App() {
     const requiresAuthentication =
       pendingContentIntent.intent.kind !== "watch-replay" ||
       pendingContentIntentNeedsAuth;
-    if (
-      requiresAuthentication &&
-      (authStatus !== "authenticated" || mobileAuthSession === null)
-    ) {
+    const authenticationAction = pendingContentAuthenticationAction(
+      requiresAuthentication,
+      authStatus,
+      mobileAuthSession !== null
+    );
+    if (authenticationAction !== "continue") {
       setPendingContentIntentNeedsAuth(true);
       setAuthError("Sign in to open this link.");
       setPage("home");
+      if (authenticationAction === "start-login") {
+        startPendingContentLogin();
+      }
       return;
     }
     const ticket = contentIntentExecutionGateRef.current.tryStart(key);

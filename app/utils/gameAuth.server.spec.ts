@@ -30,9 +30,7 @@ import {
   requireGameUser,
 } from "./gameAuth.server";
 
-const request = new Request(
-  "http://app.test/spectate/match-1?returnTo=%2Fcup"
-);
+const request = new Request("http://app.test/spectate/match-1?returnTo=%2Fcup");
 const authenticatedUser = {
   sub: "user-1",
   username: "Alice",
@@ -137,9 +135,7 @@ describe("game access", () => {
       } else {
         mocks.lookupGuildMember.mockResolvedValue({
           status:
-            accessStatus === "not_in_main_guild"
-              ? "not_member"
-              : "unavailable",
+            accessStatus === "not_in_main_guild" ? "not_member" : "unavailable",
         });
       }
 

@@ -10,6 +10,27 @@ export type MobileShellPage =
   | "replay-viewer"
   | "game";
 export type MobileStorageState = "loading" | "sqlite" | "memory" | "error";
+export type MobileContentAuthStatus =
+  | "checking"
+  | "signed_out"
+  | "opening"
+  | "exchanging"
+  | "authenticated"
+  | "error";
+
+export function pendingContentAuthenticationAction(
+  requiresAuthentication: boolean,
+  authStatus: MobileContentAuthStatus,
+  hasSession: boolean
+): "continue" | "start-login" | "wait" {
+  if (!requiresAuthentication) {
+    return "continue";
+  }
+  if (authStatus === "authenticated" && hasSession) {
+    return "continue";
+  }
+  return authStatus === "signed_out" ? "start-login" : "wait";
+}
 
 export function normalizeWebAppUrl(
   value: string | undefined,
