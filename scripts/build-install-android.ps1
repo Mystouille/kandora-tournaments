@@ -111,7 +111,7 @@ try {
   $npx = (Get-Command npx.cmd -ErrorAction Stop).Source
   $adb = Join-Path $sdkRoot "platform-tools\adb.exe"
   $gradle = Join-Path $repoRoot "android\gradlew.bat"
-  $apk = Join-Path $repoRoot "android\app\build\outputs\apk\debug\app-debug.apk"
+  $apk = Join-Path $repoRoot "android\app\build\outputs\apk\debug\kandora.apk"
 
   Invoke-External $npx @(
     "vitest",
