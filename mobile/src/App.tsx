@@ -1,6 +1,11 @@
 import { App as NativeApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
-import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import {
+  Capacitor,
+  SystemBars,
+  SystemBarType,
+  type PluginListenerHandle,
+} from "@capacitor/core";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import {
@@ -471,6 +476,11 @@ export function App() {
     void StatusBar.setStyle({ style: Style.Dark });
     if (Capacitor.getPlatform() === "android") {
       void StatusBar.setBackgroundColor({ color: "#0b1210" });
+    } else if (Capacitor.getPlatform() === "ios") {
+      void SystemBars.hide({
+        bar: SystemBarType.NavigationBar,
+        animation: "NONE",
+      });
     }
     void SplashScreen.hide();
     let stateListener: PluginListenerHandle | null = null;

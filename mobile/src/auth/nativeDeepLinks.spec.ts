@@ -17,6 +17,11 @@ const iosProject = readFileSync(
   new URL("../../../ios/App/App.xcodeproj/project.pbxproj", import.meta.url),
   "utf8"
 );
+const iosSceneDelegate = readFileSync(
+  new URL("../../../ios/App/App/SceneDelegate.swift", import.meta.url),
+  "utf8"
+);
+const mobileApp = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 
 describe("native mobile authentication callbacks", () => {
   it("registers the Android callback intent", () => {
@@ -85,5 +90,16 @@ describe("native mobile authentication callbacks", () => {
     expect(
       iosProject.match(/PRODUCT_BUNDLE_IDENTIFIER = com\.kandora\.app;/g)
     ).toHaveLength(2);
+  });
+
+  it("uses Capacitor's supported API to hide the iOS home indicator", () => {
+    expect(iosSceneDelegate).not.toContain(
+      "override var prefersHomeIndicatorAutoHidden"
+    );
+    expect(iosSceneDelegate).toContain(
+      "override var preferredScreenEdgesDeferringSystemGestures"
+    );
+    expect(mobileApp).toContain("SystemBars.hide({");
+    expect(mobileApp).toContain("bar: SystemBarType.NavigationBar");
   });
 });

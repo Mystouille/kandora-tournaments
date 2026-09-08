@@ -18,6 +18,11 @@ Set `VITE_MOBILE_APP_BASE_URL` to the public tournaments web origin used for
 Discord sign-in and the online lobby. Native builds reject localhost/loopback
 origins rather than opening an unusable URL inside the device.
 
+On iOS, `GameBridgeViewController` owns status-bar hiding and deferred edge
+gestures. Capacitor 8 itself owns `prefersHomeIndicatorAutoHidden`, so the
+mobile shell hides the navigation/home-indicator bar through the bundled
+`SystemBars` API instead of overriding that non-open Swift property.
+
 On Windows, `mobile:android:install` builds the mobile bundle, copies it into
 Capacitor, force-repackages the debug APK, installs it on the only connected
 phone/emulator, and launches Kandora. If multiple targets are connected, pick
