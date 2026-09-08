@@ -12,6 +12,7 @@ import {
 } from "~/game/replay/normalizeReplayId";
 import type { ReplaySource } from "~/game/replay/types";
 import { authSignInPath } from "~/utils/gameReturnPath";
+import { openAppLink } from "~/game/client/appLinkNavigation";
 
 export function meta() {
   return [
@@ -206,7 +207,7 @@ export default function ReviewRoute() {
   // Auto-navigate to the replay viewer once the import succeeds.
   //
   // We intentionally wait for `fetcher.state === "idle"` before
-  // calling `navigate()`. A successful action triggers an automatic
+  // opening the viewer. A successful action triggers an automatic
   // revalidation of all active loaders (root, etc.); React Router's
   // state machine considers the fetcher "loading" until that
   // revalidation settles. If we fire `navigate()` mid-revalidation
@@ -223,9 +224,9 @@ export default function ReviewRoute() {
   useEffect(() => {
     if (result?.ok && fetcher.state === "idle") {
       const suffix = rcWind !== null ? `@${rcWind}` : "";
-      navigate(`/watch/replay/${result.gameId}${suffix}`);
+      openAppLink(`/watch/replay/${result.gameId}${suffix}`);
     }
-  }, [result, fetcher.state, navigate, rcWind]);
+  }, [result, fetcher.state, rcWind]);
 
   useEffect(() => {
     if (

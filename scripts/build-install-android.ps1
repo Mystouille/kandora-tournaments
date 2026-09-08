@@ -112,6 +112,8 @@ try {
   $adb = Join-Path $sdkRoot "platform-tools\adb.exe"
   $gradle = Join-Path $repoRoot "android\gradlew.bat"
   $apk = Join-Path $repoRoot "android\app\build\outputs\apk\debug\kandora.apk"
+  $appLinkHost = "tournaments.tnt-sessions.com"
+  $appLinkAssociationUrl = "https://$appLinkHost/.well-known/assetlinks.json"
 
   Invoke-External $npx @(
     "vitest",
@@ -189,7 +191,7 @@ try {
     "https://tournaments.tnt-sessions.com/watch/replay/probe-replay"
   )
   foreach ($appLink in $appLinks) {
-    Write-Host "`n==> Verify mobile app link $appLink" -ForegroundColor Cyan
+    Write-Host "`n==> Verify mobile app link registration $appLink" -ForegroundColor Cyan
     $appLinkHandler = @(& $adb @(
       "-s",
       $Serial,
@@ -212,6 +214,134 @@ try {
       $appLinkHandler -notcontains "com.kandora.app/.MainActivity"
     ) {
       throw "Installed APK does not register app link '$appLink'."
+    }
+  }
+
+  Write-Host "`n==> Check Android App Link association" -ForegroundColor Cyan
+  $packageAppLinks = @(& $adb @(
+    "-s",
+    $Serial,
+    "shell",
+    "pm",
+    "get-app-links",
+    "--user",
+    "0",
+    "com.kandora.app"
+  ))
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Unable to inspect Android App Link verification state."
+  } else {
+    $packageAppLinksText = $packageAppLinks -join "`n"
+    $signatureMatch = [regex]::Match(
+      $packageAppLinksText,
+      "Signatures:\s*\[(?<signature>[0-9A-Fa-f:]+)\]"
+    )
+    $appSignature = if ($signatureMatch.Success) {
+      $signatureMatch.Groups["signature"].Value.ToUpperInvariant()
+    } else {
+      $null
+    }
+
+    if ($appSignature) {
+      Write-Host "Installed signing certificate: $appSignature"
+    }
+
+    try {
+      $associationResponse = Invoke-WebRequest `
+        -Uri $appLinkAssociationUrl `
+        -UseBasicParsing `
+        -TimeoutSec 10 `
+        -ErrorAction Stop
+      $associationStatements = @($associationResponse.Content | ConvertFrom-Json)
+      $associationFingerprints = @(
+        $associationStatements |
+          Where-Object { $_.target.package_name -eq "com.kandora.app" } |
+          ForEach-Object { $_.target.sha256_cert_fingerprints } |
+          ForEach-Object { $_.ToString().ToUpperInvariant() }
+      )
+      if ($appSignature -and $associationFingerprints -notcontains $appSignature) {
+        Write-Warning (
+          "$appLinkAssociationUrl does not include the installed signing " +
+          "certificate. Add $appSignature to " +
+          "ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS and redeploy the web app."
+        )
+      }
+    } catch {
+      $status = if ($_.Exception.Response) {
+        "HTTP $([int]$_.Exception.Response.StatusCode)"
+      } else {
+        $_.Exception.Message
+      }
+      $fingerprintHint = if ($appSignature) {
+        " Include $appSignature for this installed build."
+      } else {
+        ""
+      }
+      Write-Warning (
+        "$appLinkAssociationUrl is unavailable ($status). Configure " +
+        "ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS and redeploy the web app." +
+        $fingerprintHint
+      )
+    }
+
+    & $adb @(
+      "-s",
+      $Serial,
+      "shell",
+      "pm",
+      "verify-app-links",
+      "--re-verify",
+      "com.kandora.app"
+    ) | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "Android could not start App Link re-verification."
+    }
+
+    $verifiedAppLinks = @(& $adb @(
+      "-s",
+      $Serial,
+      "shell",
+      "pm",
+      "get-app-links",
+      "--user",
+      "0",
+      "com.kandora.app"
+    ))
+    $verifiedAppLinksText = $verifiedAppLinks -join "`n"
+    $escapedAppLinkHost = [regex]::Escape($appLinkHost)
+    $domainMatch = [regex]::Match(
+      $verifiedAppLinksText,
+      "(?m)^\s*$([regex]::Escape($appLinkHost)):\s*(?<state>\S+)"
+    )
+    $domainState = if ($domainMatch.Success) {
+      $domainMatch.Groups["state"].Value
+    } else {
+      "unknown"
+    }
+    if ($domainState -in @("1", "verified")) {
+      Write-Host "Android verified $appLinkHost for Kandora." -ForegroundColor Green
+    } else {
+      Write-Warning (
+        "Android App Link verification for $appLinkHost is '$domainState' " +
+        "(expected 'verified'). HTTPS replay links may remain in the browser."
+      )
+    }
+
+    $linkHandlingDisabled = [regex]::IsMatch(
+      $verifiedAppLinksText,
+      "Verification link handling allowed:\s*false"
+    )
+    $domainSelectionDisabled = [regex]::IsMatch(
+      $verifiedAppLinksText,
+      "(?m)^\s*Disabled:\s*\n\s*$escapedAppLinkHost\s*$"
+    )
+    if ($linkHandlingDisabled -or $domainSelectionDisabled) {
+      Write-Warning (
+        "Android's Open supported links setting is disabled for Kandora. " +
+        "Enable it under Settings > Apps > Kandora > Set as default, or run: " +
+        "adb -s $Serial shell pm set-app-links-user-selection --user 0 " +
+        "--package com.kandora.app true $appLinkHost"
+      )
     }
   }
 

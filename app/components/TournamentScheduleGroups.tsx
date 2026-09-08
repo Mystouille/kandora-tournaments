@@ -1,4 +1,3 @@
-import { Link } from "react-router";
 import {
   Avatar,
   Button,
@@ -221,24 +220,24 @@ export function TournamentScheduleGroups({
                           {game.live && (
                             <>
                               <Tag color="red">{labels.live}</Tag>
-                              <Link
-                                to={`${basePath}/watch/live/${encodeURIComponent(game.live.watchId)}`}
-                                aria-label={labels.watchLive}
-                              >
-                                {isMobile ? (
-                                  <Tooltip title={labels.watchLive}>
-                                    <Button
-                                      type="primary"
-                                      aria-label={labels.watchLive}
-                                      icon={<EyeOutlined />}
-                                    />
-                                  </Tooltip>
-                                ) : (
-                                  <Button type="primary" icon={<EyeOutlined />}>
-                                    {labels.watchLive}
-                                  </Button>
-                                )}
-                              </Link>
+                              {isMobile ? (
+                                <Tooltip title={labels.watchLive}>
+                                  <Button
+                                    type="primary"
+                                    href={`${basePath}/watch/live/${encodeURIComponent(game.live.watchId)}`}
+                                    aria-label={labels.watchLive}
+                                    icon={<EyeOutlined />}
+                                  />
+                                </Tooltip>
+                              ) : (
+                                <Button
+                                  type="primary"
+                                  href={`${basePath}/watch/live/${encodeURIComponent(game.live.watchId)}`}
+                                  icon={<EyeOutlined />}
+                                >
+                                  {labels.watchLive}
+                                </Button>
+                              )}
                             </>
                           )}
                         </div>

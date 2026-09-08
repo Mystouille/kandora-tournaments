@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import {
   Button,
   Checkbox,
@@ -175,6 +181,10 @@ export function reviewLinkLabel(
     "{username}",
     reviewedPlayerName ?? unknownPlayerName
   );
+}
+
+export function ReplayDestinationAnchor(props: ComponentProps<"a">) {
+  return <a {...props} />;
 }
 
 export function toTableRows(groups: MyReplayGroup[]): MyReplayTableRow[] {
@@ -649,8 +659,8 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
             t.myReplays.unknown
           );
           return (
-            <Link
-              to={link.url}
+            <ReplayDestinationAnchor
+              href={link.url}
               title={label}
               style={{
                 display: "inline-flex",
@@ -669,17 +679,17 @@ export function MyReplaysTable({ groups }: { groups: MyReplayGroup[] }) {
               >
                 {label}
               </span>
-            </Link>
+            </ReplayDestinationAnchor>
           );
         }
         return (
-          <Link
-            to={link.url}
+          <ReplayDestinationAnchor
+            href={link.url}
             style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
           >
             <EyeOutlined />
             {t.myReplays.links.replay}
-          </Link>
+          </ReplayDestinationAnchor>
         );
       },
     },

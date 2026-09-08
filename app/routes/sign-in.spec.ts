@@ -24,12 +24,12 @@ describe("sign-in route loader", () => {
 
   it("returns the denied state and validated game destination", async () => {
     const request = new Request(
-      "http://app.test/sign-in?returnTo=%2Fspectate%2Fmatch-1%3Fdelay%3D300000"
+      "http://app.test/sign-in?returnTo=%2Fspectate%2Fmatch-1"
     );
 
     await expect(loader({ request })).resolves.toEqual({
       status: "signed_out",
-      returnTo: "/spectate/match-1?delay=300000",
+      returnTo: "/spectate/match-1",
       authOnly: false,
     });
   });

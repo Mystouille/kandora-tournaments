@@ -31,7 +31,7 @@ import {
 } from "./gameAuth.server";
 
 const request = new Request(
-  "http://app.test/spectate/match-1?delay=300000&returnTo=%2Fcup"
+  "http://app.test/spectate/match-1?returnTo=%2Fcup"
 );
 const authenticatedUser = {
   sub: "user-1",
@@ -118,7 +118,7 @@ describe("game access", () => {
     expect(thrown).toBeInstanceOf(Response);
     expect((thrown as Response).status).toBe(302);
     expect((thrown as Response).headers.get("Location")).toBe(
-      "/sign-in?returnTo=%2Fspectate%2Fmatch-1%3Fdelay%3D300000%26returnTo%3D%252Fcup"
+      "/sign-in?returnTo=%2Fspectate%2Fmatch-1%3FreturnTo%3D%252Fcup"
     );
   });
 

@@ -12,11 +12,11 @@ import {
 describe("game return paths", () => {
   it("preserves game paths and their complete query strings", () => {
     const path =
-      "/spectate/match-1?delay=300000&returnTo=%2Fonline-tournaments%2Fcup%3Ftab%3Dgames";
+      "/spectate/match-1?returnTo=%2Fonline-tournaments%2Fcup%3Ftab%3Dgames";
 
     expect(normalizeGameReturnPath(path)).toBe(path);
     expect(gameSignInPath(path)).toBe(
-      "/sign-in?returnTo=%2Fspectate%2Fmatch-1%3Fdelay%3D300000%26returnTo%3D%252Fonline-tournaments%252Fcup%253Ftab%253Dgames"
+      "/sign-in?returnTo=%2Fspectate%2Fmatch-1%3FreturnTo%3D%252Fonline-tournaments%252Fcup%253Ftab%253Dgames"
     );
   });
 

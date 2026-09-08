@@ -1,7 +1,10 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   MY_REPLAY_HEADER_TEXT_STYLE,
   MY_REPLAY_PLATFORM_LOGO_ASPECT_RATIO,
+  ReplayDestinationAnchor,
   myReplayPlatformLogo,
   myReplayLinkForRow,
   reviewLinkLabel,
@@ -52,6 +55,20 @@ describe("My Replays table rows", () => {
       kind: "replay",
       url: "/watch/replay/game-1",
     });
+  });
+
+  it("uses document navigation for native replay destinations", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        ReplayDestinationAnchor,
+        { href: "/watch/replay/game-1?review=review-1" },
+        "Replay"
+      )
+    );
+
+    expect(markup).toBe(
+      '<a href="/watch/replay/game-1?review=review-1">Replay</a>'
+    );
   });
 
   it("labels the review with the reviewed player name", () => {
