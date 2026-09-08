@@ -4,6 +4,10 @@ import type { MobileAuthSession } from "../auth/mobileAuth";
 import { webAppPath } from "../shell";
 
 const CreateRoomResponseSchema = z.object({ matchId: z.string().min(1) });
+const WatchGameResponseSchema = z.object({
+  ok: z.literal(true),
+  matchId: z.string().min(1),
+});
 const GameSessionResponseSchema = z.object({
   token: z.string().min(1),
   wsUrl: z.string().nullable(),
@@ -36,14 +40,24 @@ export async function createOnlineRoom(
   preset: string,
   fetcher: typeof fetch = fetch
 ): Promise<string> {
-  const response = await fetcher(
-    webAppPath(baseUrl, "/api/game/rooms"),
-    {
-      method: "POST",
-      body: new URLSearchParams({ token: session.token, preset }),
-    }
-  );
+  const response = await fetcher(webAppPath(baseUrl, "/api/game/rooms"), {
+    method: "POST",
+    body: new URLSearchParams({ token: session.token, preset }),
+  });
   return CreateRoomResponseSchema.parse(await responseJson(response)).matchId;
+}
+
+export async function resolveOnlineWatchId(
+  baseUrl: string,
+  session: MobileAuthSession,
+  watchId: string,
+  fetcher: typeof fetch = fetch
+): Promise<string> {
+  const response = await fetcher(webAppPath(baseUrl, "/api/game/watch"), {
+    method: "POST",
+    body: new URLSearchParams({ token: session.token, watchId }),
+  });
+  return WatchGameResponseSchema.parse(await responseJson(response)).matchId;
 }
 
 export async function getOnlineGameConnectionDetails(
@@ -52,13 +66,10 @@ export async function getOnlineGameConnectionDetails(
   matchId: string,
   fetcher: typeof fetch = fetch
 ): Promise<GameWSConnectionDetails> {
-  const response = await fetcher(
-    webAppPath(baseUrl, "/api/game/session"),
-    {
-      method: "POST",
-      body: new URLSearchParams({ token: session.token }),
-    }
-  );
+  const response = await fetcher(webAppPath(baseUrl, "/api/game/session"), {
+    method: "POST",
+    body: new URLSearchParams({ token: session.token }),
+  });
   const details = GameSessionResponseSchema.parse(await responseJson(response));
   const appUrl = new URL(baseUrl);
   appUrl.protocol = appUrl.protocol === "https:" ? "wss:" : "ws:";

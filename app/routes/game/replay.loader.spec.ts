@@ -1,52 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  connectToDatabase: vi.fn(),
-  findReplay: vi.fn(),
-  fetchOrphanReplayLog: vi.fn(),
   getAuthenticatedUser: vi.fn(),
-  resolveSeatEnrichmentForReplay: vi.fn(),
   annotateWaits: vi.fn(),
+  resolveReplayViewerData: vi.fn(),
 }));
 
-vi.mock("~/utils/dbConnection.server", () => ({
-  connectToDatabase: mocks.connectToDatabase,
-}));
-vi.mock("~/core/models/game/ReplayLog", () => ({
-  ReplayLogModel: { findOne: mocks.findReplay },
-}));
-vi.mock("~/core/models/game/ReplayReview", () => ({
-  ReplayReviewModel: { findOne: vi.fn() },
-}));
-vi.mock("~/services/fetchOrphanReplayLog.server", () => ({
-  fetchOrphanReplayLog: mocks.fetchOrphanReplayLog,
-}));
 vi.mock("~/utils/jwt.server", () => ({
   getAuthenticatedUser: mocks.getAuthenticatedUser,
-}));
-vi.mock("~/services/replayEnrichment.server", () => ({
-  resolveSeatEnrichmentForReplay: mocks.resolveSeatEnrichmentForReplay,
 }));
 vi.mock("~/services/annotateWaits", () => ({
   annotateWaits: mocks.annotateWaits,
 }));
-vi.mock("~/services/replayReview.server", () => ({
-  resolveReviewersForDoc: vi.fn(),
-  serializeReview: vi.fn(),
+vi.mock("~/services/replayViewerData.server", () => ({
+  resolveReplayViewerData: mocks.resolveReplayViewerData,
 }));
 
 import { loader } from "./replay";
 
-function findResult(value: unknown) {
-  const query = {
-    lean: vi.fn(),
-    exec: vi.fn().mockResolvedValue(value),
-  };
-  query.lean.mockReturnValue(query);
-  return query;
-}
-
 const gameId = "2026041906gm-0001-14853-b8890fb3";
+
+const found = {
+  status: "found",
+  canonicalGameId: gameId,
+  resolvedSeat: null,
+  log: {
+    source: "tenhou",
+    sourceGameId: gameId,
+    ruleSet: "tenhou",
+    startedAt: 100,
+    endedAt: 200,
+    seats: [],
+    events: [],
+    schemaVersion: 6,
+  },
+  review: null,
+  seatEnrichment: [],
+};
 
 function loaderArgs() {
   return {
@@ -60,60 +50,29 @@ function loaderArgs() {
 describe("replay viewer cache authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.connectToDatabase.mockResolvedValue(undefined);
     mocks.getAuthenticatedUser.mockResolvedValue(null);
-    mocks.resolveSeatEnrichmentForReplay.mockResolvedValue([]);
     mocks.annotateWaits.mockReturnValue([]);
-    mocks.fetchOrphanReplayLog.mockResolvedValue({
-      source: "tenhou",
-      sourceGameId: gameId,
-      ruleSet: "tenhou",
-      startedAt: 100,
-      endedAt: 200,
-      seats: [],
-      events: [],
-      schemaVersion: 5,
-    });
+    mocks.resolveReplayViewerData.mockResolvedValue(found);
   });
 
   it("allows an anonymous cache hit", async () => {
-    mocks.findReplay.mockReturnValue(
-      findResult({
-        source: "tenhou",
-        sourceGameId: gameId,
-        ruleSet: "tenhou",
-        startedAt: 100,
-        endedAt: 200,
-        seats: [
-          {
-            seat: 0,
-            userDbId: "507f1f77bcf86cd799439011",
-            displayName: "Alice",
-            finalScore: 30_000,
-            place: 1,
-          },
-        ],
-        events: [],
-        schemaVersion: 5,
-      })
-    );
-
     const result = await loader(loaderArgs());
 
     expect(result.log.sourceGameId).toBe(gameId);
-    expect(result.log.seats[0]).not.toHaveProperty("userDbId");
-    expect(mocks.fetchOrphanReplayLog).not.toHaveBeenCalled();
+    expect(mocks.resolveReplayViewerData).toHaveBeenCalledWith({
+      gameId,
+      reviewShortId: null,
+      userId: null,
+    });
   });
 
   it("redirects a Tenhou watch-id alias to its canonical replay", async () => {
     const canonicalGameId = "2026082503gm-0009-19370-0e3a95d1";
-    mocks.findReplay.mockReturnValue(
-      findResult({
-        source: "tenhou",
-        sourceGameId: canonicalGameId,
-        sourceGameIdAliases: ["66B555F2"],
-      })
-    );
+    mocks.resolveReplayViewerData.mockResolvedValue({
+      ...found,
+      canonicalGameId,
+      log: { ...found.log, sourceGameId: canonicalGameId },
+    });
     let thrown: unknown;
 
     try {
@@ -126,16 +85,6 @@ describe("replay viewer cache authentication", () => {
       thrown = error;
     }
 
-    expect(mocks.findReplay).toHaveBeenCalledWith({
-      $or: [
-        { sourceGameId: "66b555f2" },
-        {
-          sourceGameIdAliases: {
-            $in: ["66b555f2", "66B555F2"],
-          },
-        },
-      ],
-    });
     expect(thrown).toBeInstanceOf(Response);
     expect((thrown as Response).status).toBe(302);
     expect((thrown as Response).headers.get("Location")).toBe(
@@ -144,7 +93,10 @@ describe("replay viewer cache authentication", () => {
   });
 
   it("redirects an anonymous cache miss before fetch", async () => {
-    mocks.findReplay.mockReturnValue(findResult(null));
+    mocks.resolveReplayViewerData.mockResolvedValue({
+      status: "authentication_required",
+      canonicalGameId: gameId,
+    });
     let thrown: unknown;
 
     try {
@@ -158,11 +110,9 @@ describe("replay viewer cache authentication", () => {
     expect((thrown as Response).headers.get("Location")).toBe(
       `/sign-in?mode=auth&returnTo=%2Fwatch%2Freplay%2F${gameId}`
     );
-    expect(mocks.fetchOrphanReplayLog).not.toHaveBeenCalled();
   });
 
   it("attributes an authenticated cache miss", async () => {
-    mocks.findReplay.mockReturnValue(findResult(null));
     mocks.getAuthenticatedUser.mockResolvedValue({
       sub: "507f1f77bcf86cd799439011",
       username: "Alice",
@@ -171,10 +121,10 @@ describe("replay viewer cache authentication", () => {
     const result = await loader(loaderArgs());
 
     expect(result.log.sourceGameId).toBe(gameId);
-    expect(mocks.fetchOrphanReplayLog).toHaveBeenCalledWith(
-      "tenhou",
+    expect(mocks.resolveReplayViewerData).toHaveBeenCalledWith({
       gameId,
-      "507f1f77bcf86cd799439011"
-    );
+      reviewShortId: null,
+      userId: "507f1f77bcf86cd799439011",
+    });
   });
 });

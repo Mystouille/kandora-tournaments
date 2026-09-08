@@ -117,8 +117,10 @@ try {
     "vitest",
     "run",
     "mobile/src/App.spec.ts",
-    "mobile/src/auth/nativeDeepLinks.spec.ts"
-  ) "Verify mobile shell and auth callback"
+    "mobile/src/auth/nativeDeepLinks.spec.ts",
+    "mobile/src/contentIntentExecution.spec.ts",
+    "mobile/src/deepLinks.spec.ts"
+  ) "Verify mobile shell and deep links"
   Invoke-External $npm @("run", "mobile:build") "Build mobile web assets"
   Invoke-External $npx @("cap", "copy", "android") "Copy assets into Android"
   Invoke-External $gradle @(
@@ -178,6 +180,39 @@ try {
     $callbackHandler -notcontains "com.kandora.app/.MainActivity"
   ) {
     throw "Installed APK does not handle the mobile authentication callback."
+  }
+
+  $appLinks = @(
+    "https://tournaments.tnt-sessions.com/game/probe-match",
+    "https://tournaments.tnt-sessions.com/spectate/probe-match",
+    "https://tournaments.tnt-sessions.com/watch/live/AB12CD34",
+    "https://tournaments.tnt-sessions.com/watch/replay/probe-replay"
+  )
+  foreach ($appLink in $appLinks) {
+    Write-Host "`n==> Verify mobile app link $appLink" -ForegroundColor Cyan
+    $appLinkHandler = @(& $adb @(
+      "-s",
+      $Serial,
+      "shell",
+      "cmd",
+      "package",
+      "resolve-activity",
+      "--brief",
+      "-a",
+      "android.intent.action.VIEW",
+      "-c",
+      "android.intent.category.BROWSABLE",
+      "-d",
+      $appLink,
+      "-p",
+      "com.kandora.app"
+    ))
+    if (
+      $LASTEXITCODE -ne 0 -or
+      $appLinkHandler -notcontains "com.kandora.app/.MainActivity"
+    ) {
+      throw "Installed APK does not register app link '$appLink'."
+    }
   }
 
   Invoke-External $adb @(

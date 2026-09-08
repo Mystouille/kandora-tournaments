@@ -28,6 +28,10 @@ import {
   rotateSeatValues,
   roundBoundaries,
 } from "~/game/replay/player";
+import {
+  resolveReplayInitialLocation,
+  type ReplayLocationRequest,
+} from "~/game/replay/replayLocation";
 import type { ReplayLog } from "~/game/replay/types";
 import { waitsForReplayView } from "~/game/replay/waits";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
@@ -483,6 +487,7 @@ interface MobileReplayViewerProps {
   review: MyReplayLogDetails["review"];
   loading: boolean;
   error: string | null;
+  initialLocation?: ReplayLocationRequest;
   onClose: () => void;
   onRetry: () => void;
 }
@@ -523,6 +528,7 @@ function LoadedMobileReplayViewer({
   log,
   seatEnrichment,
   review,
+  initialLocation,
   onClose,
 }: MobileReplayViewerProps & { log: ReplayLog }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -539,17 +545,18 @@ function LoadedMobileReplayViewer({
       ),
     [bounds.max, bounds.min, review]
   );
-  const [index, setIndex] = useState(
-    commentIndices[0] ?? rounds[0] ?? bounds.min
+  const initial = useMemo(
+    () =>
+      resolveReplayInitialLocation({
+        request: initialLocation ?? {},
+        bounds,
+        rounds,
+        review,
+      }),
+    [bounds, initialLocation, review, rounds]
   );
-  const [focusSeat, setFocusSeat] = useState<Seat>(
-    review?.seat === 0 ||
-      review?.seat === 1 ||
-      review?.seat === 2 ||
-      review?.seat === 3
-      ? review.seat
-      : 0
-  );
+  const [index, setIndex] = useState(initial.index);
+  const [focusSeat, setFocusSeat] = useState<Seat>(initial.seat);
   const [displayOptions, setDisplayOptions] =
     useState<MobileReplayDisplayOptions>(DEFAULT_MOBILE_REPLAY_DISPLAY_OPTIONS);
   const [navigationOpen, setNavigationOpen] = useState(false);

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MobileAuthSession } from "../auth/mobileAuth";
-import { loadReplayForRow, ReplayLoadError } from "./replayLoader";
+import {
+  loadDirectReplay,
+  loadReplayForRow,
+  ReplayLoadError,
+} from "./replayLoader";
 import type { ReplayLibraryRow } from "./replayLibrary";
 
 const log = {
@@ -178,6 +182,99 @@ describe("mobile replay row loading", () => {
     );
 
     await expect(request).rejects.toMatchObject({ code: "review_not_found" });
+    fetcher.mockRestore();
+  });
+
+  it("loads a direct replay anonymously and retains canonical metadata", async () => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        canonicalGameId: "canonical-game",
+        resolvedSeat: 3,
+        log,
+        seatEnrichment: [null, null, null, null],
+        review: null,
+      })
+    );
+
+    await expect(
+      loadDirectReplay("alias", null, {
+        webAppBaseUrl: "https://play.example.com",
+        authSession: null,
+      })
+    ).resolves.toMatchObject({
+      canonicalGameId: "canonical-game",
+      resolvedSeat: 3,
+    });
+    const request = fetcher.mock.calls[0][1];
+    const body = request?.body as URLSearchParams;
+    expect(body.get("gameId")).toBe("alias");
+    expect(body.has("token")).toBe(false);
+    fetcher.mockRestore();
+  });
+
+  it("maps an authenticated direct cache miss requirement", async () => {
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        Response.json({ error: "authentication_required" }, { status: 401 })
+      );
+
+    await expect(
+      loadDirectReplay("game-1", null, {
+        webAppBaseUrl: "https://play.example.com",
+        authSession: null,
+      })
+    ).rejects.toMatchObject({ code: "authentication_required" });
+    fetcher.mockRestore();
+  });
+
+  it("retries a public direct replay anonymously after token expiry", async () => {
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({ error: "invalid_or_expired_session" }, { status: 401 })
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          canonicalGameId: "game-1",
+          resolvedSeat: null,
+          log,
+          seatEnrichment: [null, null, null, null],
+          review: null,
+        })
+      );
+
+    await expect(
+      loadDirectReplay("game-1", null, {
+        webAppBaseUrl: "https://play.example.com",
+        authSession: session,
+      })
+    ).resolves.toMatchObject({ canonicalGameId: "game-1" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const authenticatedBody = fetcher.mock.calls[0][1]?.body as URLSearchParams;
+    const anonymousBody = fetcher.mock.calls[1][1]?.body as URLSearchParams;
+    expect(authenticatedBody.get("token")).toBe("game-token");
+    expect(anonymousBody.has("token")).toBe(false);
+    fetcher.mockRestore();
+  });
+
+  it("preserves not-found from the anonymous stale-token retry", async () => {
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({ error: "invalid_or_expired_session" }, { status: 401 })
+      )
+      .mockResolvedValueOnce(
+        Response.json({ error: "replay_not_found" }, { status: 404 })
+      );
+
+    await expect(
+      loadDirectReplay("missing", null, {
+        webAppBaseUrl: "https://play.example.com",
+        authSession: session,
+      })
+    ).rejects.toMatchObject({ code: "not_found" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
     fetcher.mockRestore();
   });
 });

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   requireGameApiAccess: vi.fn(),
   startRelay: vi.fn(),
   updateLiveGame: vi.fn(),
+  verifyGameToken: vi.fn(),
 }));
 
 vi.mock("~/game/feature-gate", () => ({
@@ -15,6 +16,10 @@ vi.mock("~/game/feature-gate", () => ({
 
 vi.mock("~/utils/gameAuth.server", () => ({
   requireGameApiAccess: mocks.requireGameApiAccess,
+}));
+
+vi.mock("~/utils/jwt.server", () => ({
+  verifyGameToken: mocks.verifyGameToken,
 }));
 
 vi.mock("~/utils/dbConnection.server", () => ({
@@ -48,6 +53,7 @@ describe("game watch API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.gameEnabled = true;
+    mocks.verifyGameToken.mockResolvedValue({ sub: "user-1" });
     mocks.requireGameApiAccess.mockResolvedValue({
       authorized: true,
       user: { sub: "user-1", username: "Alice", loginMethod: "discord" },
@@ -96,5 +102,41 @@ describe("game watch API", () => {
       "watch-1",
       "2026081004gm-0009-11017-9b9f92d7"
     );
+  });
+
+  it("starts a relay for a native game token with CORS headers", async () => {
+    const response = await action({
+      request: new Request("http://app.test/api/game/watch", {
+        method: "POST",
+        body: new URLSearchParams({
+          token: "game-token",
+          watchId: "watch-1",
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(mocks.verifyGameToken).toHaveBeenCalledWith("game-token");
+    expect(mocks.requireGameApiAccess).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid native token and handles OPTIONS", async () => {
+    mocks.verifyGameToken.mockResolvedValue(null);
+    const invalid = await action({
+      request: new Request("http://app.test/api/game/watch", {
+        method: "POST",
+        body: new URLSearchParams({ token: "expired", watchId: "watch-1" }),
+      }),
+    });
+    expect(invalid.status).toBe(401);
+    expect(mocks.startRelay).not.toHaveBeenCalled();
+
+    const options = await action({
+      request: new Request("http://app.test/api/game/watch", {
+        method: "OPTIONS",
+      }),
+    });
+    expect(options.status).toBe(204);
   });
 });

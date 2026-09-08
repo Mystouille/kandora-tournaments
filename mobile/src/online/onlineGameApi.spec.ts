@@ -3,6 +3,7 @@ import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   createOnlineRoom,
   getOnlineGameConnectionDetails,
+  resolveOnlineWatchId,
 } from "./onlineGameApi";
 
 const session: MobileAuthSession = {
@@ -18,12 +19,7 @@ describe("mobile online game API", () => {
       .mockResolvedValue(Response.json({ matchId: "room 1" }));
 
     await expect(
-      createOnlineRoom(
-        "https://play.example.com",
-        session,
-        "m-league",
-        fetcher
-      )
+      createOnlineRoom("https://play.example.com", session, "m-league", fetcher)
     ).resolves.toBe("room 1");
     expect(fetcher).toHaveBeenCalledWith(
       "https://play.example.com/api/game/rooms",
@@ -32,15 +28,13 @@ describe("mobile online game API", () => {
   });
 
   it("builds configured and same-origin WebSocket URLs", async () => {
-    const configuredFetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({
-          token: "game-token",
-          wsUrl: "wss://game.example.com/",
-          wsPath: "/ws/game",
-        })
-      );
+    const configuredFetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        token: "game-token",
+        wsUrl: "wss://game.example.com/",
+        wsPath: "/ws/game",
+      })
+    );
     await expect(
       getOnlineGameConnectionDetails(
         "https://play.example.com",
@@ -53,15 +47,13 @@ describe("mobile online game API", () => {
       wsUrl: "wss://game.example.com/ws/game/room%201",
     });
 
-    const fallbackFetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({
-          token: "game-token",
-          wsUrl: null,
-          wsPath: "/ws/game",
-        })
-      );
+    const fallbackFetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        token: "game-token",
+        wsUrl: null,
+        wsPath: "/ws/game",
+      })
+    );
     await expect(
       getOnlineGameConnectionDetails(
         "http://localhost:5173",
@@ -72,6 +64,30 @@ describe("mobile online game API", () => {
     ).resolves.toEqual({
       token: "game-token",
       wsUrl: "ws://localhost:5173/ws/game/room-2",
+    });
+  });
+
+  it("resolves a public watch id with the native game token", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ ok: true, matchId: "relay-1" }));
+
+    await expect(
+      resolveOnlineWatchId(
+        "https://play.example.com",
+        session,
+        "AB12CD34",
+        fetcher
+      )
+    ).resolves.toBe("relay-1");
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://play.example.com/api/game/watch",
+      { method: "POST", body: expect.any(URLSearchParams) }
+    );
+    const body = fetcher.mock.calls[0][1]?.body as URLSearchParams;
+    expect(Object.fromEntries(body)).toEqual({
+      token: "game-token",
+      watchId: "AB12CD34",
     });
   });
 });

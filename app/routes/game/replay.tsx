@@ -6,7 +6,6 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router";
-import { connectToDatabase } from "~/utils/dbConnection.server";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import {
   applyReplayEvent,
@@ -16,18 +15,14 @@ import {
   rotateSeatValues,
   roundBoundaries,
 } from "~/game/replay/player";
+import {
+  normalizeReplaySeat,
+  replayLocationRequestFromSearchParams,
+  resolveReplayInitialLocation,
+} from "~/game/replay/replayLocation";
 import type { ReplayView } from "~/game/replay/player";
 import type { GameEvent, Seat } from "~/game/protocol/messages";
-import { ReplayLogModel, type DbReplayLog } from "~/core/models/game/ReplayLog";
-import { ReplayReviewModel } from "~/core/models/game/ReplayReview";
-import { inferReplaySource } from "~/game/replay/inferSource";
-import { fetchOrphanReplayLog } from "~/services/fetchOrphanReplayLog.server";
-import { resolveSeatEnrichmentForReplay } from "~/services/replayEnrichment.server";
-import {
-  resolveReviewersForDoc,
-  serializeReview,
-} from "~/services/replayReview.server";
-import { annotateWallSchedule } from "~/game/replay/annotateWallSchedule";
+import { resolveReplayViewerData } from "~/services/replayViewerData.server";
 import { annotateWaits } from "~/services/annotateWaits";
 import {
   bytesToBase64,
@@ -51,7 +46,7 @@ import {
   type ReviewDraftSnapshot,
   type StoredActiveReviewDraft,
 } from "./reviewDraftStorage";
-import type { ReplayLog, ReplaySource } from "~/game/replay/types";
+import type { ReplaySource } from "~/game/replay/types";
 import type {
   SerializedReview,
   SerializedReviewEdit,
@@ -216,26 +211,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw redirect(`/watch/replay/${cleanGameId}${qs ? `?${qs}` : ""}`);
   };
 
-  const source = inferReplaySource(cleanGameId);
-  await connectToDatabase();
-
-  // Optional ?review=<shortId>: load the review document so the
-  // viewer can overlay the reviewer's notes and drawings. We only
-  // honor it when the review actually belongs to this replay; this
-  // makes the deeplink robust to URL tampering and prevents a stale
-  // share-link from polluting an unrelated game.
-  const reviewShortId = url.searchParams.get("review");
-  let loadedReview: SerializedReview | null = null;
-  if (reviewShortId) {
-    const reviewDoc = await ReplayReviewModel.findOne({
-      shortId: reviewShortId,
-    }).lean();
-    if (reviewDoc && reviewDoc.sourceGameId === cleanGameId) {
-      const reviewers = await resolveReviewersForDoc(reviewDoc);
-      loadedReview = serializeReview(reviewDoc, reviewers);
-    }
-  }
-
   // Identify the current user (if any) so the component can
   // enable the editing cartridge for the review owner. The
   // replay route itself does not require auth.
@@ -251,124 +226,40 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   } catch {
     /* anonymous viewer */
   }
+  const resolved = await resolveReplayViewerData({
+    gameId: cleanGameId,
+    reviewShortId: url.searchParams.get("review"),
+    userId: currentUserId,
+  });
 
-  const replayIdCandidates = /^[0-9a-f]{8}$/i.test(cleanGameId)
-    ? [
-        ...new Set([
-          cleanGameId,
-          cleanGameId.toLowerCase(),
-          cleanGameId.toUpperCase(),
-        ]),
-      ]
-    : [cleanGameId];
-  const query: Record<string, unknown> = {
-    $or: [
-      { sourceGameId: cleanGameId },
-      { sourceGameIdAliases: { $in: replayIdCandidates } },
-    ],
-  };
-  if (source) {
-    query.source = source;
-  }
-  const doc = await ReplayLogModel.findOne(query)
-    .lean<DbReplayLog & { _id: unknown }>()
-    .exec();
-
-  // Cache hit: hand the persisted row straight to the component.
-  if (doc) {
-    if (doc.sourceGameId !== cleanGameId) {
+  if (resolved.status === "found") {
+    if (resolved.canonicalGameId !== cleanGameId) {
       const qs = url.searchParams.toString();
       throw redirect(
-        `/watch/replay/${encodeURIComponent(doc.sourceGameId)}${qs ? `?${qs}` : ""}`
+        `/watch/replay/${encodeURIComponent(resolved.canonicalGameId)}${qs ? `?${qs}` : ""}`
       );
     }
     if (rcWind !== null) {
-      redirectToCanonicalRcUrl(doc.events as GameEvent[]);
+      redirectToCanonicalRcUrl(resolved.log.events);
     }
-    const log: ReplayLog = {
-      source: doc.source as ReplaySource,
-      sourceGameId: doc.sourceGameId,
-      ruleSet: doc.ruleSet,
-      ruleSetDetails: doc.ruleSetDetails as Record<string, unknown> | undefined,
-      startedAt: doc.startedAt,
-      endedAt: doc.endedAt,
-      seats: doc.seats.map((seat) => ({
-        seat: seat.seat as Seat,
-        displayName: seat.displayName,
-        finalScore: seat.finalScore,
-        place: seat.place as 1 | 2 | 3 | 4,
-      })),
-      events: annotateWallSchedule(doc.events as GameEvent[]),
-      schemaVersion: doc.schemaVersion,
-    };
-    // Pre-compute per-event wait snapshots server-side so the
-    // renderer never runs shanten on the client.
-    const waitsByIndex = annotateWaits(log.events);
-    const seatEnrichment = await resolveSeatEnrichmentForReplay(
-      cleanGameId,
-      log.seats
-    );
     return {
-      log,
-      waitsByIndex,
-      review: loadedReview,
+      log: resolved.log,
+      waitsByIndex: annotateWaits(resolved.log.events),
+      review: resolved.review,
       currentUserId,
       currentUserName,
-      seatEnrichment,
+      seatEnrichment: resolved.seatEnrichment,
     };
   }
-
-  // Cache miss: try to fetch + parse from the platform on-demand
-  // (Phase 4.5 follow-up — orphan logs are fine for now, no
-  // `Game.replayLogRef` link is created). We need a source to know
-  // which connector to talk to; inference returning `null` means
-  // we can only 404.
-  if (!source) {
-    throw new Response(
-      "Replay not yet available; it will appear after the next hydration cycle.",
-      { status: 404 }
-    );
-  }
-  if (!currentUserId) {
+  if (resolved.status === "authentication_required") {
     throw redirect(
       authSignInPath(localReturnPathFromRequest(request, basePath))
     );
   }
-  const fetched = await fetchOrphanReplayLog(
-    source,
-    cleanGameId,
-    currentUserId
-  ).catch((error) => {
-    console.error(
-      `[replay loader] connector fetch failed for ${source}/${cleanGameId}`,
-      error
-    );
-    return null;
-  });
-  if (!fetched) {
-    throw new Response(
-      "Replay not yet available; it will appear after the next hydration cycle.",
-      { status: 404 }
-    );
-  }
-  if (rcWind !== null) {
-    redirectToCanonicalRcUrl(fetched.events);
-  }
-  const annotatedLog = {
-    ...fetched,
-    events: annotateWallSchedule(fetched.events),
-  };
-  return {
-    log: annotatedLog,
-    waitsByIndex: annotateWaits(annotatedLog.events),
-    review: loadedReview,
-    currentUserId,
-    currentUserName,
-    seatEnrichment: await resolveSeatEnrichmentForReplay(
-      cleanGameId,
-      annotatedLog.seats
-    ),
-  };
+  throw new Response(
+    "Replay not yet available; it will appear after the next hydration cycle.",
+    { status: 404 }
+  );
 }
 
 const SOURCE_LABEL: Record<ReplaySource, string> = {
@@ -488,65 +379,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     }
   };
 
-  const clampSeat = (n: number): Seat => {
-    if (n === 1 || n === 2 || n === 3) {
-      return n;
-    }
-    return 0;
-  };
-  const clampToBounds = (n: number): number => {
-    return Math.max(bounds.min, Math.min(n, bounds.max));
-  };
-
   // Resolve the initial playhead + seat from the URL exactly
   // once at mount; subsequent navigation flows through
   // component state.
   const initial = useMemo(() => {
-    const seatRaw = Number(searchParams.get("seat"));
-    let seat: Seat = Number.isFinite(seatRaw) ? clampSeat(seatRaw) : 0;
-    // When the URL points at a published review that's already
-    // bound to a seat, the seat URL param is ignored: a review is
-    // a single-perspective document, so viewers always land on
-    // the reviewed seat regardless of any `?seat=` they might
-    // have inherited from a previous deeplink.
-    if (initialReview && typeof initialReview.seat === "number") {
-      seat = clampSeat(initialReview.seat);
-    }
-
-    const eventRaw = searchParams.get("event");
-    if (eventRaw !== null && eventRaw !== "") {
-      const n = Number(eventRaw);
-      if (Number.isFinite(n)) {
-        return { seat, index: clampToBounds(Math.trunc(n)) };
-      }
-    }
-    const roundRaw = searchParams.get("round");
-    if (roundRaw !== null && roundRaw !== "") {
-      const n = Number(roundRaw);
-      if (Number.isFinite(n)) {
-        const ord = Math.trunc(n) - 1;
-        const r = rounds[ord];
-        if (r !== undefined) {
-          return { seat, index: clampToBounds(r) };
-        }
-      }
-    }
-    // When the URL points at a published review but doesn't
-    // pin a specific frame, jump to the first event that
-    // actually carries an annotation. Without this the viewer
-    // would land on event 0 (or the first hand_start) and see
-    // a blank canvas, even though the review has a drawing on
-    // some later event.
-    if (initialReview && initialReview.edits.length > 0) {
-      const firstEdit = initialReview.edits.reduce(
-        (min, e) => (e.eventIndex < min ? e.eventIndex : min),
-        initialReview.edits[0].eventIndex
-      );
-      return { seat, index: clampToBounds(firstEdit) };
-    }
-    // Open one event past the first hand_start when available
-    // so the viewer doesn't greet the user with an empty table.
-    return { seat, index: rounds[0] ?? bounds.min };
+    return resolveReplayInitialLocation({
+      request: replayLocationRequestFromSearchParams(searchParams),
+      bounds,
+      rounds,
+      review: initialReview,
+    });
     // Snapshot-only: deliberately ignore later searchParams /
     // bounds / rounds changes here — the playhead is driven by
     // component state from this point on.
@@ -738,7 +580,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   }, [review, localEdits, localFirstEditSeat]);
   const effectiveReviewSeat: Seat | null = (() => {
     if (review && typeof review.seat === "number") {
-      return clampSeat(review.seat);
+      return normalizeReplaySeat(review.seat);
     }
     return localFirstEditSeat;
   })();
@@ -1016,10 +858,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       typeof review?.seat !== "number" &&
       snapshot.seat !== null
     ) {
-      setLocalFirstEditSeat(clampSeat(snapshot.seat));
+      setLocalFirstEditSeat(normalizeReplaySeat(snapshot.seat));
     }
     if (snapshot.seat !== null) {
-      setFocusSeat(clampSeat(snapshot.seat));
+      setFocusSeat(normalizeReplaySeat(snapshot.seat));
     }
 
     const active = reconciliation.active;

@@ -3,6 +3,21 @@ import { connectToDatabase } from "~/utils/dbConnection.server";
 import { LiveGameModel } from "~/core/models/tournament/LiveGame";
 import { RelayError, startRelay } from "~/services/gameServer.server";
 import { requireGameApiAccess } from "~/utils/gameAuth.server";
+import { verifyGameToken } from "~/utils/jwt.server";
+
+const MOBILE_CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "access-control-allow-headers": "content-type",
+  "cache-control": "no-store",
+} as const;
+
+function json(body: unknown, status = 200, mobile = false): Response {
+  return Response.json(body, {
+    status,
+    headers: mobile ? MOBILE_CORS_HEADERS : undefined,
+  });
+}
 
 /**
  * POST /api/game/watch  (form field `watchId`)
@@ -16,23 +31,38 @@ import { requireGameApiAccess } from "~/utils/gameAuth.server";
  * itself is de-duplicated by the game-server, so repeated clicks are cheap.
  */
 export async function action({ request }: { request: Request }) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: MOBILE_CORS_HEADERS });
+  }
+  if (request.method !== "POST") {
+    return json({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  const mobile = (request.headers.get("content-type") ?? "").startsWith(
+    "application/x-www-form-urlencoded"
+  );
   if (!isGameEnabled()) {
-    return Response.json(
-      { ok: false, error: "game_disabled" },
-      { status: 404 }
-    );
+    return json({ ok: false, error: "game_disabled" }, 404, mobile);
   }
-  const access = await requireGameApiAccess(request);
-  if (!access.authorized) {
-    return access.response;
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return json({ ok: false, error: "invalid_body" }, 400, mobile);
   }
-  const form = await request.formData();
+  if (mobile) {
+    const token = form.get("token");
+    if (typeof token !== "string" || (await verifyGameToken(token)) === null) {
+      return json({ ok: false, error: "invalid_or_expired_token" }, 401, true);
+    }
+  } else {
+    const access = await requireGameApiAccess(request);
+    if (!access.authorized) {
+      return access.response;
+    }
+  }
   const watchId = String(form.get("watchId") ?? "").trim();
   if (!watchId) {
-    return Response.json(
-      { ok: false, error: "missing_watchId" },
-      { status: 400 }
-    );
+    return json({ ok: false, error: "missing_watchId" }, 400, mobile);
   }
 
   await connectToDatabase();
@@ -40,7 +70,7 @@ export async function action({ request }: { request: Request }) {
     $or: [{ watchId }, { gameId: watchId }],
   }).lean();
   if (!live) {
-    return Response.json({ ok: false, error: "not_live" }, { status: 404 });
+    return json({ ok: false, error: "not_live" }, 404, mobile);
   }
 
   try {
@@ -52,15 +82,16 @@ export async function action({ request }: { request: Request }) {
       { _id: live._id },
       { $set: { relayMatchId: matchId } }
     ).exec();
-    return Response.json({ ok: true, matchId });
+    return json({ ok: true, matchId }, 200, mobile);
   } catch (error) {
     console.error("Failed to start live relay:", error);
-    return Response.json(
+    return json(
       {
         ok: false,
         error: error instanceof RelayError ? error.code : "relay_failed",
       },
-      { status: 502 }
+      502,
+      mobile
     );
   }
 }

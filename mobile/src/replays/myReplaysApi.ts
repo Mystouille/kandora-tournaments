@@ -91,8 +91,18 @@ const MyReplayLogApiResponseSchema = z.object({
     .transform((review) => review ?? null),
 });
 
+const DirectReplayLogApiResponseSchema = MyReplayLogApiResponseSchema.extend({
+  canonicalGameId: z.string().min(1),
+  resolvedSeat: z
+    .union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)])
+    .nullable(),
+});
+
 export type MyReplayApiGroup = z.infer<typeof MyReplayApiGroupSchema>;
 export type MyReplayLogDetails = z.infer<typeof MyReplayLogApiResponseSchema>;
+export type DirectReplayLogDetails = z.infer<
+  typeof DirectReplayLogApiResponseSchema
+>;
 
 export class MyReplaysHttpError extends Error {
   constructor(
@@ -173,18 +183,56 @@ export async function fetchMyReplayLog(
   }
   return {
     ...details,
-    seatEnrichment: details.seatEnrichment.map((enrichment) => {
-      if (enrichment === null || enrichment.teamLogoUrl === null) {
-        return enrichment;
-      }
-      try {
-        return {
-          ...enrichment,
-          teamLogoUrl: webAppPath(baseUrl, enrichment.teamLogoUrl),
-        };
-      } catch {
-        return { ...enrichment, teamLogoUrl: null };
-      }
-    }),
+    seatEnrichment: absoluteSeatEnrichment(baseUrl, details.seatEnrichment),
+  };
+}
+
+function absoluteSeatEnrichment(
+  baseUrl: string,
+  seatEnrichment: MyReplayLogDetails["seatEnrichment"]
+): MyReplayLogDetails["seatEnrichment"] {
+  return seatEnrichment.map((enrichment) => {
+    if (enrichment === null || enrichment.teamLogoUrl === null) {
+      return enrichment;
+    }
+    try {
+      return {
+        ...enrichment,
+        teamLogoUrl: webAppPath(baseUrl, enrichment.teamLogoUrl),
+      };
+    } catch {
+      return { ...enrichment, teamLogoUrl: null };
+    }
+  });
+}
+
+export async function fetchDirectReplayLog(
+  baseUrl: string,
+  gameId: string,
+  reviewShortId: string | null,
+  session: MobileAuthSession | null,
+  fetcher: typeof fetch = fetch
+): Promise<DirectReplayLogDetails> {
+  const body = new URLSearchParams({ gameId });
+  if (reviewShortId !== null) {
+    body.set("reviewShortId", reviewShortId);
+  }
+  if (session !== null) {
+    body.set("token", session.token);
+  }
+  const response = await fetcher(webAppPath(baseUrl, "/api/replays/log"), {
+    method: "POST",
+    body,
+  });
+  if (!response.ok) {
+    throw await myReplaysHttpError(
+      response,
+      `Direct replay request failed (${response.status})`
+    );
+  }
+  const details = DirectReplayLogApiResponseSchema.parse(await response.json());
+  return {
+    ...details,
+    seatEnrichment: absoluteSeatEnrichment(baseUrl, details.seatEnrichment),
   };
 }

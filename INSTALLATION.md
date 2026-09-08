@@ -222,10 +222,20 @@ read access to the sheet. Both `NANIKIRU_SHEET_ID` and
 
 ### In-app mahjong game _(optional)_
 
-| Variable               | Description                                                                                                                                                                                  |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GAME_ENABLED`         | `true` to enable the built-in mahjong game routes. **Off by default** — game routes return 404 when unset.                                                                                   |
-| `VITE_PUBLIC_BASE_URL` | Canonical public origin baked into in-game share links at **build** time. Set it for prod / mobile builds so shared URLs point at your public hostname instead of the client's local origin. |
+| Variable                                    | Description                                                                                                                                                                                                                                   |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GAME_ENABLED`                              | `true` to enable the built-in mahjong game routes. **Off by default** — game routes return 404 when unset.                                                                                                                                    |
+| `VITE_PUBLIC_BASE_URL`                      | Canonical public origin baked into in-game share links at **build** time. Set it for prod / mobile builds so shared URLs point at your public hostname instead of the client's local origin.                                                  |
+| `APPLE_APPLICATION_IDENTIFIER_PREFIX`       | Ten-character Apple application identifier prefix for the `com.kandora.app` App ID. Often, but not always, the Apple Team ID. Enables `/.well-known/apple-app-site-association`; malformed or missing values make that resource return `503`. |
+| `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS` | Comma-separated SHA-256 certificate fingerprints for installed `com.kandora.app` builds. With Play App Signing, use the app-signing certificate from Play Console, not only the upload key. Enables `/.well-known/assetlinks.json`.           |
+
+The association resources must be deployed at
+`https://tournaments.tnt-sessions.com/.well-known/` before distributing the
+corresponding native build. Both resources must return `200` directly as
+`application/json`; redirects and placeholder identifiers are invalid. Enable
+the Associated Domains capability on the Apple App ID as well as keeping the
+tracked Xcode entitlement. Apple may take up to 24 hours to refresh its
+associated-domains CDN, and reinstalling a test build forces a new device check.
 
 ### Workers _(optional)_
 
@@ -289,7 +299,7 @@ docker run -p 3000:3000 --env-file .env kandora-tournaments
 | `npm run lint`              | Run ESLint. `npm run lint:fix` to auto-fix.               |
 | `npm run test`              | Run the Vitest suite.                                     |
 | `npm run submodules:init`   | Check out the `kandora-core` + `kandora-game` submodules. |
-| `npm run core:update`       | Update `app/core` to the latest `kandora-core` main.        |
+| `npm run core:update`       | Update `app/core` to the latest `kandora-core` main.      |
 | `npm run game:update`       | Update `app/game` to the latest `kandora-game` main.      |
 | `npm run worker:league`     | Run the league hydration worker.                          |
 | `npm run worker:scheduling` | Run the scheduling worker.                                |

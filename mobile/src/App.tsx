@@ -17,7 +17,7 @@ import {
   UserRound,
   Volume2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { rotateMatchView } from "~/game/replay/player";
 import { useMatchStore } from "~/game/client/store";
 import { findNoCallAutoPass } from "~/game/client/callPrompt";
@@ -57,14 +57,23 @@ import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
 import { MobileGameMenu } from "./game/MobileGameMenu";
 import { MobileReplays } from "./replays/MobileReplays";
 import { MobileReplayViewer } from "./replays/MobileReplayViewer";
-import { loadReplayForRow, ReplayLoadError } from "./replays/replayLoader";
+import {
+  loadDirectReplay,
+  loadReplayForRow,
+  ReplayLoadError,
+} from "./replays/replayLoader";
 import type { ReplayLibraryRow } from "./replays/replayLibrary";
 import type { ReplayLog } from "~/game/replay/types";
+import type { ReplayLocationRequest } from "~/game/replay/replayLocation";
 import type { MyReplayLogDetails } from "./replays/myReplaysApi";
 import {
   INITIAL_ONLINE_MATCH_STATE,
   OnlineMatchController,
 } from "./online/OnlineMatchController";
+import {
+  OnlineGameHttpError,
+  resolveOnlineWatchId,
+} from "./online/onlineGameApi";
 import {
   clearMobileAuthSession,
   clearPendingMobileAuth,
@@ -89,6 +98,19 @@ import {
   type MobileShellPage,
   type MobileStorageState,
 } from "./shell";
+import {
+  clearPendingMobileContentUrl,
+  loadPendingMobileContentIntent,
+  mobileContentIntentKey,
+  parseMobileContentIntent,
+  savePendingMobileContentUrl,
+  type MobileContentIntent,
+  type PendingMobileContentIntent,
+} from "./deepLinks";
+import {
+  ContentIntentExecutionGate,
+  type ContentIntentExecutionTicket,
+} from "./contentIntentExecution";
 
 const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   status: "idle",
@@ -108,6 +130,10 @@ type MobileAuthStatus =
 
 interface MobileReplayViewerState {
   row: ReplayLibraryRow | null;
+  directIntent: Extract<MobileContentIntent, { kind: "watch-replay" }> | null;
+  viewerKey: string | null;
+  initialLocation: ReplayLocationRequest;
+  returnPage: "home" | "replays";
   log: ReplayLog | null;
   seatEnrichment: MyReplayLogDetails["seatEnrichment"];
   review: MyReplayLogDetails["review"];
@@ -132,6 +158,15 @@ export function App() {
   const authGenerationRef = useRef(0);
   const handledAuthCallbackRef = useRef<string | null>(null);
   const pendingVerifierRef = useRef<string | null>(null);
+  const pendingContentIntentRef = useRef<PendingMobileContentIntent | null>(
+    null
+  );
+  const contentIntentExecutionGateRef = useRef(
+    new ContentIntentExecutionGate()
+  );
+  const lastContentDeliveryRef = useRef<{ key: string; at: number } | null>(
+    null
+  );
   const replayLoadGenerationRef = useRef(0);
   const resumeAfterBackgroundRef = useRef<"solo" | "nearby-host" | null>(null);
   const homeSettingsRef = useRef<HTMLDivElement>(null);
@@ -140,6 +175,11 @@ export function App() {
   pageRef.current = page;
   const [authStatus, setAuthStatus] = useState<MobileAuthStatus>("checking");
   const [authError, setAuthError] = useState<string | null>(null);
+  const [pendingContentIntent, setPendingContentIntent] =
+    useState<PendingMobileContentIntent | null>(null);
+  pendingContentIntentRef.current = pendingContentIntent;
+  const [pendingContentIntentNeedsAuth, setPendingContentIntentNeedsAuth] =
+    useState(false);
   const [mobileAuthSession, setMobileAuthSession] =
     useState<MobileAuthSession | null>(null);
   const [controllersReady, setControllersReady] = useState(false);
@@ -160,12 +200,18 @@ export function App() {
   const [replayViewerState, setReplayViewerState] =
     useState<MobileReplayViewerState>({
       row: null,
+      directIntent: null,
+      viewerKey: null,
+      initialLocation: {},
+      returnPage: "replays",
       log: null,
       seatEnrichment: [null, null, null, null],
       review: null,
       loading: false,
       error: null,
     });
+  const replayViewerStateRef = useRef(replayViewerState);
+  replayViewerStateRef.current = replayViewerState;
   const [storageState, setStorageState] =
     useState<MobileStorageState>("loading");
   const [localState, setLocalState] = useState(INITIAL_LOCAL_STATE);
@@ -210,6 +256,24 @@ export function App() {
     allowLoopback: !Capacitor.isNativePlatform(),
   });
   const canOpenNearby = nearbyPageAvailable(controllersReady, storageState);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || webAppBaseUrl === null) {
+      return;
+    }
+    const restored = loadPendingMobileContentIntent(
+      window.localStorage,
+      webAppBaseUrl
+    );
+    if (restored !== null) {
+      const key = mobileContentIntentKey(restored.intent);
+      contentIntentExecutionGateRef.current.supersede();
+      replayLoadGenerationRef.current += 1;
+      lastContentDeliveryRef.current = { key, at: Date.now() };
+      pendingContentIntentRef.current = restored;
+      setPendingContentIntent(restored);
+    }
+  }, [webAppBaseUrl]);
 
   useEffect(() => {
     return installGameSoundBindings({
@@ -284,20 +348,38 @@ export function App() {
     }
     const remaining = mobileAuthSession.expiresAt - Date.now();
     if (remaining <= 0) {
+      if (pendingContentIntentRef.current?.intent.kind !== "watch-replay") {
+        contentIntentExecutionGateRef.current.supersede();
+      }
       clearMobileAuthSession(window.localStorage);
       void onlineControllerRef.current?.leave();
       setMobileAuthSession(null);
       setAuthStatus("signed_out");
-      setPage("home");
+      if (
+        pageRef.current !== "replay-viewer" ||
+        replayViewerStateRef.current.directIntent === null ||
+        replayViewerStateRef.current.log === null
+      ) {
+        setPage("home");
+      }
       return;
     }
     const timer = window.setTimeout(
       () => {
+        if (pendingContentIntentRef.current?.intent.kind !== "watch-replay") {
+          contentIntentExecutionGateRef.current.supersede();
+        }
         clearMobileAuthSession(window.localStorage);
         void onlineControllerRef.current?.leave();
         setMobileAuthSession(null);
         setAuthStatus("signed_out");
-        setPage("home");
+        if (
+          pageRef.current !== "replay-viewer" ||
+          replayViewerStateRef.current.directIntent === null ||
+          replayViewerStateRef.current.log === null
+        ) {
+          setPage("home");
+        }
       },
       Math.min(remaining, 2_147_483_647)
     );
@@ -396,7 +478,51 @@ export function App() {
     let urlListener: PluginListenerHandle | null = null;
     const handleUrl = (url: string): void => {
       const callback = mobileAuthCallbackResult(url);
-      if (callback === null || handledAuthCallbackRef.current === url) {
+      if (callback === null) {
+        if (webAppBaseUrl === null) {
+          return;
+        }
+        const intent = parseMobileContentIntent(url, webAppBaseUrl);
+        if (intent === null) {
+          try {
+            const receivedUrl = new URL(url);
+            if (receivedUrl.origin === new URL(webAppBaseUrl).origin) {
+              void Browser.open({
+                url,
+                toolbarColor: "#0b1210",
+                presentationStyle: "fullscreen",
+              }).catch(() => undefined);
+            }
+          } catch {}
+          return;
+        }
+        const key = mobileContentIntentKey(intent);
+        const now = Date.now();
+        const lastDelivery = lastContentDeliveryRef.current;
+        const queuedKey =
+          pendingContentIntentRef.current === null
+            ? null
+            : mobileContentIntentKey(pendingContentIntentRef.current.intent);
+        if (
+          queuedKey === key ||
+          contentIntentExecutionGateRef.current.isExecutingKey(key) ||
+          (lastDelivery !== null &&
+            lastDelivery.key === key &&
+            now - lastDelivery.at < 2_000)
+        ) {
+          return;
+        }
+        lastContentDeliveryRef.current = { key, at: now };
+        contentIntentExecutionGateRef.current.supersede();
+        replayLoadGenerationRef.current += 1;
+        const pending = { url, receivedAt: now, intent };
+        savePendingMobileContentUrl(window.localStorage, url, now);
+        pendingContentIntentRef.current = pending;
+        setPendingContentIntentNeedsAuth(false);
+        setPendingContentIntent(pending);
+        return;
+      }
+      if (handledAuthCallbackRef.current === url) {
         return;
       }
       handledAuthCallbackRef.current = url;
@@ -429,7 +555,9 @@ export function App() {
           saveMobileAuthSession(window.localStorage, session);
           setMobileAuthSession(session);
           setAuthStatus("authenticated");
-          setPage("lobby");
+          if (pendingContentIntentRef.current === null) {
+            setPage("lobby");
+          }
         })
         .catch(() => {
           if (authGenerationRef.current !== generation) {
@@ -1005,6 +1133,9 @@ export function App() {
 
   const clearUnauthorizedMobileSession = (): void => {
     authGenerationRef.current += 1;
+    if (pendingContentIntentRef.current?.intent.kind !== "watch-replay") {
+      contentIntentExecutionGateRef.current.supersede();
+    }
     clearMobileAuthSession(window.localStorage);
     void onlineControllerRef.current?.leave();
     setMobileAuthSession(null);
@@ -1016,6 +1147,10 @@ export function App() {
     const generation = ++replayLoadGenerationRef.current;
     setReplayViewerState({
       row,
+      directIntent: null,
+      viewerKey: row.key,
+      initialLocation: {},
+      returnPage: "replays",
       log: null,
       seatEnrichment: [null, null, null, null],
       review: null,
@@ -1032,6 +1167,10 @@ export function App() {
       if (replayLoadGenerationRef.current === generation) {
         setReplayViewerState({
           row,
+          directIntent: null,
+          viewerKey: row.key,
+          initialLocation: {},
+          returnPage: "replays",
           log: details.log,
           seatEnrichment: details.seatEnrichment,
           review: details.review,
@@ -1062,6 +1201,10 @@ export function App() {
                   : "Replay could not be loaded.";
       setReplayViewerState({
         row,
+        directIntent: null,
+        viewerKey: row.key,
+        initialLocation: {},
+        returnPage: "replays",
         log: null,
         seatEnrichment: [null, null, null, null],
         review: null,
@@ -1071,18 +1214,304 @@ export function App() {
     }
   };
 
-  const closeReplayViewer = (): void => {
-    replayLoadGenerationRef.current += 1;
+  const openDirectReplay = async (
+    intent: Extract<MobileContentIntent, { kind: "watch-replay" }>
+  ): Promise<"opened" | "authentication_required" | "failed"> => {
+    const generation = ++replayLoadGenerationRef.current;
+    const initialLocation: ReplayLocationRequest = {
+      ...(intent.state.seat === undefined ? {} : { seat: intent.state.seat }),
+      ...(intent.state.round === undefined
+        ? {}
+        : { round: intent.state.round }),
+      ...(intent.state.event === undefined
+        ? {}
+        : { event: intent.state.event }),
+    };
+    const viewerKey = mobileContentIntentKey(intent);
     setReplayViewerState({
       row: null,
+      directIntent: intent,
+      viewerKey,
+      initialLocation,
+      returnPage: "home",
+      log: null,
+      seatEnrichment: [null, null, null, null],
+      review: null,
+      loading: true,
+      error: null,
+    });
+    setPage("replay-viewer");
+    try {
+      const details = await loadDirectReplay(
+        intent.gameId,
+        intent.state.review ?? null,
+        {
+          webAppBaseUrl,
+          authSession:
+            authStatus === "authenticated" ? mobileAuthSession : null,
+        }
+      );
+      if (replayLoadGenerationRef.current !== generation) {
+        return "failed";
+      }
+      setReplayViewerState({
+        row: null,
+        directIntent: intent,
+        viewerKey,
+        initialLocation: {
+          ...initialLocation,
+          ...(initialLocation.seat === undefined &&
+          details.resolvedSeat !== null
+            ? { seat: details.resolvedSeat }
+            : {}),
+        },
+        returnPage: "home",
+        log: details.log,
+        seatEnrichment: details.seatEnrichment,
+        review: details.review,
+        loading: false,
+        error: null,
+      });
+      return "opened";
+    } catch (error) {
+      if (replayLoadGenerationRef.current !== generation) {
+        return "failed";
+      }
+      const code =
+        error instanceof ReplayLoadError ? error.code : "unavailable";
+      const authenticationRequired = code === "authentication_required";
+      setReplayViewerState({
+        row: null,
+        directIntent: intent,
+        viewerKey,
+        initialLocation,
+        returnPage: "home",
+        log: null,
+        seatEnrichment: [null, null, null, null],
+        review: null,
+        loading: false,
+        error: authenticationRequired
+          ? "Sign in to open this replay."
+          : code === "not_found"
+            ? "This replay is no longer available."
+            : code === "server_update_required"
+              ? "Direct replay links are not available on this server."
+              : "Replay could not be loaded.",
+      });
+      return authenticationRequired ? "authentication_required" : "failed";
+    }
+  };
+
+  const closeReplayViewer = (): void => {
+    replayLoadGenerationRef.current += 1;
+    const returnPage = replayViewerState.returnPage;
+    setReplayViewerState({
+      row: null,
+      directIntent: null,
+      viewerKey: null,
+      initialLocation: {},
+      returnPage: "replays",
       log: null,
       seatEnrichment: [null, null, null, null],
       review: null,
       loading: false,
       error: null,
     });
-    setPage("replays");
+    setPage(returnPage);
   };
+
+  const isCurrentContentIntent = (
+    ticket: ContentIntentExecutionTicket
+  ): boolean => {
+    const pendingKey =
+      pendingContentIntentRef.current === null
+        ? null
+        : mobileContentIntentKey(pendingContentIntentRef.current.intent);
+    return contentIntentExecutionGateRef.current.isCurrent(ticket, pendingKey);
+  };
+
+  const completePendingContentIntent = (
+    ticket: ContentIntentExecutionTicket
+  ): void => {
+    if (!isCurrentContentIntent(ticket)) {
+      return;
+    }
+    clearPendingMobileContentUrl(window.localStorage);
+    pendingContentIntentRef.current = null;
+    setPendingContentIntentNeedsAuth(false);
+    setPendingContentIntent(null);
+  };
+
+  const executePendingContentIntent = useEffectEvent(
+    async (
+      pending: PendingMobileContentIntent,
+      ticket: ContentIntentExecutionTicket
+    ): Promise<void> => {
+      const { intent } = pending;
+      if (!isCurrentContentIntent(ticket)) {
+        return;
+      }
+
+      if (intent.kind === "watch-replay") {
+        if (
+          isPlayingMatch &&
+          !window.confirm("Leave the current game and open this replay?")
+        ) {
+          completePendingContentIntent(ticket);
+          return;
+        }
+        const onlineController = onlineControllerRef.current;
+        if (
+          onlineController !== null &&
+          onlineController.getState().mode !== null
+        ) {
+          await onlineController.leave();
+          if (!isCurrentContentIntent(ticket)) {
+            return;
+          }
+        }
+        await prepareOnlineMatch();
+        if (!isCurrentContentIntent(ticket)) {
+          return;
+        }
+        const outcome = await openDirectReplay(intent);
+        if (!isCurrentContentIntent(ticket)) {
+          return;
+        }
+        if (outcome === "authentication_required") {
+          if (mobileAuthSession !== null) {
+            clearUnauthorizedMobileSession();
+          }
+          setPendingContentIntentNeedsAuth(true);
+          setAuthError("Sign in to open this replay.");
+          setPage("home");
+          return;
+        }
+        completePendingContentIntent(ticket);
+        return;
+      }
+
+      const session = mobileAuthSession;
+      const baseUrl = webAppBaseUrl;
+      if (session === null || baseUrl === null) {
+        return;
+      }
+      let matchId: string;
+      let mode: "player" | "spectator";
+      if (intent.kind === "join-game") {
+        matchId = intent.matchId;
+        mode = "player";
+      } else if (intent.kind === "spectate-match") {
+        matchId = intent.matchId;
+        mode = "spectator";
+      } else {
+        matchId = await resolveOnlineWatchId(baseUrl, session, intent.watchId);
+        if (!isCurrentContentIntent(ticket)) {
+          return;
+        }
+        mode = "spectator";
+      }
+
+      const currentOnline = onlineControllerRef.current?.getState();
+      if (currentOnline?.matchId === matchId && currentOnline.mode === mode) {
+        setPage(
+          currentOnline.status === "playing" ||
+            currentOnline.status === "spectating" ||
+            currentOnline.status === "finished"
+            ? "game"
+            : "online-room"
+        );
+        completePendingContentIntent(ticket);
+        return;
+      }
+      if (
+        isPlayingMatch &&
+        !window.confirm("Leave the current game and open this link?")
+      ) {
+        completePendingContentIntent(ticket);
+        return;
+      }
+      if (currentOnline?.mode !== null && currentOnline !== undefined) {
+        await onlineControllerRef.current?.leave();
+        if (!isCurrentContentIntent(ticket)) {
+          return;
+        }
+      }
+      await prepareOnlineMatch();
+      if (!isCurrentContentIntent(ticket)) {
+        return;
+      }
+      const onlineController = onlineControllerRef.current;
+      if (onlineController === null) {
+        throw new Error("Online game controller is unavailable");
+      }
+      setPage("online-room");
+      if (mode === "player") {
+        onlineController.join(baseUrl, session, matchId);
+      } else {
+        onlineController.watch(baseUrl, session, matchId);
+      }
+      completePendingContentIntent(ticket);
+    }
+  );
+
+  useEffect(() => {
+    if (
+      pendingContentIntent === null ||
+      webAppBaseUrl === null ||
+      authStatus === "checking" ||
+      authStatus === "opening" ||
+      authStatus === "exchanging"
+    ) {
+      return;
+    }
+    const key = mobileContentIntentKey(pendingContentIntent.intent);
+    const requiresAuthentication =
+      pendingContentIntent.intent.kind !== "watch-replay" ||
+      pendingContentIntentNeedsAuth;
+    if (
+      requiresAuthentication &&
+      (authStatus !== "authenticated" || mobileAuthSession === null)
+    ) {
+      setPendingContentIntentNeedsAuth(true);
+      setAuthError("Sign in to open this link.");
+      setPage("home");
+      return;
+    }
+    const ticket = contentIntentExecutionGateRef.current.tryStart(key);
+    if (ticket === null) {
+      return;
+    }
+    void executePendingContentIntent(pendingContentIntent, ticket)
+      .catch((error: unknown) => {
+        if (!isCurrentContentIntent(ticket)) {
+          return;
+        }
+        if (error instanceof OnlineGameHttpError && error.status === 401) {
+          clearUnauthorizedMobileSession();
+          setPendingContentIntentNeedsAuth(true);
+          setAuthError("Sign in to open this link.");
+          setPage("home");
+          return;
+        }
+        completePendingContentIntent(ticket);
+        setAuthError("This link could not be opened.");
+        setPage(
+          authStatus === "authenticated" && mobileAuthSession !== null
+            ? "lobby"
+            : "home"
+        );
+      })
+      .finally(() => {
+        contentIntentExecutionGateRef.current.finish(ticket);
+      });
+  }, [
+    authStatus,
+    mobileAuthSession,
+    pendingContentIntent,
+    pendingContentIntentNeedsAuth,
+    webAppBaseUrl,
+  ]);
 
   if (page === "game") {
     return (
@@ -1125,15 +1554,19 @@ export function App() {
   if (page === "replay-viewer") {
     return (
       <MobileReplayViewer
+        key={replayViewerState.viewerKey}
         log={replayViewerState.log}
         seatEnrichment={replayViewerState.seatEnrichment}
         review={replayViewerState.review}
         loading={replayViewerState.loading}
         error={replayViewerState.error}
+        initialLocation={replayViewerState.initialLocation}
         onClose={closeReplayViewer}
         onRetry={() => {
           if (replayViewerState.row !== null) {
             void openReplay(replayViewerState.row);
+          } else if (replayViewerState.directIntent !== null) {
+            void openDirectReplay(replayViewerState.directIntent);
           }
         }}
       />

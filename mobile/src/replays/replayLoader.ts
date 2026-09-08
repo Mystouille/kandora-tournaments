@@ -1,8 +1,10 @@
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import type { MobileReplayStore } from "../persistence/mobileMatchRepository";
 import {
+  fetchDirectReplayLog,
   fetchMyReplayLog,
   MyReplaysHttpError,
+  type DirectReplayLogDetails,
   type MyReplayLogDetails,
 } from "./myReplaysApi";
 import type { ReplayLibraryRow } from "./replayLibrary";
@@ -77,6 +79,46 @@ export async function loadReplayForRow(
         throw new ReplayLoadError("server_update_required");
       }
       if (error.code === "review_unavailable") {
+        throw new ReplayLoadError("server_update_required");
+      }
+    }
+    throw new ReplayLoadError("unavailable");
+  }
+}
+
+export async function loadDirectReplay(
+  gameId: string,
+  reviewShortId: string | null,
+  dependencies: {
+    webAppBaseUrl: string | null;
+    authSession: MobileAuthSession | null;
+  }
+): Promise<DirectReplayLogDetails> {
+  if (dependencies.webAppBaseUrl === null) {
+    throw new ReplayLoadError("unavailable");
+  }
+  try {
+    return await fetchDirectReplayLog(
+      dependencies.webAppBaseUrl,
+      gameId,
+      reviewShortId,
+      dependencies.authSession
+    );
+  } catch (error) {
+    if (error instanceof MyReplaysHttpError) {
+      if (error.status === 401) {
+        if (dependencies.authSession !== null) {
+          return loadDirectReplay(gameId, reviewShortId, {
+            ...dependencies,
+            authSession: null,
+          });
+        }
+        throw new ReplayLoadError("authentication_required");
+      }
+      if (error.status === 404 && error.code === "replay_not_found") {
+        throw new ReplayLoadError("not_found");
+      }
+      if (error.status === 404 && error.code === null) {
         throw new ReplayLoadError("server_update_required");
       }
     }

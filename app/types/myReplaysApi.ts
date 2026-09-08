@@ -1,5 +1,6 @@
 import type { MyReplayGroup } from "./myReplays";
 import type { ReplayLog } from "~/game/replay/types";
+import type { Seat } from "~/game/protocol/messages";
 
 export interface MyReplaysApiResponse {
   replays: MyReplayGroup[];
@@ -30,4 +31,9 @@ export interface MyReplayLogApiResponse {
   log: ReplayLog;
   seatEnrichment: Array<MyReplaySeatEnrichment | null>;
   review: MyReplayReviewDetails | null;
+}
+
+export interface DirectReplayLogApiResponse extends MyReplayLogApiResponse {
+  canonicalGameId: string;
+  resolvedSeat: Seat | null;
 }

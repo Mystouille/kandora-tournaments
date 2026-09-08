@@ -3,6 +3,12 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 export default [
   index("routes/online-tournaments.tsx"),
 
+  route(
+    "/.well-known/apple-app-site-association",
+    "routes/apple-app-site-association.ts"
+  ),
+  route("/.well-known/assetlinks.json", "routes/assetlinks.ts"),
+
   // ---------------------------------------------------------------------
   // Auth — Discord OAuth + session
   // ---------------------------------------------------------------------
@@ -69,6 +75,7 @@ export default [
   route("/api/mobile/lobby", "routes/api/mobile/lobby.ts"),
   route("/api/my-replays", "routes/api/my-replays.ts"),
   route("/api/my-replays/log", "routes/api/my-replay-log.ts"),
+  route("/api/replays/log", "routes/api/replay-log.ts"),
   route("/api/mobile/auth/exchange", "routes/api/mobile/auth.exchange.ts"),
   route("/api/mobile/auth/session", "routes/api/mobile/auth.session.ts"),
 
