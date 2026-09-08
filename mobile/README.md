@@ -27,6 +27,40 @@ one explicitly:
 npm run mobile:android:install -- -Serial emulator-5554
 ```
 
+## GitHub iOS builds
+
+[`ios-build.yml`](../.github/workflows/ios-build.yml) builds the iOS project on
+a GitHub-hosted macOS runner. Pull requests and pushes to `main` that touch the
+mobile/iOS build surface produce a `Kandora-iOS-unsigned-<run>` artifact. It
+contains `Kandora-unsigned.app.zip` plus its SHA-256 checksum. This unsigned
+device bundle verifies that the project compiles, but it cannot be installed on
+a normal iPhone.
+
+An installable App Store Connect IPA requires an Apple Developer Program
+membership and these GitHub Actions repository secrets:
+
+| Secret                            | Value                                                                |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `APPLE_TEAM_ID`                   | Ten-character Apple Developer Team ID.                               |
+| `IOS_CERTIFICATE_BASE64`          | Base64-encoded Apple Distribution `.p12` certificate.                |
+| `IOS_CERTIFICATE_PASSWORD`        | Password used when exporting that `.p12`.                            |
+| `IOS_PROVISIONING_PROFILE_BASE64` | Base64-encoded App Store provisioning profile for `com.kandora.app`. |
+
+The explicit App ID and provisioning profile must include the Associated
+Domains capability used by `applinks:tournaments.tnt-sessions.com`. On Windows,
+encode the two binary files without routing their contents through chat:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("AppleDistribution.p12")) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("Kandora.mobileprovision")) | Set-Clipboard
+```
+
+Add each clipboard value directly under **GitHub repository Settings → Secrets
+and variables → Actions**. Then open **Actions → Build iOS → Run workflow** and
+enable **Build a signed App Store Connect IPA**. The manual run produces a
+`Kandora-iOS-signed-<run>` artifact containing `Kandora.ipa`, the Xcode archive,
+and checksums. The workflow exports the IPA but does not upload it to TestFlight.
+
 The first shell renders the production Pixi table and imports shared
 `ReplayLog` JSON. Native startup opens a versioned SQLite `MatchRepository`
 covering asynchronous live event journals, explicit-pause recovery checkpoints,

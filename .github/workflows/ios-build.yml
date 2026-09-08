@@ -1,0 +1,375 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      signed_ipa:
+        description: Build a signed App Store Connect IPA
+        required: true
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ios-build.yml"
+      - ".nvmrc"
+      - "app/core"
+      - "app/game"
+      - "app/**"
+      - "ios/**"
+      - "mobile/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "vite.mobile.config.ts"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ios-build.yml"
+      - ".nvmrc"
+      - "app/core"
+      - "app/game"
+      - "app/**"
+      - "ios/**"
+      - "mobile/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "vite.mobile.config.ts"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VITE_MOBILE_APP_BASE_URL: https://tournaments.tnt-sessions.com
+  XCODE_PROJECT: ios/App/App.xcodeproj
+  XCODE_SCHEME: App
+
+jobs:
+  unsigned-app:
+    name: Unsigned app bundle
+    if: github.event_name != 'workflow_dispatch' || !inputs.signed_ipa
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate mobile shell
+        run: |
+          npm run mobile:typecheck
+          npx vitest run \
+            mobile/src/App.spec.ts \
+            mobile/src/auth/nativeDeepLinks.spec.ts \
+            mobile/src/contentIntentExecution.spec.ts \
+            mobile/src/deepLinks.spec.ts
+
+      - name: Build and synchronize iOS assets
+        run: |
+          npm run mobile:build
+          npx cap sync ios
+          perl -pi -e 's{\\}{/}g' ios/App/CapApp-SPM/Package.swift
+          if grep -n '\\' ios/App/CapApp-SPM/Package.swift; then
+            echo "::error::Capacitor generated invalid Swift package paths"
+            exit 1
+          fi
+          swift package \
+            --package-path ios/App/CapApp-SPM \
+            dump-package \
+            > /dev/null
+
+      - name: Show Xcode configuration
+        run: |
+          xcodebuild -version
+          xcodebuild -list \
+            -project "$XCODE_PROJECT"
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
+
+      - name: Build unsigned iOS app
+        run: |
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$RUNNER_TEMP/KandoraDerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+
+      - name: Package unsigned app
+        run: |
+          app_path="$RUNNER_TEMP/KandoraDerivedData/Build/Products/Release-iphoneos/App.app"
+          output_dir="$RUNNER_TEMP/ios-unsigned"
+          test -d "$app_path"
+          mkdir -p "$output_dir"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$app_path" \
+            "$output_dir/Kandora-unsigned.app.zip"
+          shasum -a 256 "$output_dir/Kandora-unsigned.app.zip" \
+            > "$output_dir/SHA256SUMS.txt"
+          cat "$output_dir/SHA256SUMS.txt"
+
+      - name: Upload unsigned app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kandora-iOS-unsigned-${{ github.run_number }}
+          path: ${{ runner.temp }}/ios-unsigned
+          if-no-files-found: error
+          retention-days: 14
+
+  signed-ipa:
+    name: Signed IPA
+    if: github.event_name == 'workflow_dispatch' && inputs.signed_ipa
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Validate signing configuration
+        run: |
+          missing=()
+          for variable in \
+            APPLE_TEAM_ID \
+            IOS_CERTIFICATE_BASE64 \
+            IOS_CERTIFICATE_PASSWORD \
+            IOS_PROVISIONING_PROFILE_BASE64
+          do
+            if [ -z "${!variable}" ]; then
+              missing+=("$variable")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing iOS signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate mobile shell
+        run: |
+          npm run mobile:typecheck
+          npx vitest run \
+            mobile/src/App.spec.ts \
+            mobile/src/auth/nativeDeepLinks.spec.ts \
+            mobile/src/contentIntentExecution.spec.ts \
+            mobile/src/deepLinks.spec.ts
+
+      - name: Build and synchronize iOS assets
+        run: |
+          npm run mobile:build
+          npx cap sync ios
+          perl -pi -e 's{\\}{/}g' ios/App/CapApp-SPM/Package.swift
+          if grep -n '\\' ios/App/CapApp-SPM/Package.swift; then
+            echo "::error::Capacitor generated invalid Swift package paths"
+            exit 1
+          fi
+          swift package \
+            --package-path ios/App/CapApp-SPM \
+            dump-package \
+            > /dev/null
+
+      - name: Install signing assets
+        run: |
+          certificate_path="$RUNNER_TEMP/distribution.p12"
+          profile_path="$RUNNER_TEMP/profile.mobileprovision"
+          profile_plist="$RUNNER_TEMP/profile.plist"
+          keychain_path="$RUNNER_TEMP/kandora-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 24)"
+
+          printf '%s' "$IOS_CERTIFICATE_BASE64" \
+            | base64 --decode > "$certificate_path"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" \
+            | base64 --decode > "$profile_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          security cms -D -i "$profile_path" > "$profile_plist"
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
+          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$profile_plist")"
+          profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$profile_plist")"
+          profile_app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$profile_plist")"
+
+          if [ "$profile_team" != "$APPLE_TEAM_ID" ]; then
+            echo "::error::Provisioning profile team does not match APPLE_TEAM_ID"
+            exit 1
+          fi
+          case "$profile_app_id" in
+            *.com.kandora.app) ;;
+            *)
+              echo "::error::Provisioning profile does not cover com.kandora.app"
+              exit 1
+              ;;
+          esac
+          if ! /usr/libexec/PlistBuddy \
+            -c "Print :Entitlements:com.apple.developer.associated-domains" \
+            "$profile_plist" \
+            | grep -Fq "applinks:tournaments.tnt-sessions.com"
+          then
+            echo "::error::Provisioning profile does not include Kandora's Associated Domains entitlement"
+            exit 1
+          fi
+
+          profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles_dir"
+          installed_profile="$profiles_dir/$profile_uuid.mobileprovision"
+          cp "$profile_path" "$installed_profile"
+
+          echo "IOS_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+          echo "IOS_PROFILE_NAME=$profile_name" >> "$GITHUB_ENV"
+          echo "IOS_PROFILE_PATH=$installed_profile" >> "$GITHUB_ENV"
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
+
+      - name: Archive signed app
+        run: |
+          xcodebuild archive \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/Kandora.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/KandoraDerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+
+      - name: Export signed IPA
+        run: |
+          export_options="$RUNNER_TEMP/ExportOptions.plist"
+          export_dir="$RUNNER_TEMP/ios-signed"
+          python3 - \
+            "$export_options" \
+            "$APPLE_TEAM_ID" \
+            "$IOS_PROFILE_NAME" <<'PY'
+          import plistlib
+          import sys
+
+          output_path, team_id, profile_name = sys.argv[1:]
+          options = {
+              "destination": "export",
+              "manageAppVersionAndBuildNumber": False,
+              "method": "app-store-connect",
+              "provisioningProfiles": {"com.kandora.app": profile_name},
+              "signingCertificate": "Apple Distribution",
+              "signingStyle": "manual",
+              "stripSwiftSymbols": True,
+              "teamID": team_id,
+              "uploadSymbols": True,
+          }
+          with open(output_path, "wb") as file:
+              plistlib.dump(options, file)
+          PY
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :teamID" \
+            "$export_options" \
+            > /dev/null
+          /usr/libexec/PlistBuddy \
+            -c "Print :provisioningProfiles:com.kandora.app" \
+            "$export_options" \
+            > /dev/null
+
+          mkdir -p "$export_dir"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Kandora.xcarchive" \
+            -exportPath "$export_dir" \
+            -exportOptionsPlist "$export_options"
+
+          ipa_path="$(find "$export_dir" -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$ipa_path"
+          if [ "$(basename "$ipa_path")" != "Kandora.ipa" ]; then
+            mv "$ipa_path" "$export_dir/Kandora.ipa"
+          fi
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$RUNNER_TEMP/Kandora.xcarchive" \
+            "$export_dir/Kandora.xcarchive.zip"
+          shasum -a 256 \
+            "$export_dir/Kandora.ipa" \
+            "$export_dir/Kandora.xcarchive.zip" \
+            > "$export_dir/SHA256SUMS.txt"
+          cat "$export_dir/SHA256SUMS.txt"
+
+      - name: Upload signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kandora-iOS-signed-${{ github.run_number }}
+          path: ${{ runner.temp }}/ios-signed
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove signing assets
+        if: always()
+        run: |
+          if [ -n "${IOS_PROFILE_PATH:-}" ]; then
+            rm -f "$IOS_PROFILE_PATH"
+          fi
+          if [ -n "${IOS_KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$IOS_KEYCHAIN_PATH" || true
+          fi
