@@ -55,5 +55,9 @@ export class NearbyConnectionsWeb
     throw new Error(UNSUPPORTED);
   }
 
+  async openAppSettings(): Promise<void> {
+    throw new Error(UNSUPPORTED);
+  }
+
   async stopAll(): Promise<void> {}
 }

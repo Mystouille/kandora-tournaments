@@ -49,6 +49,7 @@ export interface NearbyMatchControllerState {
     | "finished"
     | "error";
   available: boolean;
+  permissions: NearbyPermissionState | null;
   matchId: string | null;
   roomState: RoomState | null;
   discovered: NearbyEndpoint[];
@@ -82,6 +83,7 @@ export interface NearbyTransport {
   rejectConnection(options: { endpointId: string }): Promise<void>;
   disconnect(options: { endpointId: string }): Promise<void>;
   send(options: { endpointIds: string[]; data: string }): Promise<void>;
+  openAppSettings(): Promise<void>;
   stopAll(): Promise<void>;
   addListener<EventName extends keyof NearbyEventMap>(
     eventName: EventName,
@@ -96,6 +98,7 @@ export const INITIAL_NEARBY_MATCH_STATE: NearbyMatchControllerState = {
   role: "idle",
   status: "idle",
   available: false,
+  permissions: null,
   matchId: null,
   roomState: null,
   discovered: [],
@@ -169,6 +172,28 @@ export class NearbyMatchController {
     }
     this.initializePromise = this.installListeners();
     return this.initializePromise;
+  }
+
+  refreshPermissions(): Promise<void> {
+    return this.enqueueControl(async () => {
+      await this.initialize();
+      const nativeState = await this.transport.getState();
+      this.update({
+        available: nativeState.available,
+        permissions: nativeState.permissions,
+      });
+    });
+  }
+
+  requestPermissions(): Promise<void> {
+    return this.enqueueControl(async () => {
+      await this.initialize();
+      const permissions = await this.transport.requestNearbyPermissions();
+      this.update({ permissions, error: null });
+      if (!permissions.granted) {
+        await this.transport.openAppSettings();
+      }
+    });
   }
 
   discoverSavedHost(): Promise<void> {
@@ -498,7 +523,10 @@ export class NearbyMatchController {
 
   private async installListeners(): Promise<void> {
     const nativeState = await this.transport.getState();
-    this.update({ available: nativeState.available });
+    this.update({
+      available: nativeState.available,
+      permissions: nativeState.permissions,
+    });
     const handles = await Promise.all([
       this.transport.addListener("endpointFound", (event) => {
         this.update({
@@ -547,6 +575,7 @@ export class NearbyMatchController {
 
   private async requirePermissions(): Promise<void> {
     const permissions = await this.transport.requestNearbyPermissions();
+    this.update({ permissions });
     if (!permissions.granted) {
       throw new Error(
         `Nearby permissions are required: ${permissions.missing.join(", ")}`
@@ -1068,6 +1097,7 @@ export class NearbyMatchController {
     this.state = {
       ...INITIAL_NEARBY_MATCH_STATE,
       available: this.state.available,
+      permissions: this.state.permissions,
     };
     this.emitState();
   }

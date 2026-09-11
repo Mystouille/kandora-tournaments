@@ -1,7 +1,10 @@
 package com.kandora.app;
 
 import android.Manifest;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 import androidx.annotation.NonNull;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -111,6 +114,19 @@ public class NearbyConnectionsPlugin extends Plugin {
     @PermissionCallback
     private void nearbyPermissionsCallback(PluginCall call) {
         call.resolve(permissionState());
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        intent.setData(Uri.fromParts("package", getContext().getPackageName(), null));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Could not open Android app settings", error);
+        }
     }
 
     @PluginMethod
@@ -400,8 +416,9 @@ public class NearbyConnectionsPlugin extends Plugin {
             )
             .addOnFailureListener(
                 error -> {
-                    emitError(operation, error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
-                    call.reject("Nearby " + operation + " failed", error);
+                    String detail = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                    emitError(operation, detail);
+                    call.reject("Nearby " + operation + " failed: " + detail, error);
                 }
             );
     }

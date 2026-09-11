@@ -52,6 +52,7 @@ export interface NearbyConnectionsPlugin {
   rejectConnection(options: { endpointId: string }): Promise<void>;
   disconnect(options: { endpointId: string }): Promise<void>;
   send(options: { endpointIds: string[]; data: string }): Promise<void>;
+  openAppSettings(): Promise<void>;
   stopAll(): Promise<void>;
   addListener(
     eventName: "endpointFound",

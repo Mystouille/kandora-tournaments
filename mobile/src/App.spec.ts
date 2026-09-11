@@ -39,6 +39,8 @@ describe("mobile App initial screen", () => {
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="true"');
     expect(html).toContain("Sound");
+    expect(html).toContain("Nearby access");
+    expect(html).toContain("Nearby permissions: Checking");
     expect(html).not.toContain("Demo table");
     expect(html).not.toContain("table-canvas");
   });

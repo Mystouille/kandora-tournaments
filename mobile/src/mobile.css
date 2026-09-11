@@ -90,7 +90,7 @@ button {
   z-index: 40;
   top: calc(100% + 8px);
   right: 0;
-  width: 190px;
+  width: 230px;
   padding: 6px;
   border: 1px solid rgba(143, 212, 173, 0.34);
   border-radius: 8px;
@@ -102,7 +102,8 @@ button {
   display: none;
 }
 
-.home-setting-toggle {
+.home-setting-toggle,
+.home-setting-action {
   display: flex;
   width: 100%;
   min-height: 44px;
@@ -118,6 +119,11 @@ button {
   font-weight: 700;
 }
 
+.home-setting-action:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .home-setting-label {
   display: inline-flex;
   align-items: center;
@@ -128,6 +134,30 @@ button {
   width: 18px;
   height: 18px;
   color: #8fd4ad;
+}
+
+.home-setting-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  color: #b9c3bd;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.home-setting-status svg {
+  width: 13px;
+  height: 13px;
+}
+
+.home-setting-status.ready {
+  color: #8fd4ad;
+}
+
+.home-setting-status.missing {
+  color: #f1b08c;
 }
 
 .home-setting-switch {

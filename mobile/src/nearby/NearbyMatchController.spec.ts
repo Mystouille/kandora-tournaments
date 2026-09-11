@@ -20,6 +20,7 @@ import type {
   NearbyEndpoint,
   NearbyError,
   NearbyMessage,
+  NearbyPermissionState,
 } from "./NearbyConnections";
 import {
   encodeNearbyFrame,
@@ -47,6 +48,9 @@ class FakeNearbyTransport implements NearbyTransport {
   readonly requested: string[] = [];
   advertisingName: string | null = null;
   discovering = false;
+  permissionState: NearbyPermissionState = { granted: true, missing: [] };
+  requestedPermissionState: NearbyPermissionState | null = null;
+  settingsOpenCount = 0;
 
   async getState() {
     return {
@@ -54,12 +58,15 @@ class FakeNearbyTransport implements NearbyTransport {
       advertising: false,
       discovering: false,
       connected: [],
-      permissions: { granted: true, missing: [] },
+      permissions: this.permissionState,
     };
   }
 
   async requestNearbyPermissions() {
-    return { granted: true, missing: [] };
+    if (this.requestedPermissionState !== null) {
+      this.permissionState = this.requestedPermissionState;
+    }
+    return this.permissionState;
   }
 
   async startAdvertising(options: { endpointName: string }) {
@@ -95,6 +102,10 @@ class FakeNearbyTransport implements NearbyTransport {
 
   async send(options: { endpointIds: string[]; data: string }) {
     this.sent.push(options);
+  }
+
+  async openAppSettings() {
+    this.settingsOpenCount += 1;
   }
 
   async stopAll() {
@@ -152,6 +163,35 @@ function serverFrames(transport: FakeNearbyTransport, endpointId: string) {
 }
 
 describe("Nearby mobile match controller", () => {
+  it("tracks permissions and opens app settings when a request remains denied", async () => {
+    const transport = new FakeNearbyTransport();
+    transport.permissionState = {
+      granted: false,
+      missing: ["bluetooth"],
+    };
+    const controller = new NearbyMatchController(
+      memoryPersistence(),
+      transport
+    );
+
+    await controller.initialize();
+    expect(controller.getState().permissions).toEqual({
+      granted: false,
+      missing: ["bluetooth"],
+    });
+
+    await controller.requestPermissions();
+    expect(transport.settingsOpenCount).toBe(1);
+
+    transport.requestedPermissionState = { granted: true, missing: [] };
+    await controller.requestPermissions();
+    expect(transport.settingsOpenCount).toBe(1);
+    expect(controller.getState().permissions).toEqual({
+      granted: true,
+      missing: [],
+    });
+  });
+
   it("discovers a saved host without restoring or advertising it", async () => {
     const persistence = memoryPersistence();
     await persistence.setActiveMatch({

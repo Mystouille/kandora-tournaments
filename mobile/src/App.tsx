@@ -189,6 +189,7 @@ export function App() {
   const [focusedHandTop, setFocusedHandTop] = useState<number | null>(null);
   const [homeSettingsOpen, setHomeSettingsOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(isGameSoundEnabled);
+  const [nearbyPermissionBusy, setNearbyPermissionBusy] = useState(false);
   const [liveMenuFlags, setLiveMenuFlags] = useState<LivePlayMenuFlags>(
     buildInitialLivePlayMenuFlags
   );
@@ -285,6 +286,9 @@ export function App() {
     if (!homeSettingsOpen) {
       return;
     }
+    void nearbyControllerRef.current
+      ?.refreshPermissions()
+      .catch(() => undefined);
     const handlePointerDown = (event: PointerEvent): void => {
       if (
         event.target instanceof Node &&
@@ -600,6 +604,7 @@ export function App() {
       }
       const resume = resumeAfterBackgroundRef.current;
       resumeAfterBackgroundRef.current = null;
+      void nearbyController?.refreshPermissions().catch(() => undefined);
       if (resume === "nearby-host") {
         void nearbyController
           ?.restoreHost(nearbyIdentityRef.current)
@@ -965,6 +970,19 @@ export function App() {
   const discoverNearby = async (): Promise<void> => {
     await localControllerRef.current?.pause();
     await nearbyControllerRef.current?.discover(currentNearbyIdentity());
+  };
+
+  const requestNearbyPermissions = async (): Promise<void> => {
+    const controller = nearbyControllerRef.current;
+    if (controller === null || nearbyPermissionBusy) {
+      return;
+    }
+    setNearbyPermissionBusy(true);
+    try {
+      await controller.requestPermissions();
+    } finally {
+      setNearbyPermissionBusy(false);
+    }
   };
 
   const prepareOnlineMatch = async (): Promise<void> => {
@@ -1738,6 +1756,20 @@ export function App() {
 
   const onlineSelected =
     authStatus === "authenticated" && mobileAuthSession !== null;
+  const nearbyPermissionLabel =
+    nearbyState.permissions === null
+      ? "Checking"
+      : !nearbyState.available
+        ? "Unavailable"
+        : nearbyState.permissions.granted
+          ? "Ready"
+          : "Tap to fix";
+  const nearbyPermissionTone =
+    nearbyState.permissions?.granted === true
+      ? "ready"
+      : nearbyState.permissions === null
+        ? "checking"
+        : "missing";
   const authBusy = authStatus === "checking" || authStatus === "exchanging";
   const accountStatus = onlineSelected
     ? `Signed in as ${mobileAuthSession.username}`
@@ -1798,6 +1830,32 @@ export function App() {
                 aria-hidden="true"
               >
                 <span />
+              </span>
+            </button>
+            <button
+              type="button"
+              className="home-setting-action"
+              disabled={!nearbyState.available || nearbyPermissionBusy}
+              aria-label={`Nearby permissions: ${nearbyPermissionLabel}`}
+              title={
+                nearbyState.permissions?.granted === false
+                  ? nearbyState.permissions.missing.join(", ")
+                  : "Nearby permissions"
+              }
+              onClick={() => void requestNearbyPermissions()}
+            >
+              <span className="home-setting-label">
+                <Radio aria-hidden="true" />
+                <span>Nearby access</span>
+              </span>
+              <span
+                className={`home-setting-status ${nearbyPermissionTone}`}
+                aria-live="polite"
+              >
+                {nearbyPermissionBusy && (
+                  <LoaderCircle aria-hidden="true" className="spin" />
+                )}
+                <span>{nearbyPermissionLabel}</span>
               </span>
             </button>
           </div>

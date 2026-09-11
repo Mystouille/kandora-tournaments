@@ -1,6 +1,7 @@
 import Capacitor
 import Foundation
 import NearbyConnections
+import UIKit
 
 @objc(NearbyConnectionsPlugin)
 public class NearbyConnectionsPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -9,6 +10,7 @@ public class NearbyConnectionsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "getState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestNearbyPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openAppSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startAdvertising", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopAdvertising", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startDiscovery", returnType: CAPPluginReturnPromise),
@@ -49,6 +51,23 @@ public class NearbyConnectionsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func requestNearbyPermissions(_ call: CAPPluginCall) {
         call.resolve(permissionState())
+    }
+
+    @objc func openAppSettings(_ call: CAPPluginCall) {
+        guard let url = URL(string: UIApplication.openSettingsURLString),
+              UIApplication.shared.canOpenURL(url) else {
+            call.reject("Could not open iOS app settings")
+            return
+        }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:]) { opened in
+                if opened {
+                    call.resolve()
+                } else {
+                    call.reject("Could not open iOS app settings")
+                }
+            }
+        }
     }
 
     @objc func startAdvertising(_ call: CAPPluginCall) {
