@@ -906,6 +906,7 @@ export const en: Translations = {
     centerRepeat: "Repeat",
     centerRiichi: "Riichi",
     centerTiles: "Tiles",
+    remainingDraws: "Remaining draws",
     exhaustiveDraw: "Exhaustive draw",
     abortTitle: "Abort: {kind}",
     abortKinds: {

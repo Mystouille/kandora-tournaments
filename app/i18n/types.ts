@@ -761,6 +761,8 @@ export interface Translations extends CoreTranslations {
     centerRiichi: string;
     /** Center-square label: tiles remaining in the live wall. */
     centerTiles: string;
+    /** Duplicate-mode player-square label: personal draws remaining. */
+    remainingDraws: string;
     /** Result-panel title shown when the hand ends in an exhaustive
      * draw (ryuukyoku — wall runs out, tenpai/noten payments
      * settled). */

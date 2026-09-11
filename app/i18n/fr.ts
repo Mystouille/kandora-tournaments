@@ -927,6 +927,7 @@ export const fr: Translations = {
     centerRepeat: "Répétition",
     centerRiichi: "Riichi",
     centerTiles: "Tuiles",
+    remainingDraws: "Pioches restantes",
     exhaustiveDraw: "Manche nulle",
     abortTitle: "Abandon\u00a0: {kind}",
     abortKinds: {

@@ -93,6 +93,7 @@ import {
   type ReplayNavigationKind,
   type ReplaySoundTarget,
 } from "~/game/client/replaySound";
+import { replayHasRevealableWalls } from "~/game/replay/wallAvailability";
 
 function normalizeReviewDraftText(html: string): string {
   const stripped = html.replace(/<[^>]+>/g, "").trim();
@@ -341,6 +342,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
 
   const bounds = useMemo(() => replayBounds(log), [log]);
   const rounds = useMemo(() => roundBoundaries(log), [log]);
+  const includeWallToggle = useMemo(() => replayHasRevealableWalls(log), [log]);
 
   // URL deeplink state. Three optional search params, all
   // independently set so a partial URL still makes sense:
@@ -1613,9 +1615,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       rendererRef.current.setShowWaits(overlays.showWaits);
       rendererRef.current.setShowHands(overlays.showHands);
       rendererRef.current.setShowTsumogiri(overlays.showTsumogiri);
-      rendererRef.current.setShowWalls(
-        log.mode?.type !== "duplicate" && overlays.showWalls
-      );
+      rendererRef.current.setShowWalls(includeWallToggle && overlays.showWalls);
       rendererRef.current.setShowNames(overlays.showNames);
       rendererRef.current.setSeatEnrichment(
         rotateSeatValues(seatEnrichment, focusSeat)
@@ -1624,6 +1624,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         repeat: t.match.centerRepeat,
         riichi: t.match.centerRiichi,
         tiles: t.match.centerTiles,
+        remainingDraws: t.match.remainingDraws,
       });
       rendererRef.current.setResultLabels({
         exhaustiveDraw: t.match.exhaustiveDraw,
@@ -1650,6 +1651,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   }, [
     currentView,
     index,
+    includeWallToggle,
     log.mode,
     log.sourceGameId,
     log.seats,
@@ -2192,7 +2194,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         <ReplayOverlayPanel
           overlays={overlays}
           onChange={handleOverlayChange}
-          includeWallToggle={log.mode?.type !== "duplicate"}
+          includeWallToggle={includeWallToggle}
         />
         {/* Review annotations: one passive drawing overlay per other
             reviewer (each in that reviewer's color), then the current
