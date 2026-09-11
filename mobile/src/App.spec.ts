@@ -35,6 +35,8 @@ describe("mobile App initial screen", () => {
     expect(html).toContain("Go to lobby");
     expect(html).toContain("Replays");
     expect(html).toContain("Nearby");
+    expect(html).toContain("Login with Discord");
+    expect(html).not.toContain("Log out");
     expect(html).toContain('aria-label="Settings"');
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="true"');

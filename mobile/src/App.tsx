@@ -568,9 +568,6 @@ export function App() {
           saveMobileAuthSession(window.localStorage, session);
           setMobileAuthSession(session);
           setAuthStatus("authenticated");
-          if (pendingContentIntentRef.current === null) {
-            setPage("lobby");
-          }
         })
         .catch(() => {
           if (authGenerationRef.current !== generation) {
@@ -1172,6 +1169,12 @@ export function App() {
     setMobileAuthSession(null);
     setAuthError(null);
     setAuthStatus("signed_out");
+  };
+
+  const logOut = (): void => {
+    pendingVerifierRef.current = null;
+    clearPendingMobileAuth(window.localStorage);
+    clearUnauthorizedMobileSession();
   };
 
   const openReplay = async (row: ReplayLibraryRow): Promise<void> => {
@@ -1870,8 +1873,17 @@ export function App() {
             <span>{accountStatus}</span>
           </div>
         </div>
-        {!onlineSelected && (
-          <div className="home-account-actions">
+        <div className="home-account-actions">
+          {onlineSelected ? (
+            <button
+              type="button"
+              className="home-secondary-action"
+              onClick={logOut}
+            >
+              <LogOut aria-hidden="true" />
+              <span>Log out</span>
+            </button>
+          ) : (
             <button
               type="button"
               className="home-primary-action"
@@ -1889,8 +1901,8 @@ export function App() {
                   : "Login with Discord"}
               </span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </section>
 
       <nav className="home-destinations" aria-label="Kandora destinations">
