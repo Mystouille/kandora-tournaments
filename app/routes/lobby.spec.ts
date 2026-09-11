@@ -66,6 +66,11 @@ describe("game lobby loader", () => {
       {
         sourceGameId: "match-newest",
         ruleSet: "buu-east",
+        mode: {
+          type: "duplicate",
+          seed: "Board-A",
+          generationVersion: 1,
+        },
         startedAt: 1_777_000_000_000,
         endedAt: 1_777_000_900_000,
         seats: [
@@ -100,6 +105,7 @@ describe("game lobby loader", () => {
       {
         sourceGameId: 1,
         ruleSet: 1,
+        mode: 1,
         startedAt: 1,
         endedAt: 1,
         seats: 1,
@@ -111,6 +117,11 @@ describe("game lobby loader", () => {
       {
         gameId: "match-newest",
         ruleSet: "buu-east",
+        mode: {
+          type: "duplicate",
+          seed: "Board-A",
+          generationVersion: 1,
+        },
         startedAt: 1_777_000_000_000,
         endedAt: 1_777_000_900_000,
         seats: [

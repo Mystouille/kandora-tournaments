@@ -31,6 +31,7 @@ export async function loader({
       {
         sourceGameId: 1,
         ruleSet: 1,
+        mode: 1,
         startedAt: 1,
         endedAt: 1,
         seats: 1,
@@ -98,6 +99,7 @@ export async function loader({
     gameLogs: logs.map((log) => ({
       gameId: log.sourceGameId,
       ruleSet: log.ruleSet,
+      mode: log.mode,
       startedAt: log.startedAt,
       endedAt: log.endedAt,
       seats: log.seats.map(

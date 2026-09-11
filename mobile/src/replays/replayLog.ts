@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { GameEventSchema } from "~/game/protocol/messages";
+import { MatchModeConfigSchema } from "~/game/protocol/matchMode";
 import type { ReplayLog } from "~/game/replay/types";
 import { normalizeLegacyReplayEvent } from "~/utils/replayLogCompatibility";
 
@@ -14,6 +15,7 @@ export const MobileReplayLogSchema: z.ZodType<ReplayLog> = z.object({
   source: z.enum(["ingame", "majsoul", "tenhou", "riichicity"]),
   sourceGameId: z.string().min(1),
   ruleSet: z.string().min(1),
+  mode: MatchModeConfigSchema.optional(),
   ruleSetDetails: z.record(z.string(), z.unknown()).optional(),
   startedAt: z.number().finite(),
   endedAt: z.number().finite(),

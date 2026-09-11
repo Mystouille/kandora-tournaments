@@ -50,6 +50,7 @@ function replayLogFromDocument(doc: DbReplayLog): ReplayLog {
     source: doc.source as ReplaySource,
     sourceGameId: doc.sourceGameId,
     ruleSet: doc.ruleSet,
+    ...(doc.mode ? { mode: doc.mode as ReplayLog["mode"] } : {}),
     ...(doc.ruleSetDetails
       ? { ruleSetDetails: doc.ruleSetDetails as Record<string, unknown> }
       : {}),

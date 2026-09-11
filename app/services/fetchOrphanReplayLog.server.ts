@@ -76,14 +76,13 @@ export async function fetchOrphanReplayLog(
       { source: log.source, sourceGameId: log.sourceGameId },
       {
         $setOnInsert: {
-          creationTriggeredBy: new mongoose.Types.ObjectId(
-            creationTriggeredBy
-          ),
+          creationTriggeredBy: new mongoose.Types.ObjectId(creationTriggeredBy),
         },
         $set: {
           source: log.source,
           sourceGameId: log.sourceGameId,
           ruleSet: log.ruleSet,
+          mode: log.mode,
           ruleSetDetails: log.ruleSetDetails,
           startedAt: log.startedAt,
           endedAt: log.endedAt,

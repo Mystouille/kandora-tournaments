@@ -65,10 +65,7 @@ describe("game rooms API", () => {
   it("rejects anonymous room listings without calling upstream", async () => {
     mocks.requireGameApiAccess.mockResolvedValue({
       authorized: false,
-      response: Response.json(
-        { error: "sign_in_required" },
-        { status: 401 }
-      ),
+      response: Response.json({ error: "sign_in_required" }, { status: 401 }),
     });
     const request = new Request("http://app.test/api/game/rooms");
 
@@ -103,13 +100,52 @@ describe("game rooms API", () => {
     });
   });
 
+  it("forwards duplicate mode and its public seed", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({
+        matchId: "room-duplicate",
+        mode: {
+          type: "duplicate",
+          seed: "Board-A",
+          generationVersion: 1,
+        },
+      })
+    );
+    const request = new Request("http://app.test/api/game/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        preset: "m-league",
+        mode: {
+          type: "duplicate",
+          seed: "Board-A",
+          generationVersion: 1,
+        },
+      }),
+    });
+
+    const response = await action({ request });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith("http://game.test/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        preset: "m-league",
+        mode: {
+          type: "duplicate",
+          seed: "Board-A",
+          generationVersion: 1,
+        },
+        token: "game-token",
+      }),
+    });
+  });
+
   it("rejects unauthenticated room creation without calling upstream", async () => {
     mocks.requireGameApiAccess.mockResolvedValue({
       authorized: false,
-      response: Response.json(
-        { error: "sign_in_required" },
-        { status: 401 }
-      ),
+      response: Response.json({ error: "sign_in_required" }, { status: 401 }),
     });
     const request = new Request("http://app.test/api/game/rooms", {
       method: "POST",

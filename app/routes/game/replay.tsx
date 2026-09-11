@@ -1613,7 +1613,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       rendererRef.current.setShowWaits(overlays.showWaits);
       rendererRef.current.setShowHands(overlays.showHands);
       rendererRef.current.setShowTsumogiri(overlays.showTsumogiri);
-      rendererRef.current.setShowWalls(overlays.showWalls);
+      rendererRef.current.setShowWalls(
+        log.mode?.type !== "duplicate" && overlays.showWalls
+      );
       rendererRef.current.setShowNames(overlays.showNames);
       rendererRef.current.setSeatEnrichment(
         rotateSeatValues(seatEnrichment, focusSeat)
@@ -1648,6 +1650,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   }, [
     currentView,
     index,
+    log.mode,
     log.sourceGameId,
     log.seats,
     waitsByIndex,
@@ -1866,8 +1869,18 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         style={{ touchAction: "none" }}
       >
         {/* Top-left: replay metadata label. */}
-        <div className="pointer-events-none absolute top-2 left-2 z-30 font-mono text-xs text-emerald-100/80 px-2 py-1 rounded bg-black/40">
+        <div
+          className="pointer-events-none absolute top-2 left-2 z-30 max-w-[calc(100%-12rem)] truncate rounded bg-black/40 px-2 py-1 font-mono text-xs text-emerald-100/80"
+          title={
+            log.mode?.type === "duplicate"
+              ? `Duplicate seed: ${log.mode.seed}`
+              : undefined
+          }
+        >
           replay · {log.source} · {log.sourceGameId} · {currentRound}
+          {log.mode?.type === "duplicate"
+            ? ` · duplicate · ${log.mode.seed}`
+            : ""}
         </div>
         {/* Bottom-right: tile-art attribution. */}
         <div className="absolute bottom-2 right-2 z-30 font-mono text-[10px] text-emerald-100/70 px-2 py-1 rounded bg-black/40">
@@ -2179,7 +2192,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         <ReplayOverlayPanel
           overlays={overlays}
           onChange={handleOverlayChange}
-          includeWallToggle
+          includeWallToggle={log.mode?.type !== "duplicate"}
         />
         {/* Review annotations: one passive drawing overlay per other
             reviewer (each in that reviewer's color), then the current
