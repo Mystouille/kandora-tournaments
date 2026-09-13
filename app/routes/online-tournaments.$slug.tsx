@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
+import type { Route } from "./+types/online-tournaments.$slug";
 import {
   Typography,
   Tabs,
@@ -28,6 +29,9 @@ import { PlayerAvatar } from "../components/PlayerAvatar";
 import { LeagueConfigDetails } from "../components/LeagueConfigDetails";
 import type { LeagueTypeConfig } from "../core/types/league-config";
 import { TournamentScheduleTab } from "../components/TournamentScheduleTab";
+import { LeagueModel } from "../core/models/tournament/League";
+import { connectToDatabase } from "../utils/dbConnection.server";
+import { slugify } from "../utils/slugify";
 import {
   isTournamentInfoTabKey,
   resolveTournamentInfoTab,
@@ -88,8 +92,133 @@ interface LeagueDetail {
   officialSubstitutes: PlayerInfo[];
 }
 
-export function meta() {
-  return [{ title: "League - TNT Paris Mahjong" }];
+interface TournamentPageMetadata {
+  title: string;
+  description: string;
+  canonicalUrl: string;
+  imageUrl: string;
+  imageAlt: string;
+  locale: "en_GB" | "fr_FR";
+  hasCoverImage: boolean;
+}
+
+interface TournamentLoaderData {
+  metadata: TournamentPageMetadata;
+}
+
+function publicOrigin(request: Request): string {
+  const forwardedProto = request.headers.get("X-Forwarded-Proto");
+  const forwardedHost =
+    request.headers.get("X-Forwarded-Host") ?? request.headers.get("Host");
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+  return new URL(request.url).origin;
+}
+
+function absoluteUrl(value: string, origin: string): string {
+  try {
+    return new URL(value, `${origin}${basePath}/`).toString();
+  } catch {
+    return `${origin}${basePath}/banner/TNT_logo-BLACK.png`;
+  }
+}
+
+function fallbackMetadata(
+  request: Request,
+  slug: string
+): TournamentPageMetadata {
+  const origin = publicOrigin(request);
+  return {
+    title: "Online Tournament | TNT Paris Mahjong",
+    description:
+      "Online mahjong tournament details, schedule, players, standings, and results.",
+    canonicalUrl: `${origin}${basePath}/online-tournaments/${encodeURIComponent(slug)}`,
+    imageUrl: `${origin}${basePath}/banner/TNT_logo-BLACK.png`,
+    imageAlt: "TNT Paris Mahjong",
+    locale: "en_GB",
+    hasCoverImage: false,
+  };
+}
+
+export async function loader({ params, request }: Route.LoaderArgs) {
+  const slug = params.slug ?? "";
+  const fallback = fallbackMetadata(request, slug);
+
+  try {
+    await connectToDatabase();
+    const leagues = await LeagueModel.find({ isDisplayed: true })
+      .select("name summary coverImageUrl platformConfig.platformName")
+      .lean();
+    const league = leagues.find((item) => slugify(item.name) === slug);
+    if (!league) {
+      return { metadata: fallback } satisfies TournamentLoaderData;
+    }
+
+    const language = request.headers
+      .get("Accept-Language")
+      ?.toLowerCase()
+      .startsWith("en")
+      ? "en"
+      : "fr";
+    const summary =
+      league.summary?.[language]?.trim() ||
+      league.summary?.fr?.trim() ||
+      league.summary?.en?.trim();
+    const platform = league.platformConfig?.platformName;
+    const description =
+      summary ||
+      (language === "fr"
+        ? `Tournoi de mahjong en ligne${platform ? ` sur ${platform}` : ""}. Programme, joueurs, classement et résultats.`
+        : `Online mahjong tournament${platform ? ` on ${platform}` : ""}. Schedule, players, standings, and results.`);
+    const coverImageUrl = league.coverImageUrl?.trim() ?? "";
+
+    return {
+      metadata: {
+        ...fallback,
+        title: `${league.name} | TNT Paris Mahjong`,
+        description,
+        imageUrl: coverImageUrl
+          ? absoluteUrl(coverImageUrl, publicOrigin(request))
+          : fallback.imageUrl,
+        imageAlt: league.name,
+        locale: language === "fr" ? "fr_FR" : "en_GB",
+        hasCoverImage: Boolean(coverImageUrl),
+      },
+    } satisfies TournamentLoaderData;
+  } catch (error) {
+    console.error("Failed to load online tournament metadata:", error);
+    return { metadata: fallback } satisfies TournamentLoaderData;
+  }
+}
+
+export function meta({ data }: { data?: TournamentLoaderData }) {
+  const metadata = data?.metadata;
+  if (!metadata) {
+    return [{ title: "Online Tournament | TNT Paris Mahjong" }];
+  }
+
+  return [
+    { title: metadata.title },
+    { name: "description", content: metadata.description },
+    { tagName: "link", rel: "canonical", href: metadata.canonicalUrl },
+    { property: "og:title", content: metadata.title },
+    { property: "og:description", content: metadata.description },
+    { property: "og:type", content: "website" },
+    { property: "og:site_name", content: "TNT Paris Mahjong" },
+    { property: "og:locale", content: metadata.locale },
+    { property: "og:url", content: metadata.canonicalUrl },
+    { property: "og:image", content: metadata.imageUrl },
+    { property: "og:image:alt", content: metadata.imageAlt },
+    {
+      name: "twitter:card",
+      content: metadata.hasCoverImage ? "summary_large_image" : "summary",
+    },
+    { name: "twitter:title", content: metadata.title },
+    { name: "twitter:description", content: metadata.description },
+    { name: "twitter:image", content: metadata.imageUrl },
+    { name: "twitter:image:alt", content: metadata.imageAlt },
+  ];
 }
 
 function formatDate(iso: string, locale: string): string {
