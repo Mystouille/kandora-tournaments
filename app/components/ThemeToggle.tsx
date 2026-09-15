@@ -10,7 +10,10 @@ export function ThemeToggle() {
   const { t } = useLocale();
 
   return (
-    <Tooltip title={isDark ? t.common.lightMode : t.common.darkMode}>
+    <Tooltip
+      title={isDark ? t.common.lightMode : t.common.darkMode}
+      placement="bottomRight"
+    >
       <Button
         type="text"
         icon={isDark ? <MoonOutlined /> : <SunOutlined />}
