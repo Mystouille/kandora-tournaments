@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App";
+import { App, MOBILE_APP_VERSION } from "./App";
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -37,6 +37,8 @@ describe("mobile App initial screen", () => {
     expect(html).toContain("Nearby");
     expect(html).toContain("Login with Discord");
     expect(html).not.toContain("Log out");
+    expect(html).toContain(`aria-label="Version ${MOBILE_APP_VERSION}"`);
+    expect(html).toContain(`>v${MOBILE_APP_VERSION}</span>`);
     expect(html).toContain('aria-label="Settings"');
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="true"');

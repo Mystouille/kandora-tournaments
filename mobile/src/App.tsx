@@ -66,6 +66,10 @@ import { loadNearbyIdentity, updateNearbyDisplayName } from "./nearby/identity";
 import { MobileLobby } from "./online/MobileLobby";
 import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
 import { MobileGameMenu } from "./game/MobileGameMenu";
+import {
+  MobileReadyCheckOverlay,
+  type MobileResultPanelBounds,
+} from "./game/MobileReadyCheckOverlay";
 import { useReplaySwipeNavigation } from "./game/spectateSwipe";
 import { MobileReplays } from "./replays/MobileReplays";
 import {
@@ -140,6 +144,8 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
+export const MOBILE_APP_VERSION = "0.0.1";
+
 const DRAW_TO_DISCARD_DELAY_MS = 700;
 
 interface MobileReplayViewerState {
@@ -203,6 +209,8 @@ export function App() {
   const [gameMenuExpanded, setGameMenuExpanded] = useState(false);
   const [gameMenuLeft, setGameMenuLeft] = useState<number | null>(null);
   const [focusedHandTop, setFocusedHandTop] = useState<number | null>(null);
+  const [resultPanelBounds, setResultPanelBounds] =
+    useState<MobileResultPanelBounds | null>(null);
   const [homeSettingsOpen, setHomeSettingsOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(isGameSoundEnabled);
   const [nearbyPermissionBusy, setNearbyPermissionBusy] = useState(false);
@@ -784,6 +792,7 @@ export function App() {
         renderer.setBottomHandBoundsListener((bounds) => {
           setFocusedHandTop(bounds?.y ?? null);
         });
+        renderer.setResultPanelBoundsListener(setResultPanelBounds);
         renderer.setOnAutoSortChange((autoSort) => {
           writePersistedAutoSort(autoSort);
           setLiveMenuFlags((current) =>
@@ -840,9 +849,11 @@ export function App() {
       disposed = true;
       rendererRef.current = null;
       renderer?.setBottomHandBoundsListener(null);
+      renderer?.setResultPanelBoundsListener(null);
       renderer?.setOnAutoSortChange(null);
       renderer?.destroy();
       setFocusedHandTop(null);
+      setResultPanelBounds(null);
     };
   }, [showsTable]);
 
@@ -1067,36 +1078,19 @@ export function App() {
     }
   }, [onlineState.status]);
 
-  const readyDeadline = liveView.readyCheck?.deadline ?? null;
-  const readySeat = liveView.mySeat;
-  useEffect(() => {
-    if (
-      (localState.status !== "playing" &&
-        nearbyState.status !== "playing" &&
-        onlineState.status !== "playing") ||
-      readyDeadline === null ||
-      readySeat === null ||
-      liveView.readyCheck?.acked[readySeat]
-    ) {
-      return;
-    }
+  const submitReady = (): void => {
     if (onlineControllerRef.current?.getState().matchId === liveView.matchId) {
       onlineControllerRef.current.ready();
     } else if (
       nearbyControllerRef.current?.getState().matchId === liveView.matchId
     ) {
       void nearbyControllerRef.current.ready().catch(() => undefined);
-    } else {
+    } else if (
+      localControllerRef.current?.getState().matchId === liveView.matchId
+    ) {
       void localControllerRef.current?.ready();
     }
-  }, [
-    liveView.readyCheck,
-    localState.status,
-    nearbyState.status,
-    onlineState.status,
-    readyDeadline,
-    readySeat,
-  ]);
+  };
 
   const nearbyBusy =
     shellBusy ||
@@ -1785,6 +1779,14 @@ export function App() {
       <main className="mobile-game-view">
         <section className="table-stage" aria-label="Mahjong game">
           <div ref={tableContainerRef} className="table-canvas" />
+          <MobileReadyCheckOverlay
+            readyCheck={liveView.readyCheck}
+            mySeat={liveView.mySeat}
+            resultPanelBounds={
+              liveView.lastHandResult === null ? null : resultPanelBounds
+            }
+            onReady={submitReady}
+          />
           <button
             type="button"
             className="ingame-exit-button"
@@ -2053,6 +2055,12 @@ export function App() {
           <p>Mahjong everywhere.</p>
         </div>
         <div ref={homeSettingsRef} className="home-settings">
+          <span
+            className="home-app-version"
+            aria-label={`Version ${MOBILE_APP_VERSION}`}
+          >
+            v{MOBILE_APP_VERSION}
+          </span>
           <button
             type="button"
             className="shell-icon-button home-settings-button"
