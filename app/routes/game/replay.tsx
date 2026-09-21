@@ -88,6 +88,7 @@ import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConf
 import { Button, Modal, Tooltip, message } from "antd";
 import { DeleteOutlined, QuestionOutlined } from "@ant-design/icons";
 import { playSoundForEvent } from "~/game/client/sound";
+import { useScreenWakeLock } from "~/game/client/screenWakeLock";
 import {
   replaySoundTarget,
   type ReplayNavigationKind,
@@ -316,6 +317,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     currentUserName,
     seatEnrichment,
   } = loaderData;
+  useScreenWakeLock();
   const { t, locale } = useLocale();
   const { track } = useTelemetry();
   // Spectating telemetry: replay open + leave (with dwell time).

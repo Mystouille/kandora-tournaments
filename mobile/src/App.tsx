@@ -1,5 +1,6 @@
 import { App as NativeApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
+import { KeepAwake } from "@capacitor-community/keep-awake";
 import {
   Capacitor,
   SystemBars,
@@ -23,7 +24,12 @@ import {
   Volume2,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { rotateMatchView } from "~/game/replay/player";
+import {
+  applyReplayEvent,
+  replayViewToMatchView,
+  rotateMatchView,
+} from "~/game/replay/player";
+import { waitsForReplayView } from "~/game/replay/waits";
 import { useMatchStore } from "~/game/client/store";
 import { findNoCallAutoPass } from "~/game/client/callPrompt";
 import { findTileAction } from "~/game/client/discardActions";
@@ -60,8 +66,15 @@ import { loadNearbyIdentity, updateNearbyDisplayName } from "./nearby/identity";
 import { MobileLobby } from "./online/MobileLobby";
 import { MobileOnlineRoom } from "./online/MobileOnlineRoom";
 import { MobileGameMenu } from "./game/MobileGameMenu";
+import { useReplaySwipeNavigation } from "./game/spectateSwipe";
 import { MobileReplays } from "./replays/MobileReplays";
-import { MobileReplayViewer } from "./replays/MobileReplayViewer";
+import {
+  DEFAULT_MOBILE_REPLAY_DISPLAY_OPTIONS,
+  MobileReplayDisplayMenu,
+  MobileReplayNavigationMenu,
+  MobileReplayViewer,
+  type MobileReplayDisplayOptions,
+} from "./replays/MobileReplayViewer";
 import {
   loadDirectReplay,
   loadReplayForRow,
@@ -70,6 +83,7 @@ import {
 import type { ReplayLibraryRow } from "./replays/replayLibrary";
 import type { ReplayLog } from "~/game/replay/types";
 import type { ReplayLocationRequest } from "~/game/replay/replayLocation";
+import type { Seat } from "~/game/protocol/messages";
 import type { MyReplayLogDetails } from "./replays/myReplaysApi";
 import {
   INITIAL_ONLINE_MATCH_STATE,
@@ -100,6 +114,7 @@ import {
   normalizeWebAppUrl,
   pendingContentAuthenticationAction,
   retryTransientPause,
+  shouldKeepMobileScreenAwake,
   webAppPath,
   type MobileContentAuthStatus,
   type MobileShellPage,
@@ -172,6 +187,7 @@ export function App() {
   const [page, setPage] = useState<MobileShellPage>("home");
   const pageRef = useRef(page);
   pageRef.current = page;
+  const keepScreenAwake = shouldKeepMobileScreenAwake(page);
   const [authStatus, setAuthStatus] =
     useState<MobileContentAuthStatus>("checking");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -195,6 +211,15 @@ export function App() {
   );
   const liveMenuFlagsRef = useRef(liveMenuFlags);
   liveMenuFlagsRef.current = liveMenuFlags;
+  const [spectateFocusSeat, setSpectateFocusSeat] = useState<Seat>(0);
+  const [spectatePlayIndex, setSpectatePlayIndex] = useState(-1);
+  const [spectateFollowingLive, setSpectateFollowingLive] = useState(true);
+  const [spectateDisplayOptions, setSpectateDisplayOptions] =
+    useState<MobileReplayDisplayOptions>(() => ({
+      ...DEFAULT_MOBILE_REPLAY_DISPLAY_OPTIONS,
+    }));
+  const [spectateDisplayOpen, setSpectateDisplayOpen] = useState(false);
+  const [spectateNavigationOpen, setSpectateNavigationOpen] = useState(false);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
   >("loading");
@@ -230,6 +255,9 @@ export function App() {
     onlineState.status === "spectating" ||
     onlineState.status === "finished";
   const showsTable = page === "game";
+  const isLiveSpectating =
+    onlineState.mode === "spectator" &&
+    (onlineState.status === "spectating" || onlineState.status === "finished");
   const renderedLiveView = useMemo(
     () =>
       liveView.mySeat !== null && liveView.mySeat !== 0
@@ -237,8 +265,91 @@ export function App() {
         : liveView,
     [liveView]
   );
-  const latestViewRef = useRef(renderedLiveView);
-  latestViewRef.current = renderedLiveView;
+  const spectateTimeline = onlineState.spectatorTimeline;
+  const spectateMaxIndex = (spectateTimeline?.events.length ?? 0) - 1;
+  const displayedSpectateIndex = spectateFollowingLive
+    ? spectateMaxIndex
+    : Math.max(-1, Math.min(spectatePlayIndex, spectateMaxIndex));
+  const displayedSpectateIndexRef = useRef(displayedSpectateIndex);
+  displayedSpectateIndexRef.current = displayedSpectateIndex;
+  const spectateSwipeOriginIndexRef = useRef(displayedSpectateIndex);
+  const spectateRounds = useMemo(() => {
+    const rounds: number[] = [];
+    for (
+      let index = 0;
+      index < (spectateTimeline?.events.length ?? 0);
+      index += 1
+    ) {
+      if (spectateTimeline?.events[index]?.type === "hand_start") {
+        rounds.push(index);
+      }
+    }
+    return rounds;
+  }, [spectateTimeline?.events]);
+  const spectateReplayView = useMemo(() => {
+    if (!isLiveSpectating || spectateTimeline?.baseline == null) {
+      return null;
+    }
+    let view = spectateTimeline.baseline;
+    for (let index = 0; index <= displayedSpectateIndex; index += 1) {
+      const event = spectateTimeline.events[index];
+      if (event !== undefined) {
+        view = applyReplayEvent(view, event);
+      }
+    }
+    return view;
+  }, [displayedSpectateIndex, isLiveSpectating, spectateTimeline]);
+  const spectateSeatNames = useMemo<[string, string, string, string]>(() => {
+    const names: [string, string, string, string] = liveView.seatNames
+      ? [
+          liveView.seatNames[0],
+          liveView.seatNames[1],
+          liveView.seatNames[2],
+          liveView.seatNames[3],
+        ]
+      : ["", "", "", ""];
+    for (const seat of onlineState.roomState?.seats ?? []) {
+      if (seat.occupant.kind !== "empty") {
+        names[seat.seat] = seat.occupant.displayName;
+      }
+    }
+    return names;
+  }, [liveView.seatNames, onlineState.roomState]);
+  const spectateCurrentWaits = useMemo(
+    () =>
+      spectateReplayView !== null && spectateDisplayOptions.showWaits
+        ? waitsForReplayView(spectateReplayView)
+        : null,
+    [spectateDisplayOptions.showWaits, spectateReplayView]
+  );
+  const renderedSpectateView = useMemo(
+    () =>
+      spectateReplayView === null
+        ? null
+        : replayViewToMatchView(spectateReplayView, {
+            index: displayedSpectateIndex,
+            mySeat: spectateFocusSeat,
+            matchId: onlineState.matchId,
+            seatNames: spectateSeatNames,
+            currentWaits: spectateCurrentWaits,
+            roomState: onlineState.roomState,
+          }),
+    [
+      displayedSpectateIndex,
+      onlineState.matchId,
+      onlineState.roomState,
+      spectateCurrentWaits,
+      spectateFocusSeat,
+      spectateReplayView,
+      spectateSeatNames,
+    ]
+  );
+  const renderedTableView =
+    isLiveSpectating && renderedSpectateView !== null
+      ? renderedSpectateView
+      : renderedLiveView;
+  const latestViewRef = useRef(renderedTableView);
+  latestViewRef.current = renderedTableView;
   liveActionDispatcherRef.current = (actionId) => {
     const matchId = useMatchStore.getState().matchId;
     const onlineController = onlineControllerRef.current;
@@ -629,6 +740,21 @@ export function App() {
   }, [webAppBaseUrl]);
 
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      return;
+    }
+    const update = keepScreenAwake
+      ? KeepAwake.keepAwake()
+      : KeepAwake.allowSleep();
+    void update.catch(() => undefined);
+    return () => {
+      if (keepScreenAwake) {
+        void KeepAwake.allowSleep().catch(() => undefined);
+      }
+    };
+  }, [keepScreenAwake]);
+
+  useEffect(() => {
     if (!showsTable) {
       return;
     }
@@ -720,6 +846,40 @@ export function App() {
     };
   }, [showsTable]);
 
+  const activeSpectatorMatchId =
+    onlineState.mode === "spectator" ? onlineState.matchId : null;
+  useEffect(() => {
+    if (activeSpectatorMatchId === null) {
+      return;
+    }
+    rendererRef.current?.snapNextAnimation();
+    setSpectateFocusSeat(0);
+    setSpectatePlayIndex(-1);
+    setSpectateFollowingLive(true);
+    setSpectateDisplayOptions({
+      ...DEFAULT_MOBILE_REPLAY_DISPLAY_OPTIONS,
+    });
+    setSpectateDisplayOpen(false);
+    setSpectateNavigationOpen(false);
+  }, [activeSpectatorMatchId]);
+
+  const previousSpectateBaselineRef = useRef(
+    onlineState.spectatorTimeline?.baseline ?? null
+  );
+  useEffect(() => {
+    const baseline = onlineState.spectatorTimeline?.baseline ?? null;
+    if (
+      isLiveSpectating &&
+      baseline !== null &&
+      baseline !== previousSpectateBaselineRef.current
+    ) {
+      rendererRef.current?.snapNextAnimation();
+      setSpectatePlayIndex(-1);
+      setSpectateFollowingLive(true);
+    }
+    previousSpectateBaselineRef.current = baseline;
+  }, [isLiveSpectating, onlineState.spectatorTimeline?.baseline]);
+
   useEffect(() => {
     const renderer = rendererRef.current;
     const canvas = tableContainerRef.current?.querySelector("canvas") ?? null;
@@ -740,9 +900,28 @@ export function App() {
 
   useEffect(() => {
     const renderer = rendererRef.current;
-    renderer?.setMinimumDrawToDiscardDelayEnabled(page === "game");
-    renderer?.render(renderedLiveView);
-  }, [renderedLiveView, page]);
+    if (renderer === null) {
+      return;
+    }
+    renderer.setMinimumDrawToDiscardDelayEnabled(
+      page === "game" && (!isLiveSpectating || spectateFollowingLive)
+    );
+    if (isLiveSpectating) {
+      renderer.setShowWaits(spectateDisplayOptions.showWaits);
+      renderer.setShowHands(spectateDisplayOptions.showHands);
+      renderer.setShowTsumogiri(spectateDisplayOptions.showTsumogiri);
+      renderer.setShowNames(spectateDisplayOptions.showNames);
+      renderer.setStagedRevealEnabled(spectateFollowingLive);
+    }
+    renderer.render(renderedTableView);
+  }, [
+    isLiveSpectating,
+    page,
+    renderedTableView,
+    rendererState,
+    spectateDisplayOptions,
+    spectateFollowingLive,
+  ]);
 
   useEffect(() => {
     rendererRef.current?.setAutoSort(liveMenuFlags.autoSort);
@@ -1159,6 +1338,51 @@ export function App() {
     });
   };
 
+  const clampSpectateIndex = (index: number): number =>
+    Math.max(-1, Math.min(index, spectateMaxIndex));
+
+  const goToSpectateIndex = (index: number): void => {
+    rendererRef.current?.snapNextAnimation();
+    setSpectateFollowingLive(false);
+    setSpectatePlayIndex(clampSpectateIndex(index));
+  };
+
+  const stepSpectate = (delta: -1 | 1): void => {
+    const nextIndex = clampSpectateIndex(displayedSpectateIndex + delta);
+    if (nextIndex === displayedSpectateIndex) {
+      return;
+    }
+    setSpectateFollowingLive(false);
+    setSpectatePlayIndex(nextIndex);
+  };
+
+  const goToLiveSpectate = (): void => {
+    rendererRef.current?.snapNextAnimation();
+    setSpectatePlayIndex(spectateMaxIndex);
+    setSpectateFollowingLive(true);
+  };
+
+  useReplaySwipeNavigation({
+    containerRef: tableContainerRef,
+    enabled: isLiveSpectating && page === "game",
+    onGestureStart: () => {
+      spectateSwipeOriginIndexRef.current = displayedSpectateIndexRef.current;
+    },
+    onEventOffset: (eventOffset) => {
+      const currentIndex = displayedSpectateIndexRef.current;
+      const nextIndex = clampSpectateIndex(
+        spectateSwipeOriginIndexRef.current + eventOffset
+      );
+      if (nextIndex === currentIndex) {
+        return;
+      }
+      rendererRef.current?.snapNextAnimation();
+      displayedSpectateIndexRef.current = nextIndex;
+      setSpectateFollowingLive(false);
+      setSpectatePlayIndex(nextIndex);
+    },
+  });
+
   const clearUnauthorizedMobileSession = (): void => {
     authGenerationRef.current += 1;
     if (pendingContentIntentRef.current?.intent.kind !== "watch-replay") {
@@ -1571,7 +1795,7 @@ export function App() {
           >
             <LogOut aria-hidden="true" />
           </button>
-          {liveView.mySeat !== null && (
+          {!isLiveSpectating && liveView.mySeat !== null && (
             <MobileGameMenu
               expanded={gameMenuExpanded}
               flags={liveMenuFlags}
@@ -1580,6 +1804,53 @@ export function App() {
               onLeftChange={setGameMenuLeft}
               onToggle={toggleLiveMenuOption}
             />
+          )}
+          {isLiveSpectating && (
+            <>
+              <MobileReplayDisplayMenu
+                expanded={spectateDisplayOpen}
+                handTop={focusedHandTop}
+                options={spectateDisplayOptions}
+                onExpandedChange={(expanded) => {
+                  setSpectateDisplayOpen(expanded);
+                  if (expanded) {
+                    setSpectateNavigationOpen(false);
+                  }
+                }}
+                onToggle={(key) => {
+                  setSpectateDisplayOptions((current) => ({
+                    ...current,
+                    [key]: !current[key],
+                  }));
+                }}
+              />
+              <MobileReplayNavigationMenu
+                expanded={spectateNavigationOpen}
+                handTop={focusedHandTop}
+                events={spectateTimeline?.events ?? []}
+                seatNames={spectateSeatNames}
+                index={displayedSpectateIndex}
+                focusSeat={spectateFocusSeat}
+                rounds={spectateRounds}
+                bounds={{ min: -1, max: spectateMaxIndex }}
+                liveNavigation={{
+                  isLive: spectateFollowingLive,
+                  onGoLive: goToLiveSpectate,
+                }}
+                onExpandedChange={(expanded) => {
+                  setSpectateNavigationOpen(expanded);
+                  if (expanded) {
+                    setSpectateDisplayOpen(false);
+                  }
+                }}
+                onFocusSeatChange={(seat) => {
+                  rendererRef.current?.snapNextAnimation();
+                  setSpectateFocusSeat(seat);
+                }}
+                onGoTo={goToSpectateIndex}
+                onStep={stepSpectate}
+              />
+            </>
           )}
           {rendererState !== "ready" && (
             <div className="renderer-loading" aria-live="polite">

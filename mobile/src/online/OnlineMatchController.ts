@@ -6,6 +6,11 @@ import {
 } from "~/game/client/ws";
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState, Seat, ServerMessage } from "~/game/protocol/messages";
+import {
+  advanceLiveSpectateTimeline,
+  createLiveSpectateTimeline,
+  type LiveSpectateTimeline,
+} from "~/game/replay/liveSpectate";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   createOnlineRoom,
@@ -28,6 +33,7 @@ export interface OnlineMatchControllerState {
   mode: "player" | "spectator" | null;
   matchId: string | null;
   roomState: RoomState | null;
+  spectatorTimeline: LiveSpectateTimeline | null;
   error: string | null;
 }
 
@@ -36,6 +42,7 @@ export const INITIAL_ONLINE_MATCH_STATE: OnlineMatchControllerState = {
   mode: null,
   matchId: null,
   roomState: null,
+  spectatorTimeline: null,
   error: null,
 };
 
@@ -107,6 +114,7 @@ export class OnlineMatchController {
       mode: "player",
       matchId: null,
       roomState: null,
+      spectatorTimeline: null,
       error: null,
     });
     try {
@@ -213,6 +221,8 @@ export class OnlineMatchController {
       mode,
       matchId,
       roomState: null,
+      spectatorTimeline:
+        mode === "spectator" ? createLiveSpectateTimeline() : null,
       error: null,
     });
     const socket = this.dependencies.createSocket({
@@ -269,9 +279,17 @@ export class OnlineMatchController {
       return;
     }
     if (message.type === "snapshot" || message.type === "event") {
+      const spectatorTimeline =
+        this.state.mode === "spectator"
+          ? advanceLiveSpectateTimeline(
+              this.state.spectatorTimeline ?? createLiveSpectateTimeline(),
+              message
+            )
+          : null;
       this.setState({
         ...this.state,
         status: this.state.mode === "spectator" ? "spectating" : "playing",
+        spectatorTimeline,
         error: null,
       });
       return;
@@ -325,6 +343,7 @@ export class OnlineMatchController {
       mode: this.state.mode,
       matchId: this.state.matchId,
       roomState: null,
+      spectatorTimeline: null,
       error: error instanceof Error ? error.message : "Online game failed",
     });
   }

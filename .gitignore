@@ -1,5 +1,6 @@
 .DS_Store
 .env
+tourn.env
 servers.json
 google-credentials.json
 token.json

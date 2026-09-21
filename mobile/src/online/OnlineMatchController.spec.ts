@@ -230,4 +230,29 @@ describe("online match controller", () => {
     expect(socket.leaveSeat).toHaveBeenCalledOnce();
     expect(controller.getState()).toEqual(INITIAL_ONLINE_MATCH_STATE);
   });
+
+  it("accumulates and deduplicates the spectator event timeline", () => {
+    const { controller, options } = setup();
+    controller.watch("https://play.test", session, "room-2");
+    const message = {
+      type: "event" as const,
+      seq: 0,
+      events: [
+        {
+          type: "match_start" as const,
+          seats: [],
+          ruleSet: "tenhou-default",
+        },
+      ],
+      legalActions: [],
+    };
+
+    options().onMessage?.(message);
+    options().onMessage?.(message);
+
+    expect(controller.getState().spectatorTimeline).toMatchObject({
+      lastSeq: 0,
+      events: message.events,
+    });
+  });
 });

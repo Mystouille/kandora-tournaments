@@ -18,6 +18,10 @@ export type MobileContentAuthStatus =
   | "authenticated"
   | "error";
 
+export function shouldKeepMobileScreenAwake(page: MobileShellPage): boolean {
+  return page === "game" || page === "replay-viewer";
+}
+
 export function pendingContentAuthenticationAction(
   requiresAuthentication: boolean,
   authStatus: MobileContentAuthStatus,

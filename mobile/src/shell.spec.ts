@@ -9,6 +9,7 @@ import {
   normalizeWebAppUrl,
   pendingContentAuthenticationAction,
   retryTransientPause,
+  shouldKeepMobileScreenAwake,
   webAppPath,
 } from "./shell";
 
@@ -30,6 +31,14 @@ describe("mobile background resume policy", () => {
 });
 
 describe("mobile shell policy", () => {
+  it("keeps the screen awake only while viewing a table", () => {
+    expect(shouldKeepMobileScreenAwake("game")).toBe(true);
+    expect(shouldKeepMobileScreenAwake("replay-viewer")).toBe(true);
+    expect(shouldKeepMobileScreenAwake("home")).toBe(false);
+    expect(shouldKeepMobileScreenAwake("lobby")).toBe(false);
+    expect(shouldKeepMobileScreenAwake("replays")).toBe(false);
+  });
+
   it("starts login for a protected pending link when signed out", () => {
     expect(pendingContentAuthenticationAction(true, "signed_out", false)).toBe(
       "start-login"

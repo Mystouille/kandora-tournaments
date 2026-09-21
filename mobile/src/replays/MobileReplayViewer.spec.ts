@@ -107,7 +107,8 @@ describe("mobile replay viewer", () => {
       createElement(MobileReplayNavigationMenu, {
         expanded: true,
         handTop: 300,
-        log,
+        events: log.events,
+        seatNames: ["Player 0", "Player 1", "Player 2", "Player 3"],
         index: -1,
         focusSeat: 0,
         rounds: [],
@@ -138,6 +139,38 @@ describe("mobile replay viewer", () => {
     expect(html.indexOf('aria-label="Next round"')).toBeLessThan(
       html.indexOf('aria-label="Previous comment"')
     );
+  });
+
+  it("places Live above the right menu toggle for live spectate", () => {
+    const html = renderToStaticMarkup(
+      createElement(MobileReplayNavigationMenu, {
+        expanded: true,
+        handTop: 300,
+        events: log.events,
+        seatNames: ["Player 0", "Player 1", "Player 2", "Player 3"],
+        index: -1,
+        focusSeat: 0,
+        rounds: [],
+        bounds: { min: -1, max: -1 },
+        commentIndices: [2, 8],
+        liveNavigation: {
+          isLive: false,
+          onGoLive: vi.fn(),
+        },
+        onExpandedChange: vi.fn(),
+        onFocusSeatChange: vi.fn(),
+        onGoTo: vi.fn(),
+        onStep: vi.fn(),
+      })
+    );
+
+    expect(html).toContain('class="mobile-replay-right-controls"');
+    expect(html).toContain('aria-label="Live"');
+    expect(html.indexOf('aria-label="Live"')).toBeLessThan(
+      html.indexOf('aria-label="Close replay navigation"')
+    );
+    expect(html).not.toContain('aria-label="Previous comment"');
+    expect(html).not.toContain('aria-label="Next comment"');
   });
 
   it("renders square display toggles behind the left eye control", () => {

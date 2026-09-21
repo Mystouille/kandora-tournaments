@@ -9,11 +9,12 @@ import {
   LoaderCircle,
   Menu,
   MessageSquareText,
+  Radio,
   RotateCcw,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Seat } from "~/game/protocol/messages";
+import type { GameEvent, Seat } from "~/game/protocol/messages";
 import {
   base64ToBytes,
   decodeDrawing,
@@ -37,6 +38,7 @@ import { waitsForReplayView } from "~/game/replay/waits";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
 import { mobileTableLayout } from "~/game/client/pixi/layouts/mobileTableLayout";
 import { ReplayDrawingOverlay } from "~/game/routes/ReplayDrawingOverlay";
+import { useReplaySwipeNavigation } from "../game/spectateSwipe";
 import { MobileReviewContent } from "./MobileReviewContent";
 import type { MyReplayLogDetails } from "./myReplaysApi";
 
@@ -140,12 +142,17 @@ export function replaySeatEnrichmentForFocus(
 interface MobileReplayNavigationMenuProps {
   expanded: boolean;
   handTop: number | null;
-  log: ReplayLog;
+  events: GameEvent[];
+  seatNames: [string, string, string, string];
   index: number;
   focusSeat: Seat;
   rounds: number[];
   bounds: { min: number; max: number };
   commentIndices?: number[];
+  liveNavigation?: {
+    isLive: boolean;
+    onGoLive: () => void;
+  };
   onExpandedChange: (expanded: boolean) => void;
   onFocusSeatChange: (seat: Seat) => void;
   onGoTo: (index: number) => void;
@@ -155,12 +162,14 @@ interface MobileReplayNavigationMenuProps {
 export function MobileReplayNavigationMenu({
   expanded,
   handTop,
-  log,
+  events,
+  seatNames,
   index,
   focusSeat,
   rounds,
   bounds,
   commentIndices,
+  liveNavigation,
   onExpandedChange,
   onFocusSeatChange,
   onGoTo,
@@ -193,7 +202,7 @@ export function MobileReplayNavigationMenu({
               >
                 {([0, 1, 2, 3] as const).map((seat) => (
                   <option key={seat} value={seat}>
-                    {log.seats[seat]?.displayName || `Seat ${seat + 1}`}
+                    {seatNames[seat] || `Seat ${seat + 1}`}
                   </option>
                 ))}
               </select>
@@ -214,7 +223,7 @@ export function MobileReplayNavigationMenu({
                   Before first hand
                 </option>
                 {rounds.map((eventIndex, roundIndex) => {
-                  const event = log.events[eventIndex];
+                  const event = events[eventIndex];
                   const label =
                     event.type === "hand_start"
                       ? `${event.roundWind}${event.roundNumber}`
@@ -274,7 +283,7 @@ export function MobileReplayNavigationMenu({
               <ChevronsRight aria-hidden="true" />
             </button>
           </div>
-          {commentIndices !== undefined && (
+          {liveNavigation === undefined && commentIndices !== undefined ? (
             <div className="mobile-replay-comment-buttons">
               <button
                 type="button"
@@ -305,23 +314,42 @@ export function MobileReplayNavigationMenu({
                 <ChevronRight aria-hidden="true" />
               </button>
             </div>
-          )}
+          ) : null}
           <output className="mobile-replay-event-count">
-            {index + 1} / {log.events.length}
+            {index + 1} / {events.length}
           </output>
         </div>
       )}
-      <button
-        type="button"
-        className="mobile-replay-menu-toggle"
-        aria-label={
-          expanded ? "Close replay navigation" : "Open replay navigation"
-        }
-        aria-expanded={expanded}
-        onClick={() => onExpandedChange(!expanded)}
-      >
-        {expanded ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-      </button>
+      <div className="mobile-replay-right-controls">
+        {liveNavigation !== undefined && (
+          <button
+            type="button"
+            className="mobile-replay-menu-toggle mobile-replay-live-button"
+            aria-label="Live"
+            title={
+              liveNavigation.isLive
+                ? "Following live"
+                : "Jump to the latest move"
+            }
+            disabled={liveNavigation.isLive}
+            onClick={liveNavigation.onGoLive}
+          >
+            <Radio aria-hidden="true" />
+            <span>Live</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className="mobile-replay-menu-toggle"
+          aria-label={
+            expanded ? "Close replay navigation" : "Open replay navigation"
+          }
+          aria-expanded={expanded}
+          onClick={() => onExpandedChange(!expanded)}
+        >
+          {expanded ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+        </button>
+      </div>
     </aside>
   );
 }
@@ -556,6 +584,9 @@ function LoadedMobileReplayViewer({
     [bounds, initialLocation, review, rounds]
   );
   const [index, setIndex] = useState(initial.index);
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const swipeOriginIndexRef = useRef(index);
   const [focusSeat, setFocusSeat] = useState<Seat>(initial.seat);
   const [displayOptions, setDisplayOptions] =
     useState<MobileReplayDisplayOptions>(DEFAULT_MOBILE_REPLAY_DISPLAY_OPTIONS);
@@ -694,14 +725,36 @@ function LoadedMobileReplayViewer({
 
   const goTo = (nextIndex: number): void => {
     rendererRef.current?.snapNextAnimation();
-    setIndex(Math.max(bounds.min, Math.min(nextIndex, bounds.max)));
+    const clampedIndex = Math.max(bounds.min, Math.min(nextIndex, bounds.max));
+    indexRef.current = clampedIndex;
+    setIndex(clampedIndex);
   };
 
   const step = (delta: -1 | 1): void => {
-    setIndex((current) =>
-      Math.max(bounds.min, Math.min(current + delta, bounds.max))
+    const nextIndex = Math.max(
+      bounds.min,
+      Math.min(indexRef.current + delta, bounds.max)
     );
+    indexRef.current = nextIndex;
+    setIndex(nextIndex);
   };
+
+  useReplaySwipeNavigation({
+    containerRef,
+    onGestureStart: () => {
+      swipeOriginIndexRef.current = indexRef.current;
+    },
+    onEventOffset: (eventOffset) => {
+      const currentIndex = indexRef.current;
+      const nextIndex = Math.max(
+        bounds.min,
+        Math.min(swipeOriginIndexRef.current + eventOffset, bounds.max)
+      );
+      if (nextIndex !== currentIndex) {
+        goTo(nextIndex);
+      }
+    },
+  });
 
   return (
     <main className="mobile-game-view mobile-replay-viewer">
@@ -759,7 +812,13 @@ function LoadedMobileReplayViewer({
         <MobileReplayNavigationMenu
           expanded={navigationOpen}
           handTop={handTop}
-          log={log}
+          events={log.events}
+          seatNames={[
+            log.seats[0]?.displayName ?? "",
+            log.seats[1]?.displayName ?? "",
+            log.seats[2]?.displayName ?? "",
+            log.seats[3]?.displayName ?? "",
+          ]}
           index={index}
           focusSeat={focusSeat}
           rounds={rounds}
