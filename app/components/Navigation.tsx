@@ -14,6 +14,12 @@ import { useGlossary } from "../contexts/GlossaryContext";
 import { useTileSet } from "../contexts/TileSetContext";
 import { TileSetName } from "./mahjong/HandImage";
 import type { TournamentAdminAccess } from "../utils/league-permissions.server";
+import {
+  readSelectedTournament,
+  saveSelectedTournament,
+  selectedTournamentFromNavigationState,
+  type SelectedTournament,
+} from "../utils/selectedTournament";
 
 interface NavigationProps {
   children: React.ReactNode;
@@ -35,6 +41,8 @@ export function Navigation({ children }: NavigationProps) {
   const { customTokens } = useAppTheme();
   const { setTileSet } = useTileSet();
   const { activeTerm, closeTerm } = useGlossary();
+  const [selectedTournament, setSelectedTournament] =
+    useState<SelectedTournament | null>(null);
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
@@ -48,6 +56,61 @@ export function Navigation({ children }: NavigationProps) {
     /^\/online-tournaments\/([^/]+)/
   );
   const tournamentSlug = tournamentMatch ? tournamentMatch[1] : null;
+
+  useEffect(() => {
+    const storedTournament = readSelectedTournament(window.localStorage);
+    const navigationTournament = selectedTournamentFromNavigationState(
+      location.state
+    );
+
+    if (tournamentSlug && navigationTournament?.slug === tournamentSlug) {
+      setSelectedTournament(navigationTournament);
+      saveSelectedTournament(navigationTournament, window.localStorage);
+      return;
+    }
+
+    if (!tournamentSlug) {
+      setSelectedTournament(storedTournament);
+      return;
+    }
+
+    if (storedTournament?.slug === tournamentSlug) {
+      setSelectedTournament(storedTournament);
+      return;
+    }
+
+    setSelectedTournament(null);
+    const controller = new AbortController();
+    fetch(
+      `${basePath}/api/online-tournaments/${encodeURIComponent(tournamentSlug)}`,
+      { signal: controller.signal }
+    )
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to resolve tournament navigation");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const fetchedTournament = selectedTournamentFromNavigationState({
+          selectedTournament: data,
+        });
+        if (fetchedTournament?.slug !== tournamentSlug) {
+          return;
+        }
+        setSelectedTournament(fetchedTournament);
+        saveSelectedTournament(fetchedTournament, window.localStorage);
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          console.error(error);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [location.state, tournamentSlug]);
 
   // Swipe gestures for mobile
   useSwipeGesture({
@@ -217,7 +280,7 @@ export function Navigation({ children }: NavigationProps) {
             collapsed={collapsed}
             isMobile={isMobile}
             onClose={() => setCollapsed(true)}
-            tournamentSlug={tournamentSlug}
+            selectedTournament={selectedTournament}
             currentUser={currentUser}
           />
         )}

@@ -112,6 +112,12 @@ export default function OnlineTournaments() {
               const meta = statusMeta[status];
               const summaryText = getTournamentText(league.summary, locale);
               const isTeamMode = league.rulesConfig?.isTeamMode ?? false;
+              const tournamentLocationState = {
+                selectedTournament: {
+                  slug: league.slug,
+                  name: league.name,
+                },
+              };
               return (
                 <Col
                   key={league._id}
@@ -139,6 +145,7 @@ export default function OnlineTournaments() {
                     cover={
                       <Link
                         to={`/online-tournaments/${league.slug}/presentation`}
+                        state={tournamentLocationState}
                       >
                         {league.coverImageUrl ? (
                           <img
@@ -192,6 +199,7 @@ export default function OnlineTournaments() {
 
                     <Link
                       to={`/online-tournaments/${league.slug}/presentation`}
+                      state={tournamentLocationState}
                     >
                       <Title level={4} style={{ margin: 0 }}>
                         {league.name}

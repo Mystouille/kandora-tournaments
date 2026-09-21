@@ -36,17 +36,24 @@ vi.mock("../contexts/LocaleContext", () => ({
 
 vi.mock("./LogoDisplay", () => ({ LogoDisplay: () => null }));
 
-function renderSidebar(currentUser: Record<string, never> | null): string {
+function renderSidebar(
+  currentUser: Record<string, never> | null,
+  selectedTournament?: { slug: string; name: string }
+): string {
   return renderToStaticMarkup(
     createElement(
       MemoryRouter,
       { initialEntries: ["/"] },
-      createElement(Sidebar, { collapsed: false, currentUser })
+      createElement(Sidebar, {
+        collapsed: false,
+        currentUser,
+        selectedTournament,
+      })
     )
   );
 }
 
-describe("Sidebar game lobby item", () => {
+describe("Sidebar", () => {
   it("hides the lobby from signed-out users", () => {
     const html = renderSidebar(null);
 
@@ -68,5 +75,29 @@ describe("Sidebar game lobby item", () => {
     expect(signedOutHtml).toContain("Open replay");
     expect(signedOutHtml).not.toContain("My replays");
     expect(signedInHtml).toContain('href="/my-replays"');
+  });
+
+  it("groups tournament links under the selected tournament name", () => {
+    const html = renderSidebar(
+      {},
+      {
+        slug: "spring-cup",
+        name: "Spring Cup",
+      }
+    );
+
+    const tournamentMenuIndex = html.indexOf("Spring Cup");
+    const informationIndex = html.indexOf(
+      'href="/online-tournaments/spring-cup/presentation"'
+    );
+    const statisticsIndex = html.indexOf(
+      'href="/online-tournaments/spring-cup/statistics"'
+    );
+    const lobbyIndex = html.indexOf('href="/lobby"');
+
+    expect(html).toContain("Spring Cup");
+    expect(tournamentMenuIndex).toBeLessThan(informationIndex);
+    expect(informationIndex).toBeLessThan(statisticsIndex);
+    expect(statisticsIndex).toBeLessThan(lobbyIndex);
   });
 });

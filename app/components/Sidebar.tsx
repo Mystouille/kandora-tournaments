@@ -13,6 +13,7 @@ import {
 import { Link, useLocation } from "react-router";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { useLocale } from "../contexts/LocaleContext";
+import type { SelectedTournament } from "../utils/selectedTournament";
 import { LogoDisplay } from "./LogoDisplay";
 
 const { Sider } = Layout;
@@ -37,8 +38,7 @@ interface SidebarProps {
   collapsed: boolean;
   isMobile?: boolean;
   onClose?: () => void;
-  /** Adds tournament-specific links while the URL is inside a tournament. */
-  tournamentSlug?: string | null;
+  selectedTournament?: SelectedTournament | null;
   currentUser?: { canAccessTournamentAdmin?: boolean } | null;
 }
 
@@ -46,7 +46,7 @@ export function Sidebar({
   collapsed,
   isMobile,
   onClose,
-  tournamentSlug,
+  selectedTournament,
   currentUser,
 }: SidebarProps) {
   const location = useLocation();
@@ -54,36 +54,43 @@ export function Sidebar({
   const { t } = useLocale();
   const { siderBg, logoPathMobileLight, logoPathMobileDark } = customTokens;
 
-  const tournamentChildStyle: React.CSSProperties | undefined =
-    collapsed && !isMobile ? undefined : { paddingInlineStart: 40 };
   const items: MenuItem[] = [
     getItem(<Link to="/">{t.nav.tournaments}</Link>, "/", <TrophyOutlined />),
+    ...(selectedTournament
+      ? [
+          {
+            key: "selected-tournament",
+            label: selectedTournament.name,
+            icon: <TrophyOutlined />,
+            children: [
+              getItem(
+                <Link
+                  to={`/online-tournaments/${selectedTournament.slug}/presentation`}
+                >
+                  {t.onlineTournaments.navInfo}
+                </Link>,
+                `/online-tournaments/${selectedTournament.slug}`,
+                <InfoCircleOutlined />
+              ),
+              getItem(
+                <Link
+                  to={`/online-tournaments/${selectedTournament.slug}/statistics`}
+                >
+                  {t.onlineTournaments.navStatistics}
+                </Link>,
+                `/online-tournaments/${selectedTournament.slug}/statistics`,
+                <BarChartOutlined />
+              ),
+            ],
+          } as MenuItem,
+        ]
+      : []),
     ...(currentUser
       ? [
           getItem(
             <Link to="/lobby">{t.nav.gameLobby}</Link>,
             "/lobby",
             <PlayCircleOutlined />
-          ),
-        ]
-      : []),
-    ...(tournamentSlug
-      ? [
-          getItem(
-            <Link to={`/online-tournaments/${tournamentSlug}/presentation`}>
-              {t.onlineTournaments.navInfo}
-            </Link>,
-            `/online-tournaments/${tournamentSlug}`,
-            <InfoCircleOutlined />,
-            tournamentChildStyle
-          ),
-          getItem(
-            <Link to={`/online-tournaments/${tournamentSlug}/statistics`}>
-              {t.onlineTournaments.navStatistics}
-            </Link>,
-            `/online-tournaments/${tournamentSlug}/statistics`,
-            <BarChartOutlined />,
-            tournamentChildStyle
           ),
         ]
       : []),
@@ -106,21 +113,33 @@ export function Sidebar({
     } as MenuItem,
   ];
 
-  const selectedKey = tournamentSlug
-    ? location.pathname.startsWith(
-        `/online-tournaments/${tournamentSlug}/statistics`
-      )
-      ? `/online-tournaments/${tournamentSlug}/statistics`
-      : `/online-tournaments/${tournamentSlug}`
-    : location.pathname === "/" || location.pathname === "/online-tournaments"
-      ? "/"
-      : location.pathname === "/lobby"
-        ? "/lobby"
-        : location.pathname === "/review"
-          ? "/review"
-          : location.pathname === "/my-replays"
-            ? "/my-replays"
-            : "";
+  const selectedTournamentPath = selectedTournament
+    ? `/online-tournaments/${selectedTournament.slug}`
+    : null;
+  let selectedKey = "";
+  if (
+    selectedTournamentPath &&
+    location.pathname.startsWith(`${selectedTournamentPath}/statistics`)
+  ) {
+    selectedKey = `${selectedTournamentPath}/statistics`;
+  } else if (
+    selectedTournamentPath &&
+    (location.pathname === selectedTournamentPath ||
+      location.pathname.startsWith(`${selectedTournamentPath}/`))
+  ) {
+    selectedKey = selectedTournamentPath;
+  } else if (
+    location.pathname === "/" ||
+    location.pathname === "/online-tournaments"
+  ) {
+    selectedKey = "/";
+  } else if (location.pathname === "/lobby") {
+    selectedKey = "/lobby";
+  } else if (location.pathname === "/review") {
+    selectedKey = "/review";
+  } else if (location.pathname === "/my-replays") {
+    selectedKey = "/my-replays";
+  }
 
   const showCollapsedLogo = Boolean(collapsed && !isMobile);
 
@@ -196,7 +215,7 @@ export function Sidebar({
         theme={isDark ? "dark" : "light"}
         mode="inline"
         selectedKeys={[selectedKey]}
-        defaultOpenKeys={["analysis-tools"]}
+        defaultOpenKeys={["selected-tournament", "analysis-tools"]}
         items={items}
         onClick={() => isMobile && onClose?.()}
         style={{
