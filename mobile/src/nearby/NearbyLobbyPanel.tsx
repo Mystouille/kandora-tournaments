@@ -28,8 +28,6 @@ interface NearbyLobbyPanelProps {
   onDiscover: () => void;
   onResumeHost: () => void;
   onConnect: (endpointId: string) => void;
-  onConfirmPairing: (endpointId: string) => void;
-  onRejectPairing: (endpointId: string) => void;
   onReadyChange: (ready: boolean) => void;
   onAddBot: () => void;
   onKick: (seat: 0 | 1 | 2 | 3) => void;
@@ -48,15 +46,12 @@ export function NearbyLobbyPanel({
   onDiscover,
   onResumeHost,
   onConnect,
-  onConfirmPairing,
-  onRejectPairing,
   onReadyChange,
   onAddBot,
   onKick,
   onStartMatch,
   onLeave,
 }: NearbyLobbyPanelProps) {
-  const pairing = state.pairings[0];
   const room = state.roomState;
 
   if (state.role === "host" && state.status === "paused") {
@@ -88,42 +83,6 @@ export function NearbyLobbyPanel({
     );
   }
 
-  if (pairing !== undefined) {
-    return (
-      <aside className="nearby-panel nearby-verification" aria-live="polite">
-        <div className="nearby-panel-heading">
-          <Smartphone aria-hidden="true" />
-          <div>
-            <strong>Verify device</strong>
-            <span>{pairing.endpointName}</span>
-          </div>
-        </div>
-        <output className="verification-code" aria-label="Pairing code">
-          {pairing.authenticationDigits}
-        </output>
-        <div className="nearby-panel-actions">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Reject pairing"
-            title="Reject pairing"
-            onClick={() => onRejectPairing(pairing.endpointId)}
-          >
-            <X aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="command-button command-button-confirm"
-            onClick={() => onConfirmPairing(pairing.endpointId)}
-          >
-            <Check aria-hidden="true" />
-            <span>Codes match</span>
-          </button>
-        </div>
-      </aside>
-    );
-  }
-
   if (room !== null && room.status === "waiting") {
     const humanCount = room.seats.filter(
       (seat) => seat.occupant.kind === "human"
@@ -139,7 +98,9 @@ export function NearbyLobbyPanel({
         <div className="nearby-panel-heading">
           <RadioTower aria-hidden="true" />
           <div>
-            <strong>{state.role === "host" ? "Your table" : "Nearby table"}</strong>
+            <strong>
+              {state.role === "host" ? "Your table" : "Nearby table"}
+            </strong>
             <span>{humanCount} of 4 players</span>
           </div>
         </div>
@@ -231,8 +192,7 @@ export function NearbyLobbyPanel({
   }
 
   if (state.role === "guest") {
-    const connecting =
-      state.status === "connecting" || state.status === "pairing";
+    const connecting = state.status === "connecting";
     return (
       <aside className="nearby-panel" aria-label="Find Nearby table">
         <div className="nearby-panel-heading">
@@ -307,19 +267,15 @@ export function NearbyLobbyPanel({
         />
       </label>
       <div className="nearby-choice-grid">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onPlaySolo}
-        >
+        <button type="button" disabled={busy} onClick={onPlaySolo}>
           <Play aria-hidden="true" />
-          <span>
-            {localState.status === "paused" ? "Resume solo" : "Solo"}
-          </span>
+          <span>{localState.status === "paused" ? "Resume solo" : "Solo"}</span>
         </button>
         <button
           type="button"
-          disabled={busy || !state.available || identity.displayName.trim() === ""}
+          disabled={
+            busy || !state.available || identity.displayName.trim() === ""
+          }
           onClick={onHost}
         >
           <RadioTower aria-hidden="true" />
@@ -327,7 +283,9 @@ export function NearbyLobbyPanel({
         </button>
         <button
           type="button"
-          disabled={busy || !state.available || identity.displayName.trim() === ""}
+          disabled={
+            busy || !state.available || identity.displayName.trim() === ""
+          }
           onClick={onDiscover}
         >
           <Search aria-hidden="true" />

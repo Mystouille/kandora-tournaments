@@ -1933,16 +1933,6 @@ export function App() {
                 ?.requestConnection(endpointId)
                 .catch(() => undefined);
             }}
-            onConfirmPairing={(endpointId) => {
-              void nearbyControllerRef.current
-                ?.confirmPairing(endpointId)
-                .catch(() => undefined);
-            }}
-            onRejectPairing={(endpointId) => {
-              void nearbyControllerRef.current
-                ?.rejectPairing(endpointId)
-                .catch(() => undefined);
-            }}
             onReadyChange={(ready) => {
               void nearbyControllerRef.current
                 ?.setWaitingRoomReady(ready)

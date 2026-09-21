@@ -2040,26 +2040,6 @@ button {
   background: #63cf8d;
 }
 
-.nearby-verification {
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.verification-code {
-  display: block;
-  padding: 10px 0;
-  color: #fff8ec;
-  font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
-  font-size: 38px;
-  line-height: 1;
-  font-weight: 700;
-  text-align: center;
-}
-
-.command-button-confirm {
-  background: #266447;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;

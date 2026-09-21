@@ -40,7 +40,6 @@ export interface NearbyMatchControllerState {
     | "opening"
     | "advertising"
     | "discovering"
-    | "pairing"
     | "connecting"
     | "lobby"
     | "playing"
@@ -53,7 +52,6 @@ export interface NearbyMatchControllerState {
   matchId: string | null;
   roomState: RoomState | null;
   discovered: NearbyEndpoint[];
-  pairings: NearbyConnectionInitiated[];
   connected: NearbyEndpoint[];
   error: string | null;
 }
@@ -102,7 +100,6 @@ export const INITIAL_NEARBY_MATCH_STATE: NearbyMatchControllerState = {
   matchId: null,
   roomState: null,
   discovered: [],
-  pairings: [],
   connected: [],
   error: null,
 };
@@ -212,7 +209,6 @@ export class NearbyMatchController {
         matchId: activeMatch.matchId,
         roomState: null,
         discovered: [],
-        pairings: [],
         connected: [],
         error: null,
       });
@@ -232,7 +228,6 @@ export class NearbyMatchController {
         matchId: null,
         roomState: null,
         discovered: [],
-        pairings: [],
         connected: [],
         error: null,
       });
@@ -293,7 +288,6 @@ export class NearbyMatchController {
         status: "opening",
         matchId: activeMatch.matchId,
         discovered: [],
-        pairings: [],
         connected: [],
         error: null,
       });
@@ -341,7 +335,6 @@ export class NearbyMatchController {
         matchId: null,
         roomState: null,
         discovered: [],
-        pairings: [],
         connected: [],
         error: null,
       });
@@ -364,32 +357,6 @@ export class NearbyMatchController {
         endpointName: this.identity.displayName,
       });
       this.update({ status: "connecting", error: null });
-    });
-  }
-
-  confirmPairing(endpointId: string): Promise<void> {
-    return this.enqueueControl(async () => {
-      if (
-        !this.state.pairings.some(
-          (pairing) => pairing.endpointId === endpointId
-        )
-      ) {
-        throw new Error("That pairing request is no longer active");
-      }
-      await this.transport.acceptConnection({ endpointId });
-      this.update({ status: "connecting", error: null });
-    });
-  }
-
-  rejectPairing(endpointId: string): Promise<void> {
-    return this.enqueueControl(async () => {
-      await this.transport.rejectConnection({ endpointId });
-      this.update({
-        pairings: this.state.pairings.filter(
-          (pairing) => pairing.endpointId !== endpointId
-        ),
-        status: this.state.role === "host" ? "lobby" : "discovering",
-      });
     });
   }
 
@@ -541,16 +508,24 @@ export class NearbyMatchController {
         });
       }),
       this.transport.addListener("connectionInitiated", (event) => {
-        this.update({
-          status: "pairing",
-          pairings: [
-            ...this.state.pairings.filter(
-              (pairing) => pairing.endpointId !== event.endpointId
-            ),
-            event,
-          ],
-          error: null,
-        });
+        void this.enqueueControl(async () => {
+          const expected =
+            (this.state.role === "host" && event.incoming) ||
+            (this.state.role === "guest" && !event.incoming);
+          if (!expected) {
+            await this.transport.rejectConnection({
+              endpointId: event.endpointId,
+            });
+            return;
+          }
+          await this.transport.acceptConnection({
+            endpointId: event.endpointId,
+          });
+          this.update({
+            ...(this.state.role === "guest" ? { status: "connecting" } : {}),
+            error: null,
+          });
+        }).catch(() => undefined);
       }),
       this.transport.addListener("connectionResult", (event) => {
         this.handleConnectionResult(event);
@@ -602,22 +577,24 @@ export class NearbyMatchController {
   }
 
   private handleConnectionResult(event: NearbyConnectionResult): void {
-    const pairings = this.state.pairings.filter(
-      (pairing) => pairing.endpointId !== event.endpointId
-    );
+    if (this.state.role === "idle") {
+      return;
+    }
     if (event.status !== "connected") {
       this.update({
-        pairings,
-        status: this.state.role === "host" ? "lobby" : "discovering",
+        status:
+          this.state.role === "host"
+            ? this.hostConnectionStatus()
+            : "discovering",
         error:
           event.status === "rejected"
-            ? "The pairing request was rejected"
+            ? "The Nearby connection was rejected"
             : "The Nearby connection failed",
       });
       return;
     }
     const connected = replaceEndpoint(this.state.connected, event);
-    this.update({ connected, pairings, error: null });
+    this.update({ connected, error: null });
     if (this.state.role === "guest" && this.identity !== null) {
       this.hostEndpointId = event.endpointId;
       void this.transport.stopDiscovery();
@@ -631,10 +608,15 @@ export class NearbyMatchController {
       return;
     }
     if (this.state.role === "host") {
-      this.update({
-        status: this.match?.status === "waiting" ? "lobby" : "playing",
-      });
+      this.update({ status: this.hostConnectionStatus() });
     }
+  }
+
+  private hostConnectionStatus(): "lobby" | "playing" | "finished" {
+    if (this.match?.status === "waiting") {
+      return "lobby";
+    }
+    return this.match?.status === "finished" ? "finished" : "playing";
   }
 
   private handleDisconnected(endpointId: string): void {
@@ -1063,7 +1045,7 @@ export class NearbyMatchController {
       this.detachRemote(endpointId);
     }
     await this.transport.stopAll();
-    this.update({ discovered: [], pairings: [], connected: [] });
+    this.update({ discovered: [], connected: [] });
   }
 
   private requireMatchId(): string {

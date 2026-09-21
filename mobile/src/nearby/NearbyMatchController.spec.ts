@@ -256,7 +256,7 @@ describe("Nearby mobile match controller", () => {
     setDelayAfterDiscardMs(350);
   });
 
-  it("requires explicit pairing and keeps a remote callback through seat randomization", async () => {
+  it("auto-accepts a guest and keeps its callback through seat randomization", async () => {
     setReadyCheckMs(0);
     setDelayAfterDiscardMs(0);
     const transport = new FakeNearbyTransport();
@@ -275,9 +275,7 @@ describe("Nearby mobile match controller", () => {
       authenticationDigits: "3141",
       incoming: true,
     });
-    expect(transport.accepted).toEqual([]);
-
-    await controller.confirmPairing("remote-endpoint");
+    await controller.waitForIdle();
     expect(transport.accepted).toEqual(["remote-endpoint"]);
     transport.emit("connectionResult", {
       endpointId: "remote-endpoint",
@@ -330,9 +328,54 @@ describe("Nearby mobile match controller", () => {
         seat.occupant.userId === "mobile:guest"
     )?.seat;
     expect(finalRoom?.mySeat).toBe(guestSeat);
+
+    transport.emit("disconnected", { endpointId: "remote-endpoint" });
+    expect(controller.getState().status).toBe("playing");
+    transport.emit("connectionInitiated", {
+      endpointId: "rejoined-endpoint",
+      endpointName: "Guest",
+      authenticationDigits: "9999",
+      incoming: true,
+    });
+    await controller.waitForIdle();
+    expect(transport.accepted).toEqual([
+      "remote-endpoint",
+      "rejoined-endpoint",
+    ]);
+    expect(controller.getState().status).toBe("playing");
+    transport.emit("connectionResult", {
+      endpointId: "rejoined-endpoint",
+      endpointName: "Guest",
+      status: "connected",
+    });
+    transport.emit("message", {
+      endpointId: "rejoined-endpoint",
+      data: encodeNearbyFrame({
+        version: NEARBY_PROTOCOL_VERSION,
+        kind: "hello",
+        deviceId: "mobile:guest",
+        displayName: "Guest",
+      }),
+    });
+    await controller.waitForIdle();
+
+    const rejoinFrames = serverFrames(transport, "rejoined-endpoint").map(
+      (frame) => frame.message
+    );
+    expect(rejoinFrames).toContainEqual(
+      expect.objectContaining({
+        type: "room_state",
+        status: "playing",
+        mySeat: guestSeat,
+      })
+    );
+    expect(rejoinFrames).toContainEqual(
+      expect.objectContaining({ type: "snapshot" })
+    );
+    expect(controller.getState().status).toBe("playing");
   });
 
-  it("discovers, verifies, handshakes, and sends validated guest commands", async () => {
+  it("discovers, auto-accepts, handshakes, and sends validated guest commands", async () => {
     const transport = new FakeNearbyTransport();
     const controller = new NearbyMatchController(
       memoryPersistence(),
@@ -354,8 +397,8 @@ describe("Nearby mobile match controller", () => {
       authenticationDigits: "2718",
       incoming: false,
     });
-    expect(transport.accepted).toEqual([]);
-    await controller.confirmPairing("host-endpoint");
+    await controller.waitForIdle();
+    expect(transport.accepted).toEqual(["host-endpoint"]);
     transport.emit("connectionResult", {
       endpointId: "host-endpoint",
       endpointName: "Host's table",
