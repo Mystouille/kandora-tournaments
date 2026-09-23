@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { GameWSConnectionDetails } from "~/game/client/ws";
 import type { MobileAuthSession } from "../auth/mobileAuth";
+import {
+  absoluteSeatEnrichment,
+  type MobileSeatEnrichment,
+} from "../seatEnrichment";
 import { webAppPath } from "../shell";
 
 const CreateRoomResponseSchema = z.object({ matchId: z.string().min(1) });
@@ -13,6 +17,26 @@ const GameSessionResponseSchema = z.object({
   wsUrl: z.string().nullable(),
   wsPath: z.string().startsWith("/"),
 });
+const GameEnrichmentResponseSchema = z.object({
+  seats: z.array(
+    z.object({
+      seat: z.number().int().min(0).max(3),
+      teamName: z.string().nullable().optional(),
+      teamLogoUrl: z.string().nullable().optional(),
+    })
+  ),
+});
+
+export type OnlineGameEnrichment = [
+  MobileSeatEnrichment | null,
+  MobileSeatEnrichment | null,
+  MobileSeatEnrichment | null,
+  MobileSeatEnrichment | null,
+];
+
+export function emptyOnlineGameEnrichment(): OnlineGameEnrichment {
+  return [null, null, null, null];
+}
 
 export class OnlineGameHttpError extends Error {
   constructor(
@@ -58,6 +82,31 @@ export async function resolveOnlineWatchId(
     body: new URLSearchParams({ token: session.token, watchId }),
   });
   return WatchGameResponseSchema.parse(await responseJson(response)).matchId;
+}
+
+export async function getOnlineGameEnrichment(
+  baseUrl: string,
+  matchId: string,
+  fetcher: typeof fetch = fetch
+): Promise<OnlineGameEnrichment> {
+  const response = await fetcher(
+    webAppPath(
+      baseUrl,
+      `/api/game/enrichment?matchId=${encodeURIComponent(matchId)}`
+    )
+  );
+  const parsed = GameEnrichmentResponseSchema.parse(
+    await responseJson(response)
+  );
+  const bySeat = emptyOnlineGameEnrichment();
+  for (const seat of parsed.seats) {
+    bySeat[seat.seat] = {
+      teamName: seat.teamName ?? null,
+      teamLogoUrl: seat.teamLogoUrl ?? null,
+    };
+  }
+  const absolute = absoluteSeatEnrichment(baseUrl, bySeat);
+  return [absolute[0], absolute[1], absolute[2], absolute[3]];
 }
 
 export async function getOnlineGameConnectionDetails(

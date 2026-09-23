@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import { webAppPath } from "../shell";
+import { absoluteSeatEnrichment } from "../seatEnrichment";
 import { MobileReplayLogSchema } from "./replayLog";
 
 const ReplaySourceSchema = z.enum([
@@ -185,25 +186,6 @@ export async function fetchMyReplayLog(
     ...details,
     seatEnrichment: absoluteSeatEnrichment(baseUrl, details.seatEnrichment),
   };
-}
-
-function absoluteSeatEnrichment(
-  baseUrl: string,
-  seatEnrichment: MyReplayLogDetails["seatEnrichment"]
-): MyReplayLogDetails["seatEnrichment"] {
-  return seatEnrichment.map((enrichment) => {
-    if (enrichment === null || enrichment.teamLogoUrl === null) {
-      return enrichment;
-    }
-    try {
-      return {
-        ...enrichment,
-        teamLogoUrl: webAppPath(baseUrl, enrichment.teamLogoUrl),
-      };
-    } catch {
-      return { ...enrichment, teamLogoUrl: null };
-    }
-  });
 }
 
 export async function fetchDirectReplayLog(

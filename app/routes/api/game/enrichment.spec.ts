@@ -95,5 +95,7 @@ describe("game enrichment loader", () => {
         },
       ],
     });
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 });

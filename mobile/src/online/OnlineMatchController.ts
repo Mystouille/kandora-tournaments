@@ -14,8 +14,11 @@ import {
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   createOnlineRoom,
+  emptyOnlineGameEnrichment,
+  getOnlineGameEnrichment,
   getOnlineGameConnectionDetails,
   OnlineGameHttpError,
+  type OnlineGameEnrichment,
 } from "./onlineGameApi";
 
 export type OnlineMatchStatus =
@@ -34,6 +37,7 @@ export interface OnlineMatchControllerState {
   matchId: string | null;
   roomState: RoomState | null;
   spectatorTimeline: LiveSpectateTimeline | null;
+  spectatorEnrichment: OnlineGameEnrichment;
   error: string | null;
 }
 
@@ -43,6 +47,7 @@ export const INITIAL_ONLINE_MATCH_STATE: OnlineMatchControllerState = {
   matchId: null,
   roomState: null,
   spectatorTimeline: null,
+  spectatorEnrichment: emptyOnlineGameEnrichment(),
   error: null,
 };
 
@@ -67,6 +72,7 @@ interface OnlineSocket {
 interface OnlineMatchControllerDependencies {
   createRoom: typeof createOnlineRoom;
   getConnectionDetails: typeof getOnlineGameConnectionDetails;
+  getSpectatorEnrichment: typeof getOnlineGameEnrichment;
   createSocket: (options: GameWSOptions) => OnlineSocket;
   waitForLeave: () => Promise<void>;
 }
@@ -74,6 +80,7 @@ interface OnlineMatchControllerDependencies {
 const DEFAULT_DEPENDENCIES: OnlineMatchControllerDependencies = {
   createRoom: createOnlineRoom,
   getConnectionDetails: getOnlineGameConnectionDetails,
+  getSpectatorEnrichment: getOnlineGameEnrichment,
   createSocket: (options) => new GameWS(options),
   waitForLeave: () =>
     new Promise((resolve) => globalThis.setTimeout(resolve, 50)),
@@ -115,6 +122,7 @@ export class OnlineMatchController {
       matchId: null,
       roomState: null,
       spectatorTimeline: null,
+      spectatorEnrichment: emptyOnlineGameEnrichment(),
       error: null,
     });
     try {
@@ -223,6 +231,7 @@ export class OnlineMatchController {
       roomState: null,
       spectatorTimeline:
         mode === "spectator" ? createLiveSpectateTimeline() : null,
+      spectatorEnrichment: emptyOnlineGameEnrichment(),
       error: null,
     });
     const socket = this.dependencies.createSocket({
@@ -234,6 +243,29 @@ export class OnlineMatchController {
     });
     this.socket = socket;
     socket.connect();
+    if (mode === "spectator") {
+      void this.loadSpectatorEnrichment(baseUrl, matchId);
+    }
+  }
+
+  private async loadSpectatorEnrichment(
+    baseUrl: string,
+    matchId: string
+  ): Promise<void> {
+    try {
+      const spectatorEnrichment =
+        await this.dependencies.getSpectatorEnrichment(baseUrl, matchId);
+      if (
+        this.state.mode !== "spectator" ||
+        this.state.matchId !== matchId ||
+        this.baseUrl !== baseUrl
+      ) {
+        return;
+      }
+      this.setState({ ...this.state, spectatorEnrichment });
+    } catch (error) {
+      console.warn("Failed to load mobile spectator enrichment:", error);
+    }
   }
 
   private async connectionDetails(
@@ -344,6 +376,7 @@ export class OnlineMatchController {
       matchId: this.state.matchId,
       roomState: null,
       spectatorTimeline: null,
+      spectatorEnrichment: emptyOnlineGameEnrichment(),
       error: error instanceof Error ? error.message : "Online game failed",
     });
   }

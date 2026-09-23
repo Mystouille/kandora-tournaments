@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   createOnlineRoom,
+  getOnlineGameEnrichment,
   getOnlineGameConnectionDetails,
   resolveOnlineWatchId,
 } from "./onlineGameApi";
@@ -89,5 +90,44 @@ describe("mobile online game API", () => {
       token: "game-token",
       watchId: "AB12CD34",
     });
+  });
+
+  it("loads spectator team enrichment with absolute logo URLs", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        seats: [
+          {
+            seat: 0,
+            playerName: "East",
+            teamName: "East Club",
+            teamLogoUrl: "/api/uploads/east.webp",
+          },
+          {
+            seat: 2,
+            playerName: "West",
+            teamName: "West Club",
+            teamLogoUrl: "https://cdn.example.com/west.webp",
+          },
+        ],
+      })
+    );
+
+    await expect(
+      getOnlineGameEnrichment("https://play.example.com", "relay/1", fetcher)
+    ).resolves.toEqual([
+      {
+        teamName: "East Club",
+        teamLogoUrl: "https://play.example.com/api/uploads/east.webp",
+      },
+      null,
+      {
+        teamName: "West Club",
+        teamLogoUrl: "https://cdn.example.com/west.webp",
+      },
+      null,
+    ]);
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://play.example.com/api/game/enrichment?matchId=relay%2F1"
+    );
   });
 });

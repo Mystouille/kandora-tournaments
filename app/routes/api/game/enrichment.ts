@@ -7,6 +7,15 @@ import { TeamModel, type Team } from "~/core/models/tournament/Team";
 import { UserModel } from "~/core/models/shared/User";
 import { isGameEnabled } from "~/game/feature-gate";
 
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "cache-control": "no-store",
+} as const;
+
+function json(body: unknown): Response {
+  return Response.json(body, { headers: CORS_HEADERS });
+}
+
 /**
  * GET /api/game/enrichment?matchId=<gameServerMatchId>
  *
@@ -19,11 +28,11 @@ import { isGameEnabled } from "~/game/feature-gate";
  */
 export async function loader({ request }: { request: Request }) {
   if (!isGameEnabled()) {
-    return Response.json({ seats: [] });
+    return json({ seats: [] });
   }
   const matchId = new URL(request.url).searchParams.get("matchId");
   if (!matchId) {
-    return Response.json({ seats: [] });
+    return json({ seats: [] });
   }
 
   await connectToDatabase();
@@ -31,7 +40,7 @@ export async function loader({ request }: { request: Request }) {
     relayMatchId: matchId,
   }).lean<LiveGame | null>();
   if (!live) {
-    return Response.json({ seats: [] });
+    return json({ seats: [] });
   }
 
   const teams = await TeamModel.find({ leagueId: live.league })
@@ -96,5 +105,5 @@ export async function loader({ request }: { request: Request }) {
       };
     });
 
-  return Response.json({ seats });
+  return json({ seats });
 }

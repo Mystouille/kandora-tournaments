@@ -28,6 +28,7 @@ import {
   applyReplayEvent,
   replayViewToMatchView,
   rotateMatchView,
+  rotateSeatValues,
 } from "~/game/replay/player";
 import { waitsForReplayView } from "~/game/replay/waits";
 import { useMatchStore } from "~/game/client/store";
@@ -144,7 +145,7 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
-export const MOBILE_APP_VERSION = "0.0.1";
+export const MOBILE_APP_VERSION = "0.0.2";
 
 const DRAW_TO_DISCARD_DELAY_MS = 700;
 
@@ -944,14 +945,21 @@ export function App() {
       renderer.setShowNames(spectateDisplayOptions.showNames);
       renderer.setStagedRevealEnabled(spectateFollowingLive);
     }
+    renderer.setSeatEnrichment(
+      isLiveSpectating
+        ? rotateSeatValues(onlineState.spectatorEnrichment, spectateFocusSeat)
+        : [null, null, null, null]
+    );
     renderer.render(renderedTableView);
   }, [
     isLiveSpectating,
     page,
+    onlineState.spectatorEnrichment,
     renderedTableView,
     rendererState,
     sequenceLiveAnimations,
     spectateDisplayOptions,
+    spectateFocusSeat,
     spectateFollowingLive,
   ]);
 

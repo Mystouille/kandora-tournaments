@@ -14,6 +14,9 @@ const session: MobileAuthSession = {
 
 function setup() {
   let options: GameWSOptions | null = null;
+  const getSpectatorEnrichment = vi
+    .fn()
+    .mockResolvedValue([null, null, null, null]);
   const socket = {
     connect: vi.fn(),
     close: vi.fn(),
@@ -33,6 +36,7 @@ function setup() {
       token: "game-token",
       wsUrl: "wss://game.test/ws/game/room-1",
     }),
+    getSpectatorEnrichment,
     createSocket: (nextOptions) => {
       options = nextOptions;
       return socket;
@@ -41,6 +45,7 @@ function setup() {
   });
   return {
     controller,
+    getSpectatorEnrichment,
     socket,
     options: () => {
       if (options === null) {
@@ -229,6 +234,30 @@ describe("online match controller", () => {
     await controller.leave();
     expect(socket.leaveSeat).toHaveBeenCalledOnce();
     expect(controller.getState()).toEqual(INITIAL_ONLINE_MATCH_STATE);
+  });
+
+  it("loads team enrichment for the active spectator match", async () => {
+    const { controller, getSpectatorEnrichment } = setup();
+    const enrichment = [
+      {
+        teamName: "East Club",
+        teamLogoUrl: "https://play.test/east.webp",
+      },
+      null,
+      null,
+      null,
+    ];
+    getSpectatorEnrichment.mockResolvedValue(enrichment);
+
+    controller.watch("https://play.test", session, "relay-1");
+
+    await vi.waitFor(() => {
+      expect(controller.getState().spectatorEnrichment).toEqual(enrichment);
+    });
+    expect(getSpectatorEnrichment).toHaveBeenCalledWith(
+      "https://play.test",
+      "relay-1"
+    );
   });
 
   it("accumulates and deduplicates the spectator event timeline", () => {
