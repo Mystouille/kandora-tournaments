@@ -266,6 +266,10 @@ export function App() {
   const isLiveSpectating =
     onlineState.mode === "spectator" &&
     (onlineState.status === "spectating" || onlineState.status === "finished");
+  const sequenceLiveAnimations =
+    page === "game" && (!isLiveSpectating || spectateFollowingLive);
+  const sequenceLiveAnimationsRef = useRef(sequenceLiveAnimations);
+  sequenceLiveAnimationsRef.current = sequenceLiveAnimations;
   const renderedLiveView = useMemo(
     () =>
       liveView.mySeat !== null && liveView.mySeat !== 0
@@ -398,6 +402,8 @@ export function App() {
   useEffect(() => {
     return installGameSoundBindings({
       isNoCallEnabled: () => liveMenuFlagsRef.current.noCall,
+      shouldDeferDrawDiscardSounds: () =>
+        rendererRef.current !== null && sequenceLiveAnimationsRef.current,
     });
   }, []);
 
@@ -782,6 +788,14 @@ export function App() {
         renderer.setMinimumDrawToDiscardDelayEnabled(
           pageRef.current === "game"
         );
+        renderer.setDrawSequencing(sequenceLiveAnimationsRef.current, {
+          onDiscardLand: (_seat, isRiichiDeclaration) => {
+            playGameSound(isRiichiDeclaration ? "riichi" : "discard");
+          },
+          onDrawLand: () => {
+            playGameSound("draw");
+          },
+        });
         renderer.setConnectionDiagnosticsVisible(false);
         await renderer.mount(container);
         if (disposed) {
@@ -914,9 +928,15 @@ export function App() {
     if (renderer === null) {
       return;
     }
-    renderer.setMinimumDrawToDiscardDelayEnabled(
-      page === "game" && (!isLiveSpectating || spectateFollowingLive)
-    );
+    renderer.setMinimumDrawToDiscardDelayEnabled(sequenceLiveAnimations);
+    renderer.setDrawSequencing(sequenceLiveAnimations, {
+      onDiscardLand: (_seat, isRiichiDeclaration) => {
+        playGameSound(isRiichiDeclaration ? "riichi" : "discard");
+      },
+      onDrawLand: () => {
+        playGameSound("draw");
+      },
+    });
     if (isLiveSpectating) {
       renderer.setShowWaits(spectateDisplayOptions.showWaits);
       renderer.setShowHands(spectateDisplayOptions.showHands);
@@ -930,6 +950,7 @@ export function App() {
     page,
     renderedTableView,
     rendererState,
+    sequenceLiveAnimations,
     spectateDisplayOptions,
     spectateFollowingLive,
   ]);
