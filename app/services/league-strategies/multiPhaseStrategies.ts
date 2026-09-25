@@ -116,15 +116,22 @@ export function computeMultiPhaseStandings(
       { enableCap: false }
     );
 
-    // Build standings with retention offset.
-    const standings: MultiPhaseTeamStanding[] = sortedTeams
-      .filter((t) => advancingTeamIds == null || advancingTeamIds.has(t.teamId))
-      .map((t) => {
-        const retained = retainedScores.get(t.teamId) ?? 0;
+    // Advancing teams must remain visible before their first game of the new
+    // phase, when phase scoring has not produced rows for them yet.
+    const phaseScoreByTeam = new Map(
+      sortedTeams.map((team) => [team.teamId, team])
+    );
+    const standingTeamIds =
+      advancingTeamIds ?? new Set(sortedTeams.map((team) => team.teamId));
+    const standings: MultiPhaseTeamStanding[] = [...standingTeamIds]
+      .map((teamId) => {
+        const phaseScore = phaseScoreByTeam.get(teamId);
+        const retained = retainedScores.get(teamId) ?? 0;
         return {
-          teamId: t.teamId,
-          totalScore: Math.round((t.totalScore + retained) * 10) / 10,
-          gamesPlayed: t.gamesPlayed,
+          teamId,
+          totalScore:
+            Math.round(((phaseScore?.totalScore ?? 0) + retained) * 10) / 10,
+          gamesPlayed: phaseScore?.gamesPlayed ?? 0,
           retainedScore: Math.round(retained * 10) / 10,
         };
       })
