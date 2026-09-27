@@ -1,9 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState } from "~/game/protocol/messages";
+import type { MatchState } from "~/game/rules/state";
 import {
+  MatchProcess,
   setDelayAfterDiscardMs,
+  setNextHandDelayMs,
   setReadyCheckMs,
 } from "~/game/server/src/match";
 import {
@@ -254,6 +257,7 @@ describe("Nearby mobile match controller", () => {
     useMatchStore.getState().reset();
     setReadyCheckMs(0);
     setDelayAfterDiscardMs(350);
+    setNextHandDelayMs(5_000);
   });
 
   it("auto-accepts a guest and keeps its callback through seat randomization", async () => {
@@ -373,6 +377,136 @@ describe("Nearby mobile match controller", () => {
       expect.objectContaining({ type: "snapshot" })
     );
     expect(controller.getState().status).toBe("playing");
+  });
+
+  it("keeps a post-hand ready gate open until the Nearby host confirms", async () => {
+    setReadyCheckMs(0);
+    setDelayAfterDiscardMs(0);
+    setNextHandDelayMs(60_000);
+    const transport = new FakeNearbyTransport();
+    const controller = new NearbyMatchController(
+      memoryPersistence(),
+      transport
+    );
+    await controller.host({
+      deviceId: "mobile:host",
+      displayName: "Host",
+    });
+    transport.emit("connectionInitiated", {
+      endpointId: "remote-endpoint",
+      endpointName: "Guest",
+      authenticationDigits: "3141",
+      incoming: true,
+    });
+    await controller.waitForIdle();
+    transport.emit("connectionResult", {
+      endpointId: "remote-endpoint",
+      endpointName: "Guest",
+      status: "connected",
+    });
+    transport.emit("message", {
+      endpointId: "remote-endpoint",
+      data: encodeNearbyFrame({
+        version: NEARBY_PROTOCOL_VERSION,
+        kind: "hello",
+        deviceId: "mobile:guest",
+        displayName: "Guest",
+      }),
+    });
+    await controller.waitForIdle();
+
+    const matchId = controller.getState().matchId;
+    if (matchId === null) {
+      throw new Error("expected an active Nearby room");
+    }
+    await controller.setWaitingRoomReady(true);
+    transport.emit("message", {
+      endpointId: "remote-endpoint",
+      data: encodeNearbyFrame({
+        version: NEARBY_PROTOCOL_VERSION,
+        kind: "client",
+        message: {
+          type: "set_room_ready",
+          matchId,
+          ready: true,
+        },
+      }),
+    });
+    await controller.waitForIdle();
+    await controller.startMatch();
+    await controller.waitForIdle();
+
+    const controllerInternals = controller as unknown as {
+      match: MatchProcess | null;
+      enqueueCommand(operation: () => Promise<void>): Promise<void>;
+    };
+    const match = controllerInternals.match;
+    if (match === null) {
+      throw new Error("expected the host match process");
+    }
+    const matchInternals = match as unknown as {
+      state: MatchState;
+      afterHandEnd(): Promise<void>;
+    };
+    matchInternals.state.phase = "hand_ended";
+    matchInternals.state.lastHandResult = {
+      reason: "exhaustive_draw",
+      winner: null,
+      loser: null,
+      delta: [0, 0, 0, 0],
+      tenpai: [false, false, false, false],
+      abortKind: null,
+      winHan: null,
+      winYakuman: null,
+    };
+
+    const advancing = controllerInternals.enqueueCommand(() =>
+      matchInternals.afterHandEnd()
+    );
+    await vi.waitFor(() => {
+      expect(useMatchStore.getState().readyCheck).not.toBeNull();
+    });
+
+    const hostSeat = useMatchStore.getState().mySeat;
+    const guestSeat = controller
+      .getState()
+      .roomState?.seats.find(
+        ({ occupant }) =>
+          occupant.kind === "human" && occupant.userId === "mobile:guest"
+      )?.seat;
+    if (hostSeat === null || guestSeat === undefined) {
+      throw new Error("expected host and guest seat assignments");
+    }
+    expect(useMatchStore.getState().readyCheck?.acked[hostSeat]).toBe(false);
+
+    transport.emit("message", {
+      endpointId: "remote-endpoint",
+      data: encodeNearbyFrame({
+        version: NEARBY_PROTOCOL_VERSION,
+        kind: "client",
+        message: {
+          type: "ready",
+          matchId,
+        },
+      }),
+    });
+    await vi.waitFor(() => {
+      expect(useMatchStore.getState().readyCheck?.acked[guestSeat]).toBe(true);
+    });
+    expect(useMatchStore.getState().readyCheck?.acked[hostSeat]).toBe(false);
+    expect(match.createCheckpoint()).toMatchObject({
+      checkpointKind: "ready_check",
+      readyContinuation: "next_hand",
+    });
+
+    await controller.ready();
+    await advancing;
+
+    expect(useMatchStore.getState().readyCheck).toBeNull();
+    expect(match.createCheckpoint()).not.toMatchObject({
+      checkpointKind: "ready_check",
+    });
+    await controller.pause();
   });
 
   it("discovers, auto-accepts, handshakes, and sends validated guest commands", async () => {

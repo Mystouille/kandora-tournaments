@@ -399,10 +399,19 @@ export class NearbyMatchController {
   }
 
   ready(): Promise<void> {
-    return this.sendClientMessage({
+    const message = ClientMessageSchema.parse({
       type: "ready",
       matchId: this.requireMatchId(),
     });
+    if (this.state.role !== "host") {
+      return this.sendClientMessage(message);
+    }
+    if (!this.commandIntakeOpen) {
+      return Promise.resolve();
+    }
+    // The hand-ending command stays pending while MatchProcess waits at this
+    // gate, so the host acknowledgment must not join that command's queue.
+    return this.applyLocalHostClientMessage(message);
   }
 
   setAfk(afk: boolean): Promise<void> {
@@ -534,9 +543,7 @@ export class NearbyMatchController {
         this.handleDisconnected(endpointId);
       }),
       this.transport.addListener("message", (event) => {
-        void this.enqueueCommand(async () => {
-          await this.handleIncomingMessage(event);
-        });
+        this.routeIncomingMessage(event);
       }),
       this.transport.addListener("nearbyError", (event) => {
         this.update({
@@ -643,13 +650,16 @@ export class NearbyMatchController {
     this.update({ connected });
   }
 
-  private async handleIncomingMessage(event: NearbyMessage): Promise<void> {
+  private routeIncomingMessage(event: NearbyMessage): void {
+    if (!this.commandIntakeOpen) {
+      return;
+    }
     let frame: NearbyFrame;
     try {
       frame = parseNearbyFrame(event.data);
     } catch (error) {
       if (this.state.role === "host") {
-        await this.sendError(
+        void this.sendError(
           event.endpointId,
           "validation_error",
           errorMessage(error)
@@ -659,13 +669,35 @@ export class NearbyMatchController {
       }
       return;
     }
+    if (
+      this.state.role === "host" &&
+      frame.kind === "client" &&
+      frame.message.type === "ready"
+    ) {
+      // Remote acknowledgments release the same pending hand-ending command.
+      void this.handleHostFrame(event.endpointId, frame).catch(
+        (error: unknown) => {
+          this.update({ error: errorMessage(error) });
+        }
+      );
+      return;
+    }
+    void this.enqueueCommand(async () => {
+      await this.handleIncomingFrame(event.endpointId, frame);
+    });
+  }
+
+  private async handleIncomingFrame(
+    endpointId: string,
+    frame: NearbyFrame
+  ): Promise<void> {
     if (this.state.role === "host") {
-      await this.handleHostFrame(event.endpointId, frame);
+      await this.handleHostFrame(endpointId, frame);
       return;
     }
     if (
       this.state.role === "guest" &&
-      event.endpointId === this.hostEndpointId &&
+      endpointId === this.hostEndpointId &&
       frame.kind === "server"
     ) {
       this.handleServerMessage(frame.message);
@@ -829,12 +861,21 @@ export class NearbyMatchController {
       if (this.state.role !== "host" || this.match === null) {
         throw new Error("No Nearby match is active");
       }
-      const seat = this.match.humanSeatFor(this.localSend);
-      if (seat === null) {
-        throw new Error("The host seat is not attached");
-      }
-      await this.applyClientMessage(this.match, seat, parsed, this.localSend);
+      await this.applyLocalHostClientMessage(parsed);
     });
+  }
+
+  private async applyLocalHostClientMessage(
+    message: ClientMessage
+  ): Promise<void> {
+    if (this.state.role !== "host" || this.match === null) {
+      throw new Error("No Nearby match is active");
+    }
+    const seat = this.match.humanSeatFor(this.localSend);
+    if (seat === null) {
+      throw new Error("The host seat is not attached");
+    }
+    await this.applyClientMessage(this.match, seat, message, this.localSend);
   }
 
   private async applyClientMessage(
