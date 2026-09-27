@@ -2431,6 +2431,12 @@ button {
   border-bottom: 1px solid rgba(255, 255, 255, 0.09);
 }
 
+.online-room-list li.active-player-room {
+  border: 1px solid rgba(114, 207, 154, 0.7);
+  border-radius: 8px;
+  background: rgba(61, 155, 103, 0.16);
+}
+
 .room-status-icon {
   display: grid;
   width: 32px;
@@ -2574,6 +2580,17 @@ button {
 
 .rule-modal > footer {
   justify-content: flex-end;
+}
+
+.resume-active-game-modal > p {
+  margin: 0;
+  color: rgba(240, 244, 236, 0.78);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.resume-active-game-modal > footer button {
+  min-height: 44px;
 }
 
 .rule-options {

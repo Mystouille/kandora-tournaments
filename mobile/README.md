@@ -83,14 +83,30 @@ awaits the same barrier and therefore provides the exact Resume guarantee.
 
 The online Lobby is native UI: it loads public rule presets and live room
 summaries from `/api/mobile/lobby`, offers a rule-selection modal, and labels
-waiting rooms as Join and active rooms as Watch. Discord login runs in a
-Capacitor Browser tab and returns through `kandora://auth/complete`. Create and
-Join open a boardless native waiting room backed by the shared `GameWS`
-transport; once the server starts the match, the shell mounts the production
-mobile Pixi table and routes actions over that socket. Watch uses the same table
-with a spectator handshake. The production web service must be deployed with
-the mobile API and auth routes before a newly built APK can create or connect to
-live rooms.
+waiting rooms as Join and active rooms as Watch. If the authenticated account is
+already seated in an in-progress game, `/api/game/active-match` identifies that
+single game: mobile offers Resume after sign-in/startup and on foreground, and
+the matching lobby row is highlighted as Reconnect. Declining suppresses the
+modal for that match until app restart or a new sign-in without removing the
+lobby action. Web exposes the same highlighted Reconnect action but no automatic
+modal.
+
+Resume/Reconnect is an explicit transport takeover. The destination receives a
+fresh private snapshot, while the old client is closed and shows "Game resumed
+on another device" without entering its reconnect loop. An account cannot be
+seated in two in-progress games, although it may still spectate other tables.
+Waiting-room connections are different: disconnecting releases the seat
+immediately, so waiting seats are never reserved across devices. The existing
+30-second grace before aborting a playing match with no connected humans is
+unchanged.
+
+Discord login runs in a Capacitor Browser tab and returns through
+`kandora://auth/complete`. Create and Join open a boardless native waiting room
+backed by the shared `GameWS` transport; once the server starts the match, the
+shell mounts the production mobile Pixi table and routes actions over that
+socket. Watch uses the same table with a spectator handshake. The production
+web service must be deployed with the mobile API and auth routes before a newly
+built APK can create or connect to live rooms.
 
 Web and mobile share the canonical `/api/my-replays` contract and replay-query
 service. Authentication logic resolves both clients to the same user principal,
@@ -111,7 +127,7 @@ is reserved for the Discord OAuth callback.
 
 | Public path             | Native destination                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------------------- |
-| `/game/:matchId`        | Join or reclaim the player seat. A full started room may redirect to spectating.            |
+| `/game/:matchId`        | Join a waiting room or reconnect through an explicit active-game takeover.                  |
 | `/spectate/:matchId`    | Spectate an internal Kandora match.                                                         |
 | `/watch/live/:watchId`  | Resolve the tracked Tenhou relay, then spectate its internal match.                         |
 | `/watch/replay/:gameId` | Open the replay viewer, preserving valid `seat`, `round`, `event`, and `review` parameters. |

@@ -1,11 +1,4 @@
-import {
-  ArrowLeft,
-  Eye,
-  LoaderCircle,
-  Plus,
-  Users,
-  X,
-} from "lucide-react";
+import { ArrowLeft, Eye, LoaderCircle, Plus, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { webAppPath } from "../shell";
@@ -22,9 +15,7 @@ const LobbyRoomSchema = z.object({
   presetId: z.string().optional(),
   buuMode: z.boolean(),
   seats: z.array(
-    z
-      .object({ name: z.string().nullable(), isBot: z.boolean() })
-      .nullable()
+    z.object({ name: z.string().nullable(), isBot: z.boolean() }).nullable()
   ),
 });
 
@@ -41,12 +32,15 @@ export function roomOccupancy(room: MobileLobbyRoom): string {
   return `${occupied}/4`;
 }
 
-export function roomAction(room: MobileLobbyRoom): "join" | "watch" | null {
+export function roomAction(
+  room: MobileLobbyRoom,
+  activeMatchId: string | null = null
+): "join" | "watch" | "reconnect" | null {
   if (room.status === "waiting") {
-    return "join";
+    return activeMatchId === null ? "join" : null;
   }
   if (room.status === "playing") {
-    return "watch";
+    return room.matchId === activeMatchId ? "reconnect" : "watch";
   }
   return null;
 }
@@ -56,7 +50,9 @@ interface MobileLobbyProps {
   onBack: () => void;
   onCreateGame: (preset: string) => void;
   onJoinGame: (matchId: string) => void;
+  onReconnectGame: (matchId: string) => void;
   onWatchGame: (matchId: string) => void;
+  activeMatchId: string | null;
 }
 
 export function MobileLobby({
@@ -64,7 +60,9 @@ export function MobileLobby({
   onBack,
   onCreateGame,
   onJoinGame,
+  onReconnectGame,
   onWatchGame,
+  activeMatchId,
 }: MobileLobbyProps) {
   const [presets, setPresets] = useState<MobileLobbyPreset[]>([]);
   const [rooms, setRooms] = useState<MobileLobbyRoom[]>([]);
@@ -105,11 +103,13 @@ export function MobileLobby({
   }, [refresh]);
 
   const openRoom = (room: MobileLobbyRoom): void => {
-    const action = roomAction(room);
+    const action = roomAction(room, activeMatchId);
     if (action === null) {
       return;
     }
-    if (action === "join") {
+    if (action === "reconnect") {
+      onReconnectGame(room.matchId);
+    } else if (action === "join") {
       onJoinGame(room.matchId);
     } else {
       onWatchGame(room.matchId);
@@ -117,6 +117,9 @@ export function MobileLobby({
   };
 
   const createGame = (): void => {
+    if (activeMatchId !== null) {
+      return;
+    }
     setCreateOpen(false);
     onCreateGame(selectedPreset);
   };
@@ -147,18 +150,23 @@ export function MobileLobby({
         <button
           type="button"
           className="create-game-button"
-          disabled={presets.length === 0}
+          disabled={presets.length === 0 || activeMatchId !== null}
           onClick={() => setCreateOpen(true)}
         >
           <Plus aria-hidden="true" />
           <span>Create a game</span>
         </button>
 
-        <section className="available-games" aria-labelledby="available-games-title">
+        <section
+          className="available-games"
+          aria-labelledby="available-games-title"
+        >
           <div className="online-section-heading">
             <div>
               <h2 id="available-games-title">Available games</h2>
-              <span>{rooms.length} open table{rooms.length === 1 ? "" : "s"}</span>
+              <span>
+                {rooms.length} open table{rooms.length === 1 ? "" : "s"}
+              </span>
             </div>
           </div>
 
@@ -181,9 +189,14 @@ export function MobileLobby({
           ) : (
             <ul className="online-room-list">
               {rooms.map((room) => {
-                const action = roomAction(room);
+                const action = roomAction(room, activeMatchId);
                 return (
-                  <li key={room.matchId}>
+                  <li
+                    key={room.matchId}
+                    className={
+                      action === "reconnect" ? "active-player-room" : undefined
+                    }
+                  >
                     <div className="room-status-icon">
                       {action === "watch" ? (
                         <Eye aria-hidden="true" />
@@ -198,7 +211,9 @@ export function MobileLobby({
                             room.presetId ??
                             "Mahjong"}
                         </strong>
-                        <span className={`room-state room-state-${room.status}`}>
+                        <span
+                          className={`room-state room-state-${room.status}`}
+                        >
                           {room.status}
                         </span>
                       </div>
@@ -212,7 +227,13 @@ export function MobileLobby({
                       disabled={action === null}
                       onClick={() => openRoom(room)}
                     >
-                      {action === "watch" ? "Watch" : "Join"}
+                      {action === "watch"
+                        ? "Watch"
+                        : action === "reconnect"
+                          ? "Reconnect"
+                          : action === "join"
+                            ? "Join"
+                            : "Unavailable"}
                     </button>
                   </li>
                 );

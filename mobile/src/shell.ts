@@ -97,6 +97,18 @@ export function hasPlayingMatch(
   return localStatus === "playing" || nearbyStatus === "playing";
 }
 
+export function shouldPromptForActiveOnlineMatch(
+  activeMatchId: string | null,
+  dismissedMatchIds: ReadonlySet<string>,
+  gameAlreadyOpen: boolean
+): boolean {
+  return (
+    activeMatchId !== null &&
+    !gameAlreadyOpen &&
+    !dismissedMatchIds.has(activeMatchId)
+  );
+}
+
 export function backgroundResumeTarget(
   page: MobileShellPage,
   localStatus: LocalMatchControllerState["status"],

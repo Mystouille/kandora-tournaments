@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { GameWSConnectionDetails } from "~/game/client/ws";
+import {
+  ActiveMatchResponseSchema,
+  type ActiveMatchSummary,
+} from "~/game/protocol/activeMatch";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   absoluteSeatEnrichment,
@@ -128,4 +132,20 @@ export async function getOnlineGameConnectionDetails(
     token: details.token,
     wsUrl: `${wsOrigin}${details.wsPath}/${encodeURIComponent(matchId)}`,
   };
+}
+
+export async function getActiveOnlineGame(
+  baseUrl: string,
+  session: MobileAuthSession,
+  fetcher: typeof fetch = fetch
+): Promise<ActiveMatchSummary | null> {
+  const response = await fetcher(
+    webAppPath(baseUrl, "/api/game/active-match"),
+    {
+      method: "POST",
+      body: new URLSearchParams({ token: session.token }),
+    }
+  );
+  return ActiveMatchResponseSchema.parse(await responseJson(response))
+    .activeMatch;
 }

@@ -100,6 +100,39 @@ describe("game rooms API", () => {
     });
   });
 
+  it("preserves an active-match conflict from room creation", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json(
+        {
+          error: "active_match_exists",
+          activeMatch: {
+            matchId: "active-room",
+            status: "playing",
+            connected: true,
+          },
+        },
+        { status: 409 }
+      )
+    );
+    const request = new Request("http://app.test/api/game/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ preset: "m-league" }),
+    });
+
+    const response = await action({ request });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "active_match_exists",
+      activeMatch: {
+        matchId: "active-room",
+        status: "playing",
+        connected: true,
+      },
+    });
+  });
+
   it("forwards duplicate mode and its public seed", async () => {
     fetchMock.mockResolvedValue(
       Response.json({

@@ -23,6 +23,12 @@ describe("mobile online lobby room policy", () => {
     expect(roomAction(room("finished"))).toBeNull();
   });
 
+  it("offers reconnect for the authenticated user's playing room", () => {
+    expect(roomAction(room("playing"), "room-1")).toBe("reconnect");
+    expect(roomAction(room("playing"), "room-2")).toBe("watch");
+    expect(roomAction(room("waiting"), "room-1")).toBeNull();
+  });
+
   it("counts occupied human and bot seats", () => {
     expect(roomOccupancy(room("waiting"))).toBe("2/4");
   });

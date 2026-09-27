@@ -198,6 +198,71 @@ describe("online match controller", () => {
     expect(socket.ready).toHaveBeenCalledOnce();
   });
 
+  it("passes explicit takeover only for a reconnect join", () => {
+    const { controller, options } = setup();
+
+    controller.join("https://play.test", session, "room-1", {
+      takeover: true,
+    });
+
+    expect(options().takeover).toBe(true);
+    expect(options().spectate).toBe(false);
+  });
+
+  it("enters a terminal transferred state when another device takes over", () => {
+    const { controller, options } = setup();
+    controller.join("https://play.test", session, "room-1");
+
+    options().onMessage?.({
+      type: "session_replaced",
+      matchId: "room-1",
+      message: "Game resumed on another device.",
+    });
+
+    expect(controller.getState()).toMatchObject({
+      status: "transferred",
+      mode: "player",
+      matchId: "room-1",
+      error: "Game resumed on another device.",
+    });
+  });
+
+  it("requires a fresh confirmation before retrying a takeover", () => {
+    const { controller, options, socket } = setup();
+    controller.join("https://play.test", session, "room-1");
+
+    options().onError?.(
+      "takeover_required",
+      "This game is active on another device."
+    );
+
+    expect(controller.getState()).toMatchObject({
+      status: "takeover-required",
+      error: "This game is active on another device.",
+    });
+
+    controller.takeover();
+
+    expect(socket.close).toHaveBeenCalledOnce();
+    expect(options().takeover).toBe(true);
+  });
+
+  it("surfaces a terminal active-match conflict as an error screen", () => {
+    const { controller, options } = setup();
+    controller.join("https://play.test", session, "room-2");
+
+    options().onError?.(
+      "active_match_exists",
+      "You already have an in-progress match (room-1)."
+    );
+
+    expect(controller.getState()).toMatchObject({
+      status: "error",
+      matchId: "room-2",
+      error: "You already have an in-progress match (room-1).",
+    });
+  });
+
   it("uses spectator mode for active rooms and leaves waiting rooms", async () => {
     const { controller, socket, options } = setup();
     controller.watch("https://play.test", session, "room-2");

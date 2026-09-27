@@ -89,15 +89,19 @@ import type { ReplayLibraryRow } from "./replays/replayLibrary";
 import type { ReplayLog } from "~/game/replay/types";
 import type { ReplayLocationRequest } from "~/game/replay/replayLocation";
 import type { Seat } from "~/game/protocol/messages";
+import type { ActiveMatchSummary } from "~/game/protocol/activeMatch";
 import type { MyReplayLogDetails } from "./replays/myReplaysApi";
 import {
   INITIAL_ONLINE_MATCH_STATE,
   OnlineMatchController,
+  type OnlineJoinOptions,
 } from "./online/OnlineMatchController";
 import {
+  getActiveOnlineGame,
   OnlineGameHttpError,
   resolveOnlineWatchId,
 } from "./online/onlineGameApi";
+import { ResumeActiveGameModal } from "./online/ResumeActiveGameModal";
 import {
   clearMobileAuthSession,
   clearPendingMobileAuth,
@@ -119,6 +123,7 @@ import {
   normalizeWebAppUrl,
   pendingContentAuthenticationAction,
   retryTransientPause,
+  shouldPromptForActiveOnlineMatch,
   shouldKeepMobileScreenAwake,
   webAppPath,
   type MobileContentAuthStatus,
@@ -177,6 +182,11 @@ export function App() {
     null
   );
   const authGenerationRef = useRef(0);
+  const activeMatchDiscoveryGenerationRef = useRef(0);
+  const activeMatchPromptGenerationRef = useRef<number | null>(null);
+  const activeMatchAuthTokenRef = useRef<string | null>(null);
+  const promptForActiveMatchOnRefreshRef = useRef(false);
+  const dismissedActiveMatchesRef = useRef(new Set<string>());
   const handledAuthCallbackRef = useRef<string | null>(null);
   const pendingVerifierRef = useRef<string | null>(null);
   const pendingContentIntentRef = useRef<PendingMobileContentIntent | null>(
@@ -205,6 +215,11 @@ export function App() {
     useState(false);
   const [mobileAuthSession, setMobileAuthSession] =
     useState<MobileAuthSession | null>(null);
+  const [activeOnlineMatch, setActiveOnlineMatch] =
+    useState<ActiveMatchSummary | null>(null);
+  const [resumeActiveGameOpen, setResumeActiveGameOpen] = useState(false);
+  const [activeMatchRefreshRevision, setActiveMatchRefreshRevision] =
+    useState(0);
   const [controllersReady, setControllersReady] = useState(false);
   const [shellBusy, setShellBusy] = useState(false);
   const [gameMenuExpanded, setGameMenuExpanded] = useState(false);
@@ -263,6 +278,8 @@ export function App() {
     onlineState.status === "playing" ||
     onlineState.status === "spectating" ||
     onlineState.status === "finished";
+  const isPlayingMatchRef = useRef(isPlayingMatch);
+  isPlayingMatchRef.current = isPlayingMatch;
   const showsTable = page === "game";
   const isLiveSpectating =
     onlineState.mode === "spectator" &&
@@ -534,6 +551,138 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const nextToken =
+      authStatus === "authenticated"
+        ? (mobileAuthSession?.token ?? null)
+        : null;
+    if (activeMatchAuthTokenRef.current === nextToken) {
+      return;
+    }
+    activeMatchAuthTokenRef.current = nextToken;
+    promptForActiveMatchOnRefreshRef.current = nextToken !== null;
+    dismissedActiveMatchesRef.current.clear();
+    setActiveOnlineMatch(null);
+    setResumeActiveGameOpen(false);
+  }, [authStatus, mobileAuthSession?.token]);
+
+  useEffect(() => {
+    const currentOnline = onlineControllerRef.current?.getState();
+    if (
+      authStatus !== "authenticated" ||
+      mobileAuthSession === null ||
+      webAppBaseUrl === null ||
+      isPlayingMatchRef.current ||
+      pageRef.current === "game" ||
+      pageRef.current === "online-room" ||
+      (currentOnline !== undefined &&
+        currentOnline.status !== "idle" &&
+        currentOnline.status !== "error" &&
+        currentOnline.status !== "takeover-required" &&
+        currentOnline.status !== "transferred")
+    ) {
+      promptForActiveMatchOnRefreshRef.current = false;
+      return;
+    }
+
+    const generation = ++activeMatchDiscoveryGenerationRef.current;
+    const promptForResult = promptForActiveMatchOnRefreshRef.current;
+    promptForActiveMatchOnRefreshRef.current = false;
+    if (promptForResult) {
+      activeMatchPromptGenerationRef.current = generation;
+    }
+    void getActiveOnlineGame(webAppBaseUrl, mobileAuthSession)
+      .then((activeMatch) => {
+        if (activeMatchDiscoveryGenerationRef.current !== generation) {
+          return;
+        }
+        const currentOnline = onlineControllerRef.current?.getState();
+        const gameAlreadyOpen =
+          isPlayingMatchRef.current ||
+          pageRef.current === "game" ||
+          pageRef.current === "online-room" ||
+          (currentOnline !== undefined &&
+            currentOnline.status !== "idle" &&
+            currentOnline.status !== "error" &&
+            currentOnline.status !== "takeover-required" &&
+            currentOnline.status !== "transferred");
+        setActiveOnlineMatch(activeMatch);
+        if (activeMatch === null) {
+          setResumeActiveGameOpen(false);
+        } else if (promptForResult) {
+          setResumeActiveGameOpen(
+            shouldPromptForActiveOnlineMatch(
+              activeMatch.matchId,
+              dismissedActiveMatchesRef.current,
+              gameAlreadyOpen
+            )
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        if (activeMatchDiscoveryGenerationRef.current !== generation) {
+          return;
+        }
+        if (error instanceof OnlineGameHttpError && error.status === 401) {
+          authGenerationRef.current += 1;
+          clearMobileAuthSession(window.localStorage);
+          setMobileAuthSession(null);
+          setAuthStatus("signed_out");
+          setAuthError("Your Discord session expired.");
+          return;
+        }
+        console.warn("Failed to discover active online game:", error);
+      })
+      .finally(() => {
+        if (activeMatchPromptGenerationRef.current === generation) {
+          activeMatchPromptGenerationRef.current = null;
+        }
+      });
+
+    return () => {
+      if (activeMatchDiscoveryGenerationRef.current === generation) {
+        activeMatchDiscoveryGenerationRef.current += 1;
+      }
+    };
+  }, [
+    activeMatchRefreshRevision,
+    authStatus,
+    mobileAuthSession,
+    webAppBaseUrl,
+  ]);
+
+  useEffect(() => {
+    if (
+      page !== "lobby" ||
+      authStatus !== "authenticated" ||
+      mobileAuthSession === null ||
+      webAppBaseUrl === null
+    ) {
+      return;
+    }
+    const refresh = (): void => {
+      if (
+        promptForActiveMatchOnRefreshRef.current ||
+        activeMatchPromptGenerationRef.current !== null
+      ) {
+        return;
+      }
+      promptForActiveMatchOnRefreshRef.current = false;
+      setActiveMatchRefreshRevision((revision) => revision + 1);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 10_000);
+    return () => window.clearInterval(timer);
+  }, [authStatus, mobileAuthSession, page, webAppBaseUrl]);
+
+  useEffect(() => {
+    if (onlineState.status !== "transferred" || onlineState.matchId === null) {
+      return;
+    }
+    dismissedActiveMatchesRef.current.add(onlineState.matchId);
+    setResumeActiveGameOpen(false);
+  }, [onlineState.matchId, onlineState.status]);
+
+  useEffect(() => {
     if (authStatus !== "authenticated" || mobileAuthSession === null) {
       return;
     }
@@ -727,6 +876,8 @@ export function App() {
       }
       const resume = resumeAfterBackgroundRef.current;
       resumeAfterBackgroundRef.current = null;
+      promptForActiveMatchOnRefreshRef.current = true;
+      setActiveMatchRefreshRevision((revision) => revision + 1);
       void nearbyController?.refreshPermissions().catch(() => undefined);
       if (resume === "nearby-host") {
         void nearbyController
@@ -1101,6 +1252,7 @@ export function App() {
       onlineState.status === "creating" ||
       onlineState.status === "connecting" ||
       onlineState.status === "waiting" ||
+      onlineState.status === "takeover-required" ||
       onlineState.status === "error"
     ) {
       setPage("online-room");
@@ -1211,7 +1363,10 @@ export function App() {
     );
   };
 
-  const joinOnlineGame = async (matchId: string): Promise<void> => {
+  const joinOnlineGame = async (
+    matchId: string,
+    options: OnlineJoinOptions = {}
+  ): Promise<void> => {
     if (
       webAppBaseUrl === null ||
       mobileAuthSession === null ||
@@ -1221,7 +1376,33 @@ export function App() {
     }
     setPage("online-room");
     await prepareOnlineMatch();
-    onlineControllerRef.current.join(webAppBaseUrl, mobileAuthSession, matchId);
+    onlineControllerRef.current.join(
+      webAppBaseUrl,
+      mobileAuthSession,
+      matchId,
+      options
+    );
+  };
+
+  const resumeActiveOnlineGame = async (): Promise<void> => {
+    const activeMatch = activeOnlineMatch;
+    if (activeMatch === null || shellBusy) {
+      return;
+    }
+    setShellBusy(true);
+    setResumeActiveGameOpen(false);
+    try {
+      await joinOnlineGame(activeMatch.matchId, { takeover: true });
+    } finally {
+      setShellBusy(false);
+    }
+  };
+
+  const declineActiveOnlineGame = (): void => {
+    if (activeOnlineMatch !== null) {
+      dismissedActiveMatchesRef.current.add(activeOnlineMatch.matchId);
+    }
+    setResumeActiveGameOpen(false);
   };
 
   const watchOnlineGame = async (matchId: string): Promise<void> => {
@@ -1709,6 +1890,19 @@ export function App() {
         completePendingContentIntent(ticket);
         return;
       }
+      if (mode === "player") {
+        const activeMatch = await getActiveOnlineGame(baseUrl, session);
+        if (!isCurrentContentIntent(ticket)) {
+          return;
+        }
+        if (activeMatch !== null) {
+          setActiveOnlineMatch(activeMatch);
+          setResumeActiveGameOpen(true);
+          setPage("home");
+          completePendingContentIntent(ticket);
+          return;
+        }
+      }
       if (
         isPlayingMatch &&
         !window.confirm("Leave the current game and open this link?")
@@ -1803,6 +1997,21 @@ export function App() {
     webAppBaseUrl,
   ]);
 
+  const resumeActiveGamePrompt =
+    resumeActiveGameOpen && activeOnlineMatch !== null ? (
+      <ResumeActiveGameModal
+        activeMatch={activeOnlineMatch}
+        busy={shellBusy}
+        onDecline={declineActiveOnlineGame}
+        onResume={() => {
+          void resumeActiveOnlineGame().catch((error: unknown) => {
+            console.error("Failed to resume active online game:", error);
+            setPage("lobby");
+          });
+        }}
+      />
+    ) : null;
+
   if (page === "game") {
     return (
       <main className="mobile-game-view">
@@ -1891,6 +2100,40 @@ export function App() {
               </span>
             </div>
           )}
+          {onlineState.status === "transferred" && (
+            <div className="rule-modal-backdrop">
+              <section
+                className="rule-modal resume-active-game-modal"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="game-transferred-title"
+              >
+                <header>
+                  <div>
+                    <h2 id="game-transferred-title">
+                      Game resumed on another device
+                    </h2>
+                    <span>{onlineState.matchId}</span>
+                  </div>
+                </header>
+                <p>
+                  {onlineState.error ??
+                    "This device no longer controls the player seat."}
+                </p>
+                <footer>
+                  <button
+                    type="button"
+                    className="home-primary-action"
+                    onClick={() => {
+                      void leaveOnlineRoom();
+                    }}
+                  >
+                    Return to lobby
+                  </button>
+                </footer>
+              </section>
+            </div>
+          )}
         </section>
       </main>
     );
@@ -1898,98 +2141,106 @@ export function App() {
 
   if (page === "replay-viewer") {
     return (
-      <MobileReplayViewer
-        key={replayViewerState.viewerKey}
-        log={replayViewerState.log}
-        seatEnrichment={replayViewerState.seatEnrichment}
-        review={replayViewerState.review}
-        loading={replayViewerState.loading}
-        error={replayViewerState.error}
-        initialLocation={replayViewerState.initialLocation}
-        onClose={closeReplayViewer}
-        onRetry={() => {
-          if (replayViewerState.row !== null) {
-            void openReplay(replayViewerState.row);
-          } else if (replayViewerState.directIntent !== null) {
-            void openDirectReplay(replayViewerState.directIntent);
-          }
-        }}
-      />
+      <>
+        <MobileReplayViewer
+          key={replayViewerState.viewerKey}
+          log={replayViewerState.log}
+          seatEnrichment={replayViewerState.seatEnrichment}
+          review={replayViewerState.review}
+          loading={replayViewerState.loading}
+          error={replayViewerState.error}
+          initialLocation={replayViewerState.initialLocation}
+          onClose={closeReplayViewer}
+          onRetry={() => {
+            if (replayViewerState.row !== null) {
+              void openReplay(replayViewerState.row);
+            } else if (replayViewerState.directIntent !== null) {
+              void openDirectReplay(replayViewerState.directIntent);
+            }
+          }}
+        />
+        {resumeActiveGamePrompt}
+      </>
     );
   }
 
   if (page === "nearby") {
     return (
-      <main className="mobile-shell mobile-shell-nearby">
-        <header className="shell-topbar">
-          <button
-            type="button"
-            className="shell-icon-button"
-            aria-label="Back to home"
-            title="Back to home"
-            disabled={nearbyBusy}
-            onClick={() => void leaveNearbyPage().catch(() => undefined)}
-          >
-            <ArrowLeft aria-hidden="true" />
-          </button>
-          <div>
-            <strong>Nearby</strong>
-            <span>{nearbyState.available ? "Device play" : "Solo play"}</span>
-          </div>
-        </header>
-        <section className="shell-nearby-content">
-          <NearbyLobbyPanel
-            state={nearbyState}
-            localState={localState}
-            identity={nearbyIdentity}
-            busy={nearbyBusy}
-            onDisplayNameChange={(displayName) => {
-              const identity = { ...nearbyIdentityRef.current, displayName };
-              nearbyIdentityRef.current = identity;
-              setNearbyIdentity(identity);
-              if (displayName.trim() !== "") {
-                updateNearbyDisplayName(identity, displayName);
-              }
-            }}
-            onPlaySolo={() => void playSolo().catch(() => undefined)}
-            onHost={() => void hostNearby().catch(() => undefined)}
-            onDiscover={() => void discoverNearby().catch(() => undefined)}
-            onResumeHost={() => {
-              void nearbyControllerRef.current
-                ?.restoreHost(currentNearbyIdentity())
-                .catch(() => undefined);
-            }}
-            onConnect={(endpointId) => {
-              void nearbyControllerRef.current
-                ?.requestConnection(endpointId)
-                .catch(() => undefined);
-            }}
-            onReadyChange={(ready) => {
-              void nearbyControllerRef.current
-                ?.setWaitingRoomReady(ready)
-                .catch(() => undefined);
-            }}
-            onAddBot={() => {
-              void nearbyControllerRef.current
-                ?.addWaitingRoomBot()
-                .catch(() => undefined);
-            }}
-            onKick={(seat) => {
-              void nearbyControllerRef.current
-                ?.kickWaitingRoomSeat(seat)
-                .catch(() => undefined);
-            }}
-            onStartMatch={() => {
-              void nearbyControllerRef.current
-                ?.startMatch()
-                .catch(() => undefined);
-            }}
-            onLeave={() => {
-              void nearbyControllerRef.current?.leave().catch(() => undefined);
-            }}
-          />
-        </section>
-      </main>
+      <>
+        <main className="mobile-shell mobile-shell-nearby">
+          <header className="shell-topbar">
+            <button
+              type="button"
+              className="shell-icon-button"
+              aria-label="Back to home"
+              title="Back to home"
+              disabled={nearbyBusy}
+              onClick={() => void leaveNearbyPage().catch(() => undefined)}
+            >
+              <ArrowLeft aria-hidden="true" />
+            </button>
+            <div>
+              <strong>Nearby</strong>
+              <span>{nearbyState.available ? "Device play" : "Solo play"}</span>
+            </div>
+          </header>
+          <section className="shell-nearby-content">
+            <NearbyLobbyPanel
+              state={nearbyState}
+              localState={localState}
+              identity={nearbyIdentity}
+              busy={nearbyBusy}
+              onDisplayNameChange={(displayName) => {
+                const identity = { ...nearbyIdentityRef.current, displayName };
+                nearbyIdentityRef.current = identity;
+                setNearbyIdentity(identity);
+                if (displayName.trim() !== "") {
+                  updateNearbyDisplayName(identity, displayName);
+                }
+              }}
+              onPlaySolo={() => void playSolo().catch(() => undefined)}
+              onHost={() => void hostNearby().catch(() => undefined)}
+              onDiscover={() => void discoverNearby().catch(() => undefined)}
+              onResumeHost={() => {
+                void nearbyControllerRef.current
+                  ?.restoreHost(currentNearbyIdentity())
+                  .catch(() => undefined);
+              }}
+              onConnect={(endpointId) => {
+                void nearbyControllerRef.current
+                  ?.requestConnection(endpointId)
+                  .catch(() => undefined);
+              }}
+              onReadyChange={(ready) => {
+                void nearbyControllerRef.current
+                  ?.setWaitingRoomReady(ready)
+                  .catch(() => undefined);
+              }}
+              onAddBot={() => {
+                void nearbyControllerRef.current
+                  ?.addWaitingRoomBot()
+                  .catch(() => undefined);
+              }}
+              onKick={(seat) => {
+                void nearbyControllerRef.current
+                  ?.kickWaitingRoomSeat(seat)
+                  .catch(() => undefined);
+              }}
+              onStartMatch={() => {
+                void nearbyControllerRef.current
+                  ?.startMatch()
+                  .catch(() => undefined);
+              }}
+              onLeave={() => {
+                void nearbyControllerRef.current
+                  ?.leave()
+                  .catch(() => undefined);
+              }}
+            />
+          </section>
+        </main>
+        {resumeActiveGamePrompt}
+      </>
     );
   }
 
@@ -1999,6 +2250,7 @@ export function App() {
         state={onlineState}
         onBack={() => void leaveOnlineRoom()}
         onReconnect={() => onlineControllerRef.current?.reconnect()}
+        onTakeover={() => onlineControllerRef.current?.takeover()}
         onReadyChange={(ready) =>
           onlineControllerRef.current?.setWaitingRoomReady(ready)
         }
@@ -2013,39 +2265,53 @@ export function App() {
 
   if (page === "lobby" && webAppBaseUrl !== null) {
     return (
-      <MobileLobby
-        webAppBaseUrl={webAppBaseUrl}
-        onBack={() => setPage("home")}
-        onCreateGame={(preset) =>
-          void createOnlineGame(preset).catch(() => setPage("lobby"))
-        }
-        onJoinGame={(matchId) =>
-          void joinOnlineGame(matchId).catch(() => setPage("lobby"))
-        }
-        onWatchGame={(matchId) =>
-          void watchOnlineGame(matchId).catch(() => setPage("lobby"))
-        }
-      />
+      <>
+        <MobileLobby
+          webAppBaseUrl={webAppBaseUrl}
+          activeMatchId={activeOnlineMatch?.matchId ?? null}
+          onBack={() => setPage("home")}
+          onCreateGame={(preset) =>
+            void createOnlineGame(preset).catch(() => setPage("lobby"))
+          }
+          onJoinGame={(matchId) =>
+            void joinOnlineGame(matchId).catch(() => setPage("lobby"))
+          }
+          onReconnectGame={(matchId) =>
+            void joinOnlineGame(matchId, { takeover: true }).catch(() =>
+              setPage("lobby")
+            )
+          }
+          onWatchGame={(matchId) =>
+            void watchOnlineGame(matchId).catch(() => setPage("lobby"))
+          }
+        />
+        {resumeActiveGamePrompt}
+      </>
     );
   }
 
   if (page === "replays") {
     return (
-      <MobileReplays
-        replayStore={repositoryRef.current?.replayStore ?? null}
-        storageState={storageState}
-        webAppBaseUrl={webAppBaseUrl}
-        authSession={authStatus === "authenticated" ? mobileAuthSession : null}
-        authPending={
-          authStatus === "checking" ||
-          authStatus === "opening" ||
-          authStatus === "exchanging"
-        }
-        onBack={() => setPage("home")}
-        onSignIn={startDiscordLogin}
-        onUnauthorized={clearUnauthorizedMobileSession}
-        onOpenReplay={(row) => void openReplay(row)}
-      />
+      <>
+        <MobileReplays
+          replayStore={repositoryRef.current?.replayStore ?? null}
+          storageState={storageState}
+          webAppBaseUrl={webAppBaseUrl}
+          authSession={
+            authStatus === "authenticated" ? mobileAuthSession : null
+          }
+          authPending={
+            authStatus === "checking" ||
+            authStatus === "opening" ||
+            authStatus === "exchanging"
+          }
+          onBack={() => setPage("home")}
+          onSignIn={startDiscordLogin}
+          onUnauthorized={clearUnauthorizedMobileSession}
+          onOpenReplay={(row) => void openReplay(row)}
+        />
+        {resumeActiveGamePrompt}
+      </>
     );
   }
 
@@ -2076,175 +2342,178 @@ export function App() {
           ? "Verifying Discord login"
           : (authError ?? "Sign in for online games");
   return (
-    <main className="mobile-shell mobile-home">
-      <header className="shell-brand">
-        <span>K</span>
-        <div>
-          <h1>Kandora</h1>
-          <p>Mahjong everywhere.</p>
-        </div>
-        <div ref={homeSettingsRef} className="home-settings">
-          <span
-            className="home-app-version"
-            aria-label={`Version ${MOBILE_APP_VERSION}`}
-          >
-            v{MOBILE_APP_VERSION}
-          </span>
+    <>
+      <main className="mobile-shell mobile-home">
+        <header className="shell-brand">
+          <span>K</span>
+          <div>
+            <h1>Kandora</h1>
+            <p>Mahjong everywhere.</p>
+          </div>
+          <div ref={homeSettingsRef} className="home-settings">
+            <span
+              className="home-app-version"
+              aria-label={`Version ${MOBILE_APP_VERSION}`}
+            >
+              v{MOBILE_APP_VERSION}
+            </span>
+            <button
+              type="button"
+              className="shell-icon-button home-settings-button"
+              aria-label="Settings"
+              aria-expanded={homeSettingsOpen}
+              aria-controls="home-settings-panel"
+              title="Settings"
+              onClick={() => setHomeSettingsOpen((open) => !open)}
+            >
+              <Settings aria-hidden="true" />
+            </button>
+            <div
+              id="home-settings-panel"
+              className="home-settings-panel"
+              role="group"
+              aria-label="Settings"
+              hidden={!homeSettingsOpen}
+            >
+              <button
+                type="button"
+                className="home-setting-toggle"
+                role="switch"
+                aria-checked={soundEnabled}
+                onClick={() => {
+                  const next = !soundEnabled;
+                  setGameSoundEnabled(next);
+                  setSoundEnabled(next);
+                  if (next) {
+                    playGameSound("draw");
+                  }
+                }}
+              >
+                <span className="home-setting-label">
+                  <Volume2 aria-hidden="true" />
+                  <span>Sound</span>
+                </span>
+                <span
+                  className={`home-setting-switch ${soundEnabled ? "enabled" : ""}`}
+                  aria-hidden="true"
+                >
+                  <span />
+                </span>
+              </button>
+              <button
+                type="button"
+                className="home-setting-action"
+                disabled={!nearbyState.available || nearbyPermissionBusy}
+                aria-label={`Nearby permissions: ${nearbyPermissionLabel}`}
+                title={
+                  nearbyState.permissions?.granted === false
+                    ? nearbyState.permissions.missing.join(", ")
+                    : "Nearby permissions"
+                }
+                onClick={() => void requestNearbyPermissions()}
+              >
+                <span className="home-setting-label">
+                  <Radio aria-hidden="true" />
+                  <span>Nearby access</span>
+                </span>
+                <span
+                  className={`home-setting-status ${nearbyPermissionTone}`}
+                  aria-live="polite"
+                >
+                  {nearbyPermissionBusy && (
+                    <LoaderCircle aria-hidden="true" className="spin" />
+                  )}
+                  <span>{nearbyPermissionLabel}</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <section className="home-account" aria-labelledby="account-heading">
+          <div className="home-section-heading">
+            <UserRound aria-hidden="true" />
+            <div>
+              <h2 id="account-heading">Player access</h2>
+              <span>{accountStatus}</span>
+            </div>
+          </div>
+          <div className="home-account-actions">
+            {onlineSelected ? (
+              <button
+                type="button"
+                className="home-secondary-action"
+                onClick={logOut}
+              >
+                <LogOut aria-hidden="true" />
+                <span>Log out</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="home-primary-action"
+                disabled={webAppBaseUrl === null || authBusy}
+                onClick={() => void startDiscordLogin()}
+              >
+                {authBusy ? (
+                  <LoaderCircle aria-hidden="true" className="spin" />
+                ) : (
+                  <LogIn aria-hidden="true" />
+                )}
+                <span>
+                  {authStatus === "opening"
+                    ? "Open Discord again"
+                    : "Login with Discord"}
+                </span>
+              </button>
+            )}
+          </div>
+        </section>
+
+        <nav className="home-destinations" aria-label="Kandora destinations">
           <button
             type="button"
-            className="shell-icon-button home-settings-button"
-            aria-label="Settings"
-            aria-expanded={homeSettingsOpen}
-            aria-controls="home-settings-panel"
-            title="Settings"
-            onClick={() => setHomeSettingsOpen((open) => !open)}
+            disabled={!onlineSelected || webAppBaseUrl === null}
+            onClick={() => {
+              setPage("lobby");
+            }}
           >
-            <Settings aria-hidden="true" />
+            <Cloud aria-hidden="true" />
+            <span>
+              <strong>Go to lobby</strong>
+              <small>Online games</small>
+            </span>
+            <DoorOpen aria-hidden="true" />
           </button>
-          <div
-            id="home-settings-panel"
-            className="home-settings-panel"
-            role="group"
-            aria-label="Settings"
-            hidden={!homeSettingsOpen}
+          <button type="button" onClick={() => setPage("replays")}>
+            <History aria-hidden="true" />
+            <span>
+              <strong>Replays</strong>
+              <small>Saved and account games</small>
+            </span>
+            <ChevronRight aria-hidden="true" className="destination-arrow" />
+          </button>
+          <button
+            type="button"
+            disabled={!canOpenNearby}
+            onClick={() => setPage("nearby")}
           >
-            <button
-              type="button"
-              className="home-setting-toggle"
-              role="switch"
-              aria-checked={soundEnabled}
-              onClick={() => {
-                const next = !soundEnabled;
-                setGameSoundEnabled(next);
-                setSoundEnabled(next);
-                if (next) {
-                  playGameSound("draw");
-                }
-              }}
-            >
-              <span className="home-setting-label">
-                <Volume2 aria-hidden="true" />
-                <span>Sound</span>
-              </span>
-              <span
-                className={`home-setting-switch ${soundEnabled ? "enabled" : ""}`}
-                aria-hidden="true"
-              >
-                <span />
-              </span>
-            </button>
-            <button
-              type="button"
-              className="home-setting-action"
-              disabled={!nearbyState.available || nearbyPermissionBusy}
-              aria-label={`Nearby permissions: ${nearbyPermissionLabel}`}
-              title={
-                nearbyState.permissions?.granted === false
-                  ? nearbyState.permissions.missing.join(", ")
-                  : "Nearby permissions"
-              }
-              onClick={() => void requestNearbyPermissions()}
-            >
-              <span className="home-setting-label">
-                <Radio aria-hidden="true" />
-                <span>Nearby access</span>
-              </span>
-              <span
-                className={`home-setting-status ${nearbyPermissionTone}`}
-                aria-live="polite"
-              >
-                {nearbyPermissionBusy && (
-                  <LoaderCircle aria-hidden="true" className="spin" />
-                )}
-                <span>{nearbyPermissionLabel}</span>
-              </span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <section className="home-account" aria-labelledby="account-heading">
-        <div className="home-section-heading">
-          <UserRound aria-hidden="true" />
-          <div>
-            <h2 id="account-heading">Player access</h2>
-            <span>{accountStatus}</span>
-          </div>
-        </div>
-        <div className="home-account-actions">
-          {onlineSelected ? (
-            <button
-              type="button"
-              className="home-secondary-action"
-              onClick={logOut}
-            >
-              <LogOut aria-hidden="true" />
-              <span>Log out</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="home-primary-action"
-              disabled={webAppBaseUrl === null || authBusy}
-              onClick={() => void startDiscordLogin()}
-            >
-              {authBusy ? (
-                <LoaderCircle aria-hidden="true" className="spin" />
-              ) : (
-                <LogIn aria-hidden="true" />
-              )}
-              <span>
-                {authStatus === "opening"
-                  ? "Open Discord again"
-                  : "Login with Discord"}
-              </span>
-            </button>
-          )}
-        </div>
-      </section>
-
-      <nav className="home-destinations" aria-label="Kandora destinations">
-        <button
-          type="button"
-          disabled={!onlineSelected || webAppBaseUrl === null}
-          onClick={() => {
-            setPage("lobby");
-          }}
-        >
-          <Cloud aria-hidden="true" />
-          <span>
-            <strong>Go to lobby</strong>
-            <small>Online games</small>
-          </span>
-          <DoorOpen aria-hidden="true" />
-        </button>
-        <button type="button" onClick={() => setPage("replays")}>
-          <History aria-hidden="true" />
-          <span>
-            <strong>Replays</strong>
-            <small>Saved and account games</small>
-          </span>
-          <ChevronRight aria-hidden="true" className="destination-arrow" />
-        </button>
-        <button
-          type="button"
-          disabled={!canOpenNearby}
-          onClick={() => setPage("nearby")}
-        >
-          <Radio aria-hidden="true" />
-          <span>
-            <strong>Nearby</strong>
-            <small>
-              {canOpenNearby
-                ? nearbyState.available
-                  ? "Solo, host, or join"
-                  : "Solo available"
-                : "Checking device"}
-            </small>
-          </span>
-          <ChevronRight aria-hidden="true" className="destination-arrow" />
-        </button>
-      </nav>
-    </main>
+            <Radio aria-hidden="true" />
+            <span>
+              <strong>Nearby</strong>
+              <small>
+                {canOpenNearby
+                  ? nearbyState.available
+                    ? "Solo, host, or join"
+                    : "Solo available"
+                  : "Checking device"}
+              </small>
+            </span>
+            <ChevronRight aria-hidden="true" className="destination-arrow" />
+          </button>
+        </nav>
+      </main>
+      {resumeActiveGamePrompt}
+    </>
   );
 }

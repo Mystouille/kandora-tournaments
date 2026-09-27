@@ -9,6 +9,7 @@ import {
   normalizeWebAppUrl,
   pendingContentAuthenticationAction,
   retryTransientPause,
+  shouldPromptForActiveOnlineMatch,
   shouldKeepMobileScreenAwake,
   webAppPath,
 } from "./shell";
@@ -113,6 +114,21 @@ describe("mobile shell policy", () => {
     expect(hasPlayingMatch("playing", "idle")).toBe(true);
     expect(hasPlayingMatch("idle", "playing")).toBe(true);
     expect(hasPlayingMatch("paused", "lobby")).toBe(false);
+  });
+
+  it("offers active-game resume once per app/auth lifecycle", () => {
+    expect(shouldPromptForActiveOnlineMatch("match-1", new Set(), false)).toBe(
+      true
+    );
+    expect(
+      shouldPromptForActiveOnlineMatch("match-1", new Set(["match-1"]), false)
+    ).toBe(false);
+    expect(shouldPromptForActiveOnlineMatch("match-1", new Set(), true)).toBe(
+      false
+    );
+    expect(shouldPromptForActiveOnlineMatch(null, new Set(), false)).toBe(
+      false
+    );
   });
 
   it("retries only transient checkpoint boundaries", async () => {

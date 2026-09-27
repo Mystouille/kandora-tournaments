@@ -19,6 +19,7 @@ interface MobileOnlineRoomProps {
   state: OnlineMatchControllerState;
   onBack: () => void;
   onReconnect: () => void;
+  onTakeover: () => void;
   onReadyChange: (ready: boolean) => void;
   onAddBot: () => void;
   onKick: (seat: Seat) => void;
@@ -29,6 +30,7 @@ export function MobileOnlineRoom({
   state,
   onBack,
   onReconnect,
+  onTakeover,
   onReadyChange,
   onAddBot,
   onKick,
@@ -73,18 +75,30 @@ export function MobileOnlineRoom({
 
       {room === null ? (
         <section className="online-room-opening" aria-live="polite">
-          {state.status === "error" ? (
+          {state.status === "error" || state.status === "takeover-required" ? (
             <>
-              <strong>Could not open this table</strong>
+              <strong>
+                {state.status === "takeover-required"
+                  ? "Game active on another device"
+                  : "Could not open this table"}
+              </strong>
               <span>{state.error ?? "The online game is unavailable."}</span>
               {state.matchId !== null && (
                 <button
                   type="button"
                   className="command-button"
-                  onClick={onReconnect}
+                  onClick={
+                    state.status === "takeover-required"
+                      ? onTakeover
+                      : onReconnect
+                  }
                 >
                   <RefreshCw aria-hidden="true" />
-                  <span>Reconnect</span>
+                  <span>
+                    {state.status === "takeover-required"
+                      ? "Reconnect here"
+                      : "Reconnect"}
+                  </span>
                 </button>
               )}
             </>
@@ -131,19 +145,17 @@ export function MobileOnlineRoom({
                       className="online-host-mark"
                     />
                   )}
-                  {isHost &&
-                    occupied &&
-                    seat !== room.mySeat && (
-                      <button
-                        type="button"
-                        className="online-seat-kick"
-                        aria-label={`Remove ${occupant.displayName}`}
-                        title={`Remove ${occupant.displayName}`}
-                        onClick={() => onKick(seat)}
-                      >
-                        <UserMinus aria-hidden="true" />
-                      </button>
-                    )}
+                  {isHost && occupied && seat !== room.mySeat && (
+                    <button
+                      type="button"
+                      className="online-seat-kick"
+                      aria-label={`Remove ${occupant.displayName}`}
+                      title={`Remove ${occupant.displayName}`}
+                      onClick={() => onKick(seat)}
+                    >
+                      <UserMinus aria-hidden="true" />
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -153,9 +165,7 @@ export function MobileOnlineRoom({
             <div>
               <span>Your seat</span>
               <strong>
-                {room.mySeat === null
-                  ? "Spectator"
-                  : SEAT_LABELS[room.mySeat]}
+                {room.mySeat === null ? "Spectator" : SEAT_LABELS[room.mySeat]}
               </strong>
               {state.error !== null && <small>{state.error}</small>}
             </div>

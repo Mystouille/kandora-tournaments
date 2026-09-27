@@ -70,6 +70,7 @@ export default [
   route("/watch/live/:watchId", "routes/game/live.$watchId.tsx"),
   route("/api/game/rooms", "routes/api/game/rooms.ts"),
   route("/api/game/session", "routes/api/game/session.ts"),
+  route("/api/game/active-match", "routes/api/game/active-match.ts"),
   route("/api/game/watch", "routes/api/game/watch.ts"),
   route("/api/game/enrichment", "routes/api/game/enrichment.ts"),
   route("/api/mobile/lobby", "routes/api/mobile/lobby.ts"),

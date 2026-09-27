@@ -29,6 +29,8 @@ export type OnlineMatchStatus =
   | "playing"
   | "spectating"
   | "finished"
+  | "takeover-required"
+  | "transferred"
   | "error";
 
 export interface OnlineMatchControllerState {
@@ -51,8 +53,9 @@ export const INITIAL_ONLINE_MATCH_STATE: OnlineMatchControllerState = {
   error: null,
 };
 
-interface OnlineJoinOptions {
+export interface OnlineJoinOptions {
   autoStart?: boolean;
+  takeover?: boolean;
 }
 
 interface OnlineSocket {
@@ -87,6 +90,21 @@ const DEFAULT_DEPENDENCIES: OnlineMatchControllerDependencies = {
 };
 
 type StateListener = (state: OnlineMatchControllerState) => void;
+
+const TERMINAL_PLAYER_ERROR_CODES = new Set([
+  "hello_timeout",
+  "matchid_mismatch",
+  "auth_failed",
+  "user_not_found",
+  "client_session_required",
+  "active_match_exists",
+  "multiple_active_matches",
+  "match_lost",
+  "match_finished",
+  "match_not_found",
+  "room_full",
+  "room_locked",
+]);
 
 export class OnlineMatchController {
   private state = INITIAL_ONLINE_MATCH_STATE;
@@ -148,7 +166,8 @@ export class OnlineMatchController {
       session,
       matchId,
       "player",
-      options.autoStart === true
+      options.autoStart === true,
+      options.takeover === true
     );
   }
 
@@ -196,6 +215,25 @@ export class OnlineMatchController {
     this.socket?.forceReconnect();
   }
 
+  takeover(): void {
+    if (
+      this.baseUrl === null ||
+      this.session === null ||
+      this.state.matchId === null ||
+      this.state.mode !== "player"
+    ) {
+      return;
+    }
+    this.attach(
+      this.baseUrl,
+      this.session,
+      this.state.matchId,
+      "player",
+      false,
+      true
+    );
+  }
+
   async leave(): Promise<void> {
     const socket = this.socket;
     if (socket !== null && this.state.status === "waiting") {
@@ -217,7 +255,8 @@ export class OnlineMatchController {
     session: MobileAuthSession,
     matchId: string,
     mode: "player" | "spectator",
-    autoStart = false
+    autoStart = false,
+    takeover = false
   ): void {
     this.socket?.close();
     this.baseUrl = baseUrl;
@@ -237,9 +276,10 @@ export class OnlineMatchController {
     const socket = this.dependencies.createSocket({
       matchId,
       spectate: mode === "spectator",
+      takeover: mode === "player" && takeover,
       getConnectionDetails: () => this.connectionDetails(matchId),
       onMessage: (message) => this.handleMessage(message),
-      onError: (_code, message) => this.handleError(message),
+      onError: (code, message) => this.handleError(code, message),
     });
     this.socket = socket;
     socket.connect();
@@ -330,6 +370,14 @@ export class OnlineMatchController {
       this.disconnect("You were removed from the room.");
       return;
     }
+    if (message.type === "session_replaced") {
+      this.setState({
+        ...this.state,
+        status: "transferred",
+        error: message.message,
+      });
+      return;
+    }
     if (message.type === "spectate_redirect") {
       const { baseUrl, session } = this;
       if (baseUrl !== null && session !== null) {
@@ -340,7 +388,19 @@ export class OnlineMatchController {
     }
   }
 
-  private handleError(message: string): void {
+  private handleError(code: string, message: string): void {
+    if (code === "takeover_required") {
+      this.setState({
+        ...this.state,
+        status: "takeover-required",
+        error: message,
+      });
+      return;
+    }
+    if (TERMINAL_PLAYER_ERROR_CODES.has(code)) {
+      this.setState({ ...this.state, status: "error", error: message });
+      return;
+    }
     this.setState({ ...this.state, error: message });
   }
 

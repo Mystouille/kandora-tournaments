@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   createOnlineRoom,
+  getActiveOnlineGame,
   getOnlineGameEnrichment,
   getOnlineGameConnectionDetails,
   resolveOnlineWatchId,
@@ -14,6 +15,33 @@ const session: MobileAuthSession = {
 };
 
 describe("mobile online game API", () => {
+  it("discovers the authenticated player's active match", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        activeMatch: {
+          matchId: "match-1",
+          status: "playing",
+          connected: true,
+        },
+      })
+    );
+
+    await expect(
+      getActiveOnlineGame("https://play.example.com", session, fetcher)
+    ).resolves.toEqual({
+      matchId: "match-1",
+      status: "playing",
+      connected: true,
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://play.example.com/api/game/active-match",
+      {
+        method: "POST",
+        body: expect.any(URLSearchParams),
+      }
+    );
+  });
+
   it("creates rooms with a CORS-simple form request", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
