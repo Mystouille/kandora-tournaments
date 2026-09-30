@@ -1,58 +1,14 @@
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import type { Route } from "./+types/yaku-map";
 import mongoose from "mongoose";
-import { Han } from "~/types/Han";
 import { GameModel, type Game } from "../../core/models/tournament/Game";
 import { TeamModel, type Team } from "../../core/models/tournament/Team";
 import { UserModel, type User } from "../../core/models/shared/User";
 import {
   GameRecordModel,
   type GameRecord,
-  type UserGameRecordData,
 } from "../../core/models/tournament/GameRecord";
-
-const DORA_YAKU = Han.Dora; // 31
-const URA_DORA_YAKU = Han.Ura_Dora; // 33
-const RED_FIVE_YAKU = Han.Red_Five; // 32
-
-/**
- * Count yakus for a winning round.
- * Dora: 1 if the round has Dora or Red Five yaku
- * Ura Dora: 1 if the round has the Ura Dora yaku
- * Red Five is folded into Dora (not shown separately)
- * All others: count = 1
- */
-function getYakuCounts(
-  round: UserGameRecordData["roundEvents"][number]
-): { yakuId: number; count: number }[] {
-  const yakus = new Set<number>(round.yakus ?? []);
-  const results: { yakuId: number; count: number }[] = [];
-
-  // Dora: count 1 if Dora or Red Five is present
-  const hasDora = yakus.has(DORA_YAKU) || yakus.has(RED_FIVE_YAKU);
-  if (hasDora) {
-    results.push({ yakuId: DORA_YAKU, count: 1 });
-  }
-
-  // Ura Dora: count 1 if present
-  if (yakus.has(URA_DORA_YAKU)) {
-    results.push({ yakuId: URA_DORA_YAKU, count: 1 });
-  }
-
-  // All other yakus (skip Dora, Ura Dora, Red Five — already handled)
-  for (const yaku of yakus) {
-    if (
-      yaku === DORA_YAKU ||
-      yaku === URA_DORA_YAKU ||
-      yaku === RED_FIVE_YAKU
-    ) {
-      continue;
-    }
-    results.push({ yakuId: yaku, count: 1 });
-  }
-
-  return results;
-}
+import { getYakuCounts } from "../../services/yakuCounts";
 
 import { getLeagueApiCache } from "~/services/leagueApiCache.server";
 

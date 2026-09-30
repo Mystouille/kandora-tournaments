@@ -5,6 +5,7 @@ import {
   type TenhouJsonLog,
 } from "./replayAdapter";
 import { replayReducer } from "~/game/replay/player";
+import { Han } from "~/types/Han";
 
 // Tile id helpers — Tenhou XML uses 0..135 with type = id/4.
 // 1m..9m → 0..35 (in steps of 4); 1p..9p → 36..71; 1s..9s → 72..107;
@@ -243,6 +244,34 @@ describe("parseTenhouXmlReplay", () => {
     expect(handEnds).toHaveLength(1);
     if (handEnds[0].type === "hand_end") {
       expect(handEnds[0].reason).toBe("ron");
+    }
+  });
+
+  it("ignores Tenhou's zero-han dora markers in the yaku list", () => {
+    const xml = buildXmlLog({
+      agariAttrs: {
+        who: "0",
+        fromWho: "1",
+        machi: String(man(5, 1)),
+        ten: "30,1000,0",
+        yaku: "1,1,52,0,53,0,54,0",
+        sc: "250,10,250,-10,250,0,250,0",
+        hai: HAND_0.join(","),
+      },
+    });
+
+    const log = parseTenhouXmlReplay(xml, "2026041906gm-test");
+    const win = log.events.find((event) => event.type === "win");
+
+    expect(win).toMatchObject({
+      type: "win",
+      yakuHan: [Han.Riichi],
+      doraCount: 0,
+      akaDoraCount: 0,
+      uraDoraCount: 0,
+    });
+    if (win?.type === "win") {
+      expect(win.yaku).toEqual({ Riichi: "1飜" });
     }
   });
 
