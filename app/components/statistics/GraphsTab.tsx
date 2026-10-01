@@ -4,11 +4,13 @@ import { basePath } from "../../utils/basePath";
 import ScoreBreakdownChart from "../ScoreBreakdownChart";
 import ScoreEvolutionChart from "../ScoreEvolutionChart";
 import type { Series } from "../ScoreEvolutionChart";
+import type { PhaseFilter } from "./types";
 
 interface GraphsTabProps {
   leagueIds: string[];
   entityType: "player" | "team";
   entityIds: string[];
+  phaseFilter: PhaseFilter;
   startDate: string | null;
   endDate: string | null;
   eliminatedEntityIds?: string[];
@@ -18,6 +20,7 @@ export default function GraphsTab({
   leagueIds,
   entityType,
   entityIds,
+  phaseFilter,
   startDate,
   endDate,
   eliminatedEntityIds,
@@ -27,6 +30,8 @@ export default function GraphsTab({
     if (leagueIds.length > 0) {
       params.set("leagueIds", leagueIds.join(","));
     }
+    params.set("entityType", entityType);
+    params.set("phaseFilter", phaseFilter);
     const idsParam = entityType === "player" ? "playerIds" : "teamIds";
     if (entityIds.length > 0) {
       params.set(idsParam, entityIds.join(","));
@@ -38,7 +43,7 @@ export default function GraphsTab({
       params.set("endDate", endDate);
     }
     return params.toString();
-  }, [leagueIds, entityType, entityIds, startDate, endDate]);
+  }, [leagueIds, entityType, entityIds, phaseFilter, startDate, endDate]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["score-evolution", queryParams],
@@ -57,6 +62,8 @@ export default function GraphsTab({
   const [activeDay, setActiveDay] = useState<string | null>(null);
 
   const seriesData = data ?? [];
+  const chartEliminatedEntityIds =
+    phaseFilter === "both" ? eliminatedEntityIds : undefined;
 
   return (
     <div style={{ padding: "24px 0" }}>
@@ -64,7 +71,7 @@ export default function GraphsTab({
         series={seriesData}
         activeDay={activeDay}
         onActiveDayChange={setActiveDay}
-        eliminatedEntityIds={eliminatedEntityIds}
+        eliminatedEntityIds={chartEliminatedEntityIds}
       />
       <ScoreEvolutionChart
         series={seriesData}
@@ -72,7 +79,7 @@ export default function GraphsTab({
         error={error ? error.message : null}
         activeDay={activeDay}
         onSliceClick={setActiveDay}
-        eliminatedEntityIds={eliminatedEntityIds}
+        eliminatedEntityIds={chartEliminatedEntityIds}
       />
     </div>
   );
