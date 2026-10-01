@@ -31,7 +31,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       url.searchParams.get("teamIds")?.split(",").filter(Boolean) ?? [];
     const startDate = url.searchParams.get("startDate");
     const endDate = url.searchParams.get("endDate");
-    const finalsCutoffTimeParam = url.searchParams.get("finalsCutoffTime");
 
     if (leagueIds.length === 0) {
       return Response.json({ error: "leagueIds is required" }, { status: 400 });
@@ -47,23 +46,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     const leaguesDocs = await League.find({
       _id: { $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)) },
     })
-      .select("_id rulesConfig phaseCutoffTimes")
+      .select("_id rulesConfig")
       .lean<League[]>();
     const leagueRulesMap = new Map<string, Ruleset>();
     for (const l of leaguesDocs) {
       leagueRulesMap.set(l._id.toString(), l.rulesConfig?.gameRules as Ruleset);
     }
-
-    // Phase filter: restrict to regular (<cutoff), finals (>=cutoff), or both
-    const selectedLeague =
-      leagueIds.length === 1
-        ? leaguesDocs.find((l) => l._id.toString() === leagueIds[0])
-        : null;
-    const cutoff = finalsCutoffTimeParam
-      ? new Date(finalsCutoffTimeParam)
-      : selectedLeague?.phaseCutoffTimes?.[0]
-        ? new Date(selectedLeague.phaseCutoffTimes[0])
-        : null;
 
     // Resolve which player IDs to fetch data for
     let resolvedPlayerIds: string[] = [];
@@ -154,14 +142,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       matchFilter.startTime = {
         ...(matchFilter.startTime ?? {}),
         $lte: new Date(endDate),
-      };
-    }
-
-    // Always show only regular phase games in graph tab (ignore phaseFilter param)
-    if (cutoff) {
-      matchFilter.startTime = {
-        ...(matchFilter.startTime ?? {}),
-        $lt: cutoff,
       };
     }
 
