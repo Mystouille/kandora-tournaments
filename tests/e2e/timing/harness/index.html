@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Timing regression harness</title>
+  </head>
+  <body>
+    <main>
+      <h1>Clock synchronization</h1>
+      <output aria-label="Clock status">Connecting</output>
+      <output aria-label="Authority clock"></output>
+      <button type="button" id="skew">Skew device wall clock</button>
+      <button type="button" id="refresh">Refresh clock sample</button>
+      <a href="?game=1">Open isolated live game</a>
+      <output aria-label="Decision status"></output>
+      <output aria-label="Decision remaining"></output>
+      <output aria-label="Budget at readiness"></output>
+      <output aria-label="Time bank"></output>
+      <output aria-label="Accepted discards">0</output>
+      <button type="button" id="reconnect">Reconnect game</button>
+      <button type="button" id="near-deadline">
+        Discard near base deadline
+      </button>
+      <div id="table" style="width: 900px; height: 650px"></div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

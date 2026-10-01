@@ -146,6 +146,40 @@ describe("game link metadata", () => {
     expect(mocks.requireGameUser).toHaveBeenCalledWith(request);
   });
 
+  it("includes a host-selected five-minute delay in Discord and Twitter previews", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({
+        rooms: [
+          {
+            matchId: "delayed-room",
+            status: "waiting",
+            presetId: "m-league",
+            spectatorDelayMs: 300_000,
+          },
+        ],
+      })
+    );
+    const data = await loader({
+      params: { matchId: "delayed-room" },
+      request: new Request(
+        "https://tournaments.example.test/game/delayed-room",
+        {
+          headers: { "User-Agent": "Discordbot/2.0" },
+        }
+      ),
+    } as Parameters<typeof loader>[0]);
+
+    expect(data.metadata.description).toBe(
+      "Ruleset: M-League. Spectator delay: 5 min. Status: waiting for players."
+    );
+    expect(meta({ data } as Parameters<typeof meta>[0])).toEqual(
+      expect.arrayContaining([
+        { property: "og:description", content: data.metadata.description },
+        { name: "twitter:description", content: data.metadata.description },
+      ])
+    );
+  });
+
   it("uses persisted match details after a room leaves live memory", async () => {
     fetchMock.mockResolvedValue(Response.json({ rooms: [] }));
     const lean = vi.fn().mockResolvedValue({
@@ -156,6 +190,7 @@ describe("game link metadata", () => {
         seed: "Board-A",
         generationVersion: 1,
       },
+      spectatorDelayMs: 300_000,
     });
     const select = vi.fn().mockReturnValue({ lean });
     mocks.findById.mockReturnValue({ select });
@@ -170,11 +205,11 @@ describe("game link metadata", () => {
 
     expect(mocks.connectToDatabase).toHaveBeenCalledOnce();
     expect(mocks.findById).toHaveBeenCalledWith("finished-game");
-    expect(select).toHaveBeenCalledWith("ruleSet status mode");
+    expect(select).toHaveBeenCalledWith("ruleSet status mode spectatorDelayMs");
     expect(data.metadata).toMatchObject({
       title: "JPML A — Hanchan Game | TNT Paris Mahjong",
       description:
-        "Ruleset: JPML A — Hanchan. Mode: Duplicate. Spectator delay: none (live). Status: finished.",
+        "Ruleset: JPML A — Hanchan. Mode: Duplicate. Spectator delay: 5 min. Status: finished.",
     });
   });
 

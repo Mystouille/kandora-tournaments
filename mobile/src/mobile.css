@@ -2582,6 +2582,84 @@ button {
   justify-content: flex-end;
 }
 
+.rule-modal > .create-game-footer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+}
+
+.mobile-spectator-delay {
+  display: grid;
+  gap: 5px;
+  margin-right: auto;
+  color: rgba(240, 244, 236, 0.7);
+  font-size: 11px;
+}
+
+.mobile-spectator-delay select {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 7px;
+  background: #15231d;
+  color: #f1f6f2;
+  font: inherit;
+  font-size: 13px;
+}
+
+.create-game-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.spectator-delay-status {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 30;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #f1d993;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.spectator-delay-waiting {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: none;
+}
+
+.spectator-delay-waiting > section {
+  max-width: 360px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #f1f6f2;
+  text-align: center;
+}
+
+.spectator-delay-waiting h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.spectator-delay-waiting p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .resume-active-game-modal > p {
   margin: 0;
   color: rgba(240, 244, 236, 0.78);

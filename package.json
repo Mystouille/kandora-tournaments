@@ -26,7 +26,10 @@
     "mobile:android:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-install-android.ps1",
     "mobile:ios": "npm run mobile:sync && cap open ios",
     "typecheck": "react-router typegen && tsc",
-    "test": "vitest run",
+    "test": "node scripts/run-tests.mjs",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:server": "vite --config tests/e2e/timing/harness/vite.config.ts",
     "lint": "eslint \"app/**/*.{ts,tsx,js,jsx}\" \"mobile/**/*.{ts,tsx,js,jsx}\" \"scripts/**/*.{ts,js}\" capacitor.config.ts vite.mobile.config.ts --no-error-on-unmatched-pattern",
     "lint:fix": "npm run lint -- --fix",
     "deploy:commands": "tsx scripts/deploy-commands.ts"
@@ -93,6 +96,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.1",
     "@capacitor/cli": "^8.5.0",
     "@react-router/dev": "7.10.1",
     "@tailwindcss/vite": "^4.1.13",

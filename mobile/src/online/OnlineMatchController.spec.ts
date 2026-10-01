@@ -30,8 +30,9 @@ function setup() {
     leaveSeat: vi.fn(),
     voteContinue: vi.fn(),
   };
+  const createRoom = vi.fn().mockResolvedValue("room-1");
   const controller = new OnlineMatchController({
-    createRoom: vi.fn().mockResolvedValue("room-1"),
+    createRoom,
     getConnectionDetails: vi.fn().mockResolvedValue({
       token: "game-token",
       wsUrl: "wss://game.test/ws/game/room-1",
@@ -45,6 +46,7 @@ function setup() {
   });
   return {
     controller,
+    createRoom,
     getSpectatorEnrichment,
     socket,
     options: () => {
@@ -57,6 +59,43 @@ function setup() {
 }
 
 describe("online match controller", () => {
+  it("reports the enforced delay while waiting for spectator game data", () => {
+    const { controller, options } = setup();
+    controller.watch("https://play.test", session, "delayed-room");
+    options().onMessage?.({
+      type: "spectator_config",
+      matchId: "delayed-room",
+      delayMs: 300_000,
+    });
+
+    expect(controller.getState()).toMatchObject({
+      status: "spectating",
+      mode: "spectator",
+      spectatorDelayMs: 300_000,
+      spectatorTimeline: { baseline: null, events: [] },
+    });
+  });
+
+  it.each([0, 300_000] as const)(
+    "passes the selected %i ms spectator delay to room creation",
+    async (spectatorDelayMs) => {
+      const { controller, createRoom } = setup();
+      await controller.create(
+        "https://play.test",
+        session,
+        "m-league",
+        spectatorDelayMs
+      );
+
+      expect(createRoom).toHaveBeenCalledWith(
+        "https://play.test",
+        session,
+        "m-league",
+        spectatorDelayMs
+      );
+    }
+  );
+
   it("readies and starts an explicitly requested solo room once", () => {
     const { controller, socket, options } = setup();
     controller.join("https://play.test", session, "solo-room", {

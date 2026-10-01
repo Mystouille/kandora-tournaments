@@ -6,6 +6,8 @@ import {
 } from "~/game/client/ws";
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState, Seat, ServerMessage } from "~/game/protocol/messages";
+import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
+import type { ActionIntentContext } from "~/game/protocol/timing";
 import {
   advanceLiveSpectateTimeline,
   createLiveSpectateTimeline,
@@ -39,6 +41,7 @@ export interface OnlineMatchControllerState {
   matchId: string | null;
   roomState: RoomState | null;
   spectatorTimeline: LiveSpectateTimeline | null;
+  spectatorDelayMs: number;
   spectatorEnrichment: OnlineGameEnrichment;
   error: string | null;
 }
@@ -49,6 +52,7 @@ export const INITIAL_ONLINE_MATCH_STATE: OnlineMatchControllerState = {
   matchId: null,
   roomState: null,
   spectatorTimeline: null,
+  spectatorDelayMs: 0,
   spectatorEnrichment: emptyOnlineGameEnrichment(),
   error: null,
 };
@@ -62,7 +66,7 @@ interface OnlineSocket {
   connect(): void;
   close(): void;
   forceReconnect(): void;
-  act(actionId: string): void;
+  act(actionId: string, intent?: ActionIntentContext): void;
   ready(): void;
   setWaitingRoomReady(ready: boolean): void;
   addWaitingRoomBot(): void;
@@ -104,6 +108,7 @@ const TERMINAL_PLAYER_ERROR_CODES = new Set([
   "match_not_found",
   "room_full",
   "room_locked",
+  "timing_update_required",
 ]);
 
 export class OnlineMatchController {
@@ -131,7 +136,8 @@ export class OnlineMatchController {
   async create(
     baseUrl: string,
     session: MobileAuthSession,
-    preset: string
+    preset: string,
+    spectatorDelayMs: SpectatorDelayMs = 0
   ): Promise<void> {
     this.autoStartRequested = false;
     this.setState({
@@ -140,6 +146,7 @@ export class OnlineMatchController {
       matchId: null,
       roomState: null,
       spectatorTimeline: null,
+      spectatorDelayMs,
       spectatorEnrichment: emptyOnlineGameEnrichment(),
       error: null,
     });
@@ -147,7 +154,8 @@ export class OnlineMatchController {
       const matchId = await this.dependencies.createRoom(
         baseUrl,
         session,
-        preset
+        preset,
+        spectatorDelayMs
       );
       this.attach(baseUrl, session, matchId, "player");
     } catch (error) {
@@ -199,8 +207,12 @@ export class OnlineMatchController {
     this.socket?.startMatch();
   }
 
-  act(actionId: string): void {
-    this.socket?.act(actionId);
+  act(actionId: string, intent?: ActionIntentContext): void {
+    if (intent) {
+      this.socket?.act(actionId, intent);
+    } else {
+      this.socket?.act(actionId);
+    }
   }
 
   ready(): void {
@@ -270,6 +282,7 @@ export class OnlineMatchController {
       roomState: null,
       spectatorTimeline:
         mode === "spectator" ? createLiveSpectateTimeline() : null,
+      spectatorDelayMs: 0,
       spectatorEnrichment: emptyOnlineGameEnrichment(),
       error: null,
     });
@@ -337,6 +350,17 @@ export class OnlineMatchController {
   }
 
   private handleMessage(message: ServerMessage): void {
+    if (message.type === "spectator_config") {
+      if (this.state.mode === "spectator") {
+        this.setState({
+          ...this.state,
+          status: "spectating",
+          spectatorDelayMs: message.delayMs,
+          error: null,
+        });
+      }
+      return;
+    }
     if (message.type === "room_state") {
       const status =
         message.status === "waiting"
@@ -436,6 +460,7 @@ export class OnlineMatchController {
       matchId: this.state.matchId,
       roomState: null,
       spectatorTimeline: null,
+      spectatorDelayMs: this.state.spectatorDelayMs,
       spectatorEnrichment: emptyOnlineGameEnrichment(),
       error: error instanceof Error ? error.message : "Online game failed",
     });

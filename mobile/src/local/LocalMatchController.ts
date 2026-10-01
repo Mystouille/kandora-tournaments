@@ -3,6 +3,10 @@ import { useMatchStore } from "~/game/client/store";
 import type { Seat, ServerMessage } from "~/game/protocol/messages";
 import { MatchProcess } from "~/game/server/src/match";
 import { createSystemMatchRuntime } from "~/game/server/src/runtime";
+import { createAuthorityClock } from "~/game/server/src/timing/authorityClock";
+import type { ActionIntentContext, TimingMode } from "~/game/protocol/timing";
+import { bindLiveClock, releaseLiveClock } from "~/game/client/time/liveClock";
+import { refreshScheduledWindow } from "~/game/client/time/liveTimingBinding";
 import type { MobileMatchRepositoryHandle } from "../persistence/mobileMatchRepository";
 
 const LOCAL_USER_ID = "mobile:local-player";
@@ -32,6 +36,7 @@ function randomUint32(): number {
 }
 
 export class LocalMatchController {
+  private readonly authorityClock = createAuthorityClock();
   private match: MatchProcess | null = null;
   private humanSeat: Seat | null = null;
   private listener: LocalMatchControllerListener | null = null;
@@ -43,11 +48,24 @@ export class LocalMatchController {
   };
 
   private readonly send = (message: ServerMessage): void => {
+    if ("clock" in message && message.clock) {
+      const epoch = message.clock.clockEpoch;
+      bindLiveClock(this, {
+        now: () => this.match?.authorityNow() ?? null,
+        quality: () => ({
+          clockEpoch: epoch,
+          roundTripMs: 0,
+          uncertaintyMs: 0,
+          sampledAt: performance.now(),
+        }),
+      });
+    }
     dispatchServerMessage(message, {
       onError: (code, text) => {
         this.update({ status: "error", error: `${code}: ${text}` });
       },
     });
+    refreshScheduledWindow();
     if (message.type === "room_state" && message.mySeat !== null) {
       this.humanSeat = message.mySeat;
     }
@@ -60,7 +78,10 @@ export class LocalMatchController {
     }
   };
 
-  constructor(private readonly persistence: MobileMatchRepositoryHandle) {}
+  constructor(
+    private readonly persistence: MobileMatchRepositoryHandle,
+    private readonly timingMode: TimingMode = "legacy"
+  ) {}
 
   subscribe(listener: LocalMatchControllerListener): () => void {
     this.listener = listener;
@@ -106,7 +127,7 @@ export class LocalMatchController {
       const restored = await MatchProcess.restoreSavedCheckpoint(matchId, {
         repository: this.persistence.repository,
         eventJournalStore: this.persistence.eventJournalStore,
-        runtime: createSystemMatchRuntime(0),
+        runtime: createSystemMatchRuntime(0, this.authorityClock),
       });
       if (restored === null) {
         await this.persistence.setActiveMatch(null);
@@ -142,7 +163,8 @@ export class LocalMatchController {
         {
           repository: this.persistence.repository,
           eventJournalStore: this.persistence.eventJournalStore,
-          runtime: createSystemMatchRuntime(seed),
+          runtime: createSystemMatchRuntime(seed, this.authorityClock),
+          timingMode: this.timingMode,
         },
         undefined,
         undefined,
@@ -157,7 +179,7 @@ export class LocalMatchController {
       const restorable = await MatchProcess.restoreSavedCheckpoint(matchId, {
         repository: this.persistence.repository,
         eventJournalStore: this.persistence.eventJournalStore,
-        runtime: createSystemMatchRuntime(seed),
+        runtime: createSystemMatchRuntime(seed, this.authorityClock),
       });
       if (restorable === null) {
         throw new Error("Could not establish the initial local recovery point");
@@ -179,10 +201,19 @@ export class LocalMatchController {
     });
   }
 
-  act(actionId: string): Promise<void> {
+  async act(actionId: string, intent?: ActionIntentContext): Promise<void> {
+    const active = this.requireActiveMatch();
+    const receipt = {
+      ...active.match.actionReceipt(active.seat, active.match.authorityNow()),
+      ...(intent ?? {}),
+    };
+    active.match.reserveAction(active.seat, actionId, receipt);
     return this.enqueue(async () => {
       const { match, seat } = this.requireActiveMatch();
-      await match.handleAct(seat, actionId);
+      if (match !== active.match || seat !== active.seat) {
+        throw new Error("The local action belongs to a replaced match");
+      }
+      await match.handleAct(seat, actionId, receipt);
       this.syncSnapshot();
     });
   }
@@ -213,6 +244,7 @@ export class LocalMatchController {
         await this.pauseCurrentMatch();
       }
       this.detachCurrentMatch();
+      releaseLiveClock(this);
       useMatchStore.getState().reset();
       this.update({ status: "idle", matchId: null, error: null });
     });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TIMING_CAPABILITY } from "~/game/protocol/timing";
 import {
   ClientMessageSchema,
   ServerMessageSchema,
@@ -12,6 +13,7 @@ const NearbyHelloFrameSchema = z.object({
   kind: z.literal("hello"),
   deviceId: z.string().trim().min(1).max(128),
   displayName: z.string().trim().min(1).max(40),
+  timingCapabilities: z.array(z.literal(TIMING_CAPABILITY)).max(1).optional(),
 });
 
 const NearbyClientFrameSchema = z.object({

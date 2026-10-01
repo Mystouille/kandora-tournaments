@@ -89,6 +89,11 @@ import type { ReplayLibraryRow } from "./replays/replayLibrary";
 import type { ReplayLog } from "~/game/replay/types";
 import type { ReplayLocationRequest } from "~/game/replay/replayLocation";
 import type { Seat } from "~/game/protocol/messages";
+import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
+import {
+  TimingModeSchema,
+  type ActionIntentContext,
+} from "~/game/protocol/timing";
 import type { ActiveMatchSummary } from "~/game/protocol/activeMatch";
 import type { MyReplayLogDetails } from "./replays/myReplaysApi";
 import {
@@ -174,9 +179,9 @@ export function App() {
   const localControllerRef = useRef<LocalMatchController | null>(null);
   const nearbyControllerRef = useRef<NearbyMatchController | null>(null);
   const onlineControllerRef = useRef<OnlineMatchController | null>(null);
-  const liveActionDispatcherRef = useRef<(actionId: string) => void>(
-    () => undefined
-  );
+  const liveActionDispatcherRef = useRef<
+    (actionId: string, intent?: ActionIntentContext) => void
+  >(() => undefined);
   const lastAutoActedIdRef = useRef<string | null>(null);
   const autoDiscardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -376,23 +381,41 @@ export function App() {
   );
   const renderedTableView =
     isLiveSpectating && renderedSpectateView !== null
-      ? renderedSpectateView
+      ? {
+          ...renderedSpectateView,
+          ...(spectateFollowingLive
+            ? {
+                conn: liveView.conn,
+                lastSeq: liveView.lastSeq,
+                serverClock: liveView.serverClock,
+                presentation: liveView.presentation,
+              }
+            : {}),
+        }
       : renderedLiveView;
   const latestViewRef = useRef(renderedTableView);
   latestViewRef.current = renderedTableView;
-  liveActionDispatcherRef.current = (actionId) => {
+  liveActionDispatcherRef.current = (actionId, intent) => {
     const matchId = useMatchStore.getState().matchId;
     const onlineController = onlineControllerRef.current;
     if (onlineController?.getState().matchId === matchId) {
-      onlineController.act(actionId);
+      onlineController.act(actionId, intent);
       return;
     }
     const nearbyController = nearbyControllerRef.current;
     if (nearbyController?.getState().matchId === matchId) {
-      void nearbyController.act(actionId).catch(() => undefined);
+      void nearbyController
+        .act(actionId, intent)
+        .catch((error: unknown) =>
+          console.error("Nearby action rejected:", error)
+        );
       return;
     }
-    void localControllerRef.current?.act(actionId);
+    void localControllerRef.current
+      ?.act(actionId, intent)
+      .catch((error: unknown) =>
+        console.error("Local action rejected:", error)
+      );
   };
   const webAppBaseUrl = normalizeWebAppUrl(import.meta.env.VITE_APP_BASE_URL, {
     allowLoopback: !Capacitor.isNativePlatform(),
@@ -712,10 +735,21 @@ export function App() {
           return;
         }
         repositoryRef.current = handle;
-        const controller = new LocalMatchController(handle);
+        const controller = new LocalMatchController(
+          handle,
+          TimingModeSchema.parse(
+            import.meta.env.VITE_GAME_TIMING_MODE ?? "legacy"
+          )
+        );
         localControllerRef.current = controller;
         unsubscribeLocal = controller.subscribe(setLocalState);
-        const nearbyController = new NearbyMatchController(handle);
+        const nearbyController = new NearbyMatchController(
+          handle,
+          undefined,
+          TimingModeSchema.parse(
+            import.meta.env.VITE_GAME_TIMING_MODE ?? "legacy"
+          )
+        );
         nearbyControllerRef.current = nearbyController;
         unsubscribeNearby = nearbyController.subscribe(setNearbyState);
         setStorageState(handle.storage);
@@ -968,7 +1002,7 @@ export function App() {
         renderer.setAutoSort(liveMenuFlags.autoSort);
         renderer.setAutoWinEnabled(liveMenuFlags.autoWin);
         renderer.setNoCallEnabled(liveMenuFlags.noCall);
-        renderer.setOnTileClick(({ index, tile, discardSource }) => {
+        renderer.setOnTileClick(({ index, tile, discardSource, intent }) => {
           const store = useMatchStore.getState();
           if (store.mySeat === null) {
             return;
@@ -987,10 +1021,10 @@ export function App() {
             tile,
             displayIndex: index,
           });
-          liveActionDispatcherRef.current(action.id);
+          liveActionDispatcherRef.current(action.id, intent);
         });
-        renderer.setOnActionClick(({ action }) => {
-          liveActionDispatcherRef.current(action.id);
+        renderer.setOnActionClick(({ action, intent }) => {
+          liveActionDispatcherRef.current(action.id, intent);
           useMatchStore.getState().setLegalActions([]);
         });
         renderer.setOnRenderRequest(() => {
@@ -1346,7 +1380,10 @@ export function App() {
     );
   };
 
-  const createOnlineGame = async (preset: string): Promise<void> => {
+  const createOnlineGame = async (
+    preset: string,
+    spectatorDelayMs: SpectatorDelayMs
+  ): Promise<void> => {
     if (
       webAppBaseUrl === null ||
       mobileAuthSession === null ||
@@ -1359,7 +1396,8 @@ export function App() {
     await onlineControllerRef.current.create(
       webAppBaseUrl,
       mobileAuthSession,
-      preset
+      preset,
+      spectatorDelayMs
     );
   };
 
@@ -2017,6 +2055,25 @@ export function App() {
       <main className="mobile-game-view">
         <section className="table-stage" aria-label="Mahjong game">
           <div ref={tableContainerRef} className="table-canvas" />
+          {isLiveSpectating && onlineState.spectatorDelayMs > 0 && (
+            <div className="spectator-delay-status">
+              Spectator delay: {onlineState.spectatorDelayMs / 60_000} min
+            </div>
+          )}
+          {isLiveSpectating &&
+            onlineState.spectatorDelayMs > 0 &&
+            spectateTimeline?.baseline == null && (
+              <div className="spectator-delay-waiting" role="status">
+                <section>
+                  <h2>Waiting for delayed game</h2>
+                  <p>
+                    This game has a {onlineState.spectatorDelayMs / 60_000} min
+                    spectator delay. Play will appear automatically when the
+                    delayed stream is ready.
+                  </p>
+                </section>
+              </div>
+            )}
           <MobileReadyCheckOverlay
             readyCheck={liveView.readyCheck}
             mySeat={liveView.mySeat}
@@ -2270,8 +2327,10 @@ export function App() {
           webAppBaseUrl={webAppBaseUrl}
           activeMatchId={activeOnlineMatch?.matchId ?? null}
           onBack={() => setPage("home")}
-          onCreateGame={(preset) =>
-            void createOnlineGame(preset).catch(() => setPage("lobby"))
+          onCreateGame={(preset, spectatorDelayMs) =>
+            void createOnlineGame(preset, spectatorDelayMs).catch(() =>
+              setPage("lobby")
+            )
           }
           onJoinGame={(matchId) =>
             void joinOnlineGame(matchId).catch(() => setPage("lobby"))

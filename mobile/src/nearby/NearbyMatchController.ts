@@ -9,6 +9,17 @@ import {
 } from "~/game/protocol/messages";
 import { MatchProcess } from "~/game/server/src/match";
 import { createSystemMatchRuntime } from "~/game/server/src/runtime";
+import {
+  TIMING_CAPABILITY,
+  type ActionIntentContext,
+  type TimingMode,
+} from "~/game/protocol/timing";
+import { createAuthorityClock } from "~/game/server/src/timing/authorityClock";
+import { NearbyTiming } from "./timing";
+import {
+  displayedActionIntent,
+  refreshScheduledWindow,
+} from "~/game/client/time/liveTimingBinding";
 import type { MobileMatchRepositoryHandle } from "../persistence/mobileMatchRepository";
 import {
   NearbyConnections,
@@ -127,6 +138,8 @@ function errorMessage(error: unknown): string {
 }
 
 export class NearbyMatchController {
+  private readonly authorityClock = createAuthorityClock();
+  private readonly timing = new NearbyTiming(this.authorityClock);
   private readonly listeners = new Set<StateListener>();
   private readonly listenerHandles: PluginListenerHandle[] = [];
   private readonly remoteSends = new Map<string, MatchSend>();
@@ -148,7 +161,8 @@ export class NearbyMatchController {
 
   constructor(
     private readonly persistence: MobileMatchRepositoryHandle,
-    private readonly transport: NearbyTransport = NearbyConnections as unknown as NearbyTransport
+    private readonly transport: NearbyTransport = NearbyConnections as unknown as NearbyTransport,
+    private readonly timingMode: TimingMode = "legacy"
   ) {}
 
   subscribe(listener: StateListener): () => void {
@@ -240,7 +254,8 @@ export class NearbyMatchController {
         {
           repository: this.persistence.repository,
           eventJournalStore: this.persistence.eventJournalStore,
-          runtime: createSystemMatchRuntime(seed),
+          runtime: createSystemMatchRuntime(seed, this.authorityClock),
+          timingMode: this.timingMode,
         },
         undefined,
         undefined,
@@ -254,7 +269,7 @@ export class NearbyMatchController {
       const restored = await MatchProcess.restoreSavedCheckpoint(matchId, {
         repository: this.persistence.repository,
         eventJournalStore: this.persistence.eventJournalStore,
-        runtime: createSystemMatchRuntime(seed),
+        runtime: createSystemMatchRuntime(seed, this.authorityClock),
       });
       if (restored === null) {
         throw new Error("Could not establish the Nearby recovery point");
@@ -296,7 +311,7 @@ export class NearbyMatchController {
         {
           repository: this.persistence.repository,
           eventJournalStore: this.persistence.eventJournalStore,
-          runtime: createSystemMatchRuntime(0),
+          runtime: createSystemMatchRuntime(0, this.authorityClock),
         }
       );
       if (restored === null) {
@@ -390,11 +405,16 @@ export class NearbyMatchController {
     });
   }
 
-  act(actionId: string): Promise<void> {
+  async act(actionId: string, intent?: ActionIntentContext): Promise<void> {
+    const view = useMatchStore.getState();
+    const context =
+      intent ??
+      displayedActionIntent(actionId, view.actionWindow, view.lastSeq);
     return this.sendClientMessage({
       type: "act",
       matchId: this.requireMatchId(),
       actionId,
+      ...(context ?? {}),
     });
   }
 
@@ -574,6 +594,7 @@ export class NearbyMatchController {
       throw new Error("The saved host seat is unavailable");
     }
     this.match = match;
+    match.configurePlayerTiming(seat, "direct", () => null);
     useMatchStore.getState().setMatch(match.matchId, seat);
     useMatchStore.getState().setConn("open");
     match.attachHuman(seat, this.localSend, async () => true);
@@ -608,6 +629,7 @@ export class NearbyMatchController {
       void this.queueFrame(event.endpointId, {
         version: NEARBY_PROTOCOL_VERSION,
         kind: "hello",
+        timingCapabilities: [TIMING_CAPABILITY],
         deviceId: this.identity.deviceId,
         displayName: this.identity.displayName,
       });
@@ -651,6 +673,7 @@ export class NearbyMatchController {
   }
 
   private routeIncomingMessage(event: NearbyMessage): void {
+    const receivedAt = this.match?.authorityNow() ?? this.authorityClock.now();
     if (!this.commandIntakeOpen) {
       return;
     }
@@ -672,6 +695,43 @@ export class NearbyMatchController {
     if (
       this.state.role === "host" &&
       frame.kind === "client" &&
+      (frame.message.type === "clock_probe" ||
+        frame.message.type === "latency_reply")
+    ) {
+      void this.handleHostFrame(event.endpointId, frame, receivedAt).catch(
+        (error: unknown) => this.update({ error: errorMessage(error) })
+      );
+      return;
+    }
+    if (
+      this.state.role === "host" &&
+      frame.kind === "client" &&
+      frame.message.type === "act"
+    ) {
+      const sender = this.remoteSends.get(event.endpointId);
+      const seat =
+        sender === undefined ? null : this.match?.humanSeatFor(sender);
+      if (this.match && seat !== null && seat !== undefined) {
+        try {
+          this.match.reserveAction(seat, frame.message.actionId, {
+            receivedAt,
+            windowId: frame.message.windowId,
+            clockEpoch: frame.message.clockEpoch,
+            stateSeq: frame.message.stateSeq,
+          });
+        } catch (error) {
+          void this.sendError(
+            event.endpointId,
+            "decision_rejected",
+            errorMessage(error)
+          );
+          return;
+        }
+      }
+    }
+    if (
+      this.state.role === "host" &&
+      frame.kind === "client" &&
       frame.message.type === "ready"
     ) {
       // Remote acknowledgments release the same pending hand-ending command.
@@ -683,16 +743,17 @@ export class NearbyMatchController {
       return;
     }
     void this.enqueueCommand(async () => {
-      await this.handleIncomingFrame(event.endpointId, frame);
+      await this.handleIncomingFrame(event.endpointId, frame, receivedAt);
     });
   }
 
   private async handleIncomingFrame(
     endpointId: string,
-    frame: NearbyFrame
+    frame: NearbyFrame,
+    receivedAt?: number
   ): Promise<void> {
     if (this.state.role === "host") {
-      await this.handleHostFrame(endpointId, frame);
+      await this.handleHostFrame(endpointId, frame, receivedAt);
       return;
     }
     if (
@@ -706,9 +767,21 @@ export class NearbyMatchController {
 
   private async handleHostFrame(
     endpointId: string,
-    frame: NearbyFrame
+    frame: NearbyFrame,
+    receivedAt = this.match?.authorityNow() ?? this.authorityClock.now()
   ): Promise<void> {
     if (frame.kind === "hello") {
+      if (
+        this.match?.timingMode === "windows-v2" &&
+        !frame.timingCapabilities?.includes(TIMING_CAPABILITY)
+      ) {
+        await this.sendError(
+          endpointId,
+          "timing_update_required",
+          "This room requires an updated client."
+        );
+        return;
+      }
       await this.attachRemote(endpointId, {
         deviceId: frame.deviceId,
         displayName: frame.displayName,
@@ -735,7 +808,18 @@ export class NearbyMatchController {
       );
       return;
     }
-    await this.applyClientMessage(match, seat, frame.message, send);
+    if (
+      this.timing.handleClient(
+        endpointId,
+        match.matchId,
+        frame.message,
+        send,
+        receivedAt
+      )
+    ) {
+      return;
+    }
+    await this.applyClientMessage(match, seat, frame.message, send, receivedAt);
   }
 
   private async attachRemote(
@@ -783,6 +867,9 @@ export class NearbyMatchController {
       this.queueServerMessage(endpointId, message);
     };
     this.remoteSends.set(endpointId, send);
+    match.configurePlayerTiming(seat, "remote", () =>
+      this.timing.profile(endpointId)
+    );
     this.remoteIdentities.set(endpointId, identity);
     match.attachHuman(seat, send, async () => true);
     if (match.status !== "waiting") {
@@ -804,6 +891,17 @@ export class NearbyMatchController {
   }
 
   private handleServerMessage(message: ServerMessage): void {
+    if (this.state.role === "host") {
+      if ("clock" in message && message.clock) {
+        this.timing.bindHost();
+      }
+    } else if (this.state.matchId !== null) {
+      this.timing.handleServer(message, this.state.matchId, (frame) => {
+        void this.sendClientMessage(frame).catch((error: unknown) =>
+          this.update({ error: errorMessage(error) })
+        );
+      });
+    }
     if (message.type === "room_kicked") {
       this.hostEndpointId = null;
       this.match = null;
@@ -833,6 +931,7 @@ export class NearbyMatchController {
         this.update({ error: `${code}: ${text}` });
       },
     });
+    refreshScheduledWindow();
     if (
       message.type === "event" &&
       message.events.some((event) => event.type === "session_end")
@@ -845,6 +944,7 @@ export class NearbyMatchController {
   }
 
   private sendClientMessage(message: ClientMessage): Promise<void> {
+    const receivedAt = this.match?.authorityNow() ?? this.authorityClock.now();
     const parsed = ClientMessageSchema.parse(message);
     return this.enqueueCommand(async () => {
       if (this.state.role === "guest") {
@@ -861,12 +961,13 @@ export class NearbyMatchController {
       if (this.state.role !== "host" || this.match === null) {
         throw new Error("No Nearby match is active");
       }
-      await this.applyLocalHostClientMessage(parsed);
+      await this.applyLocalHostClientMessage(parsed, receivedAt);
     });
   }
 
   private async applyLocalHostClientMessage(
-    message: ClientMessage
+    message: ClientMessage,
+    receivedAt = this.match?.authorityNow() ?? this.authorityClock.now()
   ): Promise<void> {
     if (this.state.role !== "host" || this.match === null) {
       throw new Error("No Nearby match is active");
@@ -875,14 +976,21 @@ export class NearbyMatchController {
     if (seat === null) {
       throw new Error("The host seat is not attached");
     }
-    await this.applyClientMessage(this.match, seat, message, this.localSend);
+    await this.applyClientMessage(
+      this.match,
+      seat,
+      message,
+      this.localSend,
+      receivedAt
+    );
   }
 
   private async applyClientMessage(
     match: MatchProcess,
     seat: 0 | 1 | 2 | 3,
     message: ClientMessage,
-    send: MatchSend
+    send: MatchSend,
+    receivedAt = match.authorityNow()
   ): Promise<void> {
     if (message.matchId !== match.matchId) {
       send({
@@ -894,7 +1002,12 @@ export class NearbyMatchController {
     }
     switch (message.type) {
       case "act": {
-        await match.handleAct(seat, message.actionId);
+        await match.handleAct(seat, message.actionId, {
+          receivedAt,
+          windowId: message.windowId,
+          clockEpoch: message.clockEpoch,
+          stateSeq: message.stateSeq,
+        });
         return;
       }
       case "ready": {
@@ -1116,6 +1229,7 @@ export class NearbyMatchController {
   }
 
   private resetSessionState(): void {
+    this.timing.reset();
     this.identity = null;
     this.state = {
       ...INITIAL_NEARBY_MATCH_STATE,

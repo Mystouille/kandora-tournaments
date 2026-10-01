@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { GameWSConnectionDetails } from "~/game/client/ws";
+import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
 import {
   ActiveMatchResponseSchema,
   type ActiveMatchSummary,
@@ -66,11 +67,16 @@ export async function createOnlineRoom(
   baseUrl: string,
   session: MobileAuthSession,
   preset: string,
+  spectatorDelayMs: SpectatorDelayMs = 0,
   fetcher: typeof fetch = fetch
 ): Promise<string> {
   const response = await fetcher(webAppPath(baseUrl, "/api/game/rooms"), {
     method: "POST",
-    body: new URLSearchParams({ token: session.token, preset }),
+    body: new URLSearchParams({
+      token: session.token,
+      preset,
+      spectatorDelayMs: String(spectatorDelayMs),
+    }),
   });
   return CreateRoomResponseSchema.parse(await responseJson(response)).matchId;
 }

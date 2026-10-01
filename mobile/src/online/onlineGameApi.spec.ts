@@ -48,12 +48,48 @@ describe("mobile online game API", () => {
       .mockResolvedValue(Response.json({ matchId: "room 1" }));
 
     await expect(
-      createOnlineRoom("https://play.example.com", session, "m-league", fetcher)
+      createOnlineRoom(
+        "https://play.example.com",
+        session,
+        "m-league",
+        0,
+        fetcher
+      )
     ).resolves.toBe("room 1");
     expect(fetcher).toHaveBeenCalledWith(
       "https://play.example.com/api/game/rooms",
       { method: "POST", body: expect.any(URLSearchParams) }
     );
+    expect(
+      Object.fromEntries(fetcher.mock.calls[0][1]?.body as URLSearchParams)
+    ).toEqual({
+      token: "game-token",
+      preset: "m-league",
+      spectatorDelayMs: "0",
+    });
+  });
+
+  it("sends the selected five-minute delay when creating a room", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ matchId: "delayed-room" }));
+
+    await expect(
+      createOnlineRoom(
+        "https://play.example.com",
+        session,
+        "m-league",
+        300_000,
+        fetcher
+      )
+    ).resolves.toBe("delayed-room");
+    expect(
+      Object.fromEntries(fetcher.mock.calls[0][1]?.body as URLSearchParams)
+    ).toEqual({
+      token: "game-token",
+      preset: "m-league",
+      spectatorDelayMs: "300000",
+    });
   });
 
   it("builds configured and same-origin WebSocket URLs", async () => {

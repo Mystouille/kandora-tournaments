@@ -1,6 +1,10 @@
 import GameMatch, { type GameMatchLoaderData } from "~/game/routes/match";
 import { requireGameEnabled, getClientGameFlag } from "~/game/feature-gate";
 import { listPresets } from "~/game/rules/presets";
+import {
+  SpectatorDelayMsSchema,
+  type SpectatorDelayMs,
+} from "~/game/protocol/spectatorDelay";
 import { MatchModel } from "~/core/models/game/Match";
 import { isbot } from "isbot";
 import type { Route } from "./+types/game-match";
@@ -15,6 +19,7 @@ interface GamePreviewDetails {
   ruleSetId: string | null;
   status: GameStatus | null;
   duplicate: boolean;
+  spectatorDelayMs: SpectatorDelayMs;
 }
 
 interface GamePageMetadata {
@@ -75,6 +80,9 @@ function parseRoomDetails(
       typeof value.presetId === "string" ? value.presetId.trim() || null : null,
     status: parseStatus(value.status),
     duplicate: isDuplicateMode(value.mode),
+    spectatorDelayMs: SpectatorDelayMsSchema.default(0).parse(
+      value.spectatorDelayMs
+    ),
   };
 }
 
@@ -113,7 +121,7 @@ async function loadPersistedGameDetails(
 ): Promise<GamePreviewDetails | null> {
   await connectToDatabase();
   const match = await MatchModel.findById(matchId)
-    .select("ruleSet status mode")
+    .select("ruleSet status mode spectatorDelayMs")
     .lean();
   if (!match) {
     return null;
@@ -122,6 +130,9 @@ async function loadPersistedGameDetails(
     ruleSetId: match.ruleSet?.trim() || null,
     status: parseStatus(match.status),
     duplicate: isDuplicateMode(match.mode),
+    spectatorDelayMs: SpectatorDelayMsSchema.default(0).parse(
+      match.spectatorDelayMs
+    ),
   };
 }
 
@@ -173,7 +184,9 @@ function metadataForRequest(
   const description = [
     ruleSetName ? `Ruleset: ${ruleSetName}.` : "Online riichi mahjong game.",
     details?.duplicate ? "Mode: Duplicate." : null,
-    "Spectator delay: none (live).",
+    details?.spectatorDelayMs
+      ? "Spectator delay: 5 min."
+      : "Spectator delay: none (live).",
     status ? `Status: ${status}.` : null,
   ]
     .filter((part): part is string => part !== null)

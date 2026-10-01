@@ -1,6 +1,12 @@
 import { ArrowLeft, Eye, LoaderCircle, Plus, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
+import { SpectatorDelaySelect } from "~/game/components/SpectatorDelaySelect";
+import {
+  SpectatorDelayMsSchema,
+  spectatorDelayLabel,
+  type SpectatorDelayMs,
+} from "~/game/protocol/spectatorDelay";
 import { webAppPath } from "../shell";
 
 const LobbyPresetSchema = z.object({
@@ -14,6 +20,7 @@ const LobbyRoomSchema = z.object({
   status: z.enum(["waiting", "playing", "finished"]),
   presetId: z.string().optional(),
   buuMode: z.boolean(),
+  spectatorDelayMs: SpectatorDelayMsSchema.optional(),
   seats: z.array(
     z.object({ name: z.string().nullable(), isBot: z.boolean() }).nullable()
   ),
@@ -48,7 +55,7 @@ export function roomAction(
 interface MobileLobbyProps {
   webAppBaseUrl: string;
   onBack: () => void;
-  onCreateGame: (preset: string) => void;
+  onCreateGame: (preset: string, spectatorDelayMs: SpectatorDelayMs) => void;
   onJoinGame: (matchId: string) => void;
   onReconnectGame: (matchId: string) => void;
   onWatchGame: (matchId: string) => void;
@@ -70,6 +77,7 @@ export function MobileLobby({
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState("m-league");
+  const [spectatorDelayMs, setSpectatorDelayMs] = useState<SpectatorDelayMs>(0);
 
   const refresh = useCallback(async (): Promise<void> => {
     setError(null);
@@ -121,7 +129,7 @@ export function MobileLobby({
       return;
     }
     setCreateOpen(false);
-    onCreateGame(selectedPreset);
+    onCreateGame(selectedPreset, spectatorDelayMs);
   };
 
   const presetNames = new Map(
@@ -219,6 +227,8 @@ export function MobileLobby({
                       </div>
                       <span>
                         {roomOccupancy(room)} · {room.matchId}
+                        {" · "}Spectators:{" "}
+                        {spectatorDelayLabel(room.spectatorDelayMs ?? 0)}
                       </span>
                     </div>
                     <button
@@ -282,21 +292,32 @@ export function MobileLobby({
                 </label>
               ))}
             </div>
-            <footer>
-              <button
-                type="button"
-                className="home-secondary-action"
-                onClick={() => setCreateOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="home-primary-action create-confirm-button"
-                onClick={createGame}
-              >
-                Create game
-              </button>
+            <footer className="create-game-footer">
+              <label className="mobile-spectator-delay">
+                <span>Spectator delay</span>
+                <SpectatorDelaySelect
+                  value={spectatorDelayMs}
+                  onChange={setSpectatorDelayMs}
+                  disabled={activeMatchId !== null}
+                />
+              </label>
+              <div className="create-game-footer-actions">
+                <button
+                  type="button"
+                  className="home-secondary-action"
+                  onClick={() => setCreateOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="home-primary-action create-confirm-button"
+                  disabled={activeMatchId !== null}
+                  onClick={createGame}
+                >
+                  Create game
+                </button>
+              </div>
             </footer>
           </section>
         </div>

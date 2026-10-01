@@ -91,6 +91,20 @@ modal for that match until app restart or a new sign-in without removing the
 lobby action. Web exposes the same highlighted Reconnect action but no automatic
 modal.
 
+The create-game modal also offers **Instant** (the default) or **5 min**
+spectator delay in its bottom-left footer. The selected value is sent with
+the rules preset and enforced by the game server for every spectator, not
+just this device. Delayed viewers see a waiting notice until the stream is
+ready. Shared game links include the configured delay in their Discord
+preview metadata.
+
+The [authoritative timing implementation](../app/game/docs/plans/authoritative-timing/plan.md)
+is staged. Online play follows the room's negotiated mode; local and Nearby
+creation can opt in with `VITE_GAME_TIMING_MODE=windows-v2`. The default is
+legacy while remaining readiness/vote and native-device rollout gates are
+pending. Clock/receipt helpers are shared with web/server code rather than
+duplicated in the native shell.
+
 Resume/Reconnect is an explicit transport takeover. The destination receives a
 fresh private snapshot, while the old client is closed and shows "Game resumed
 on another device" without entering its reconnect loop. An account cannot be

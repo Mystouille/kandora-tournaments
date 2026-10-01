@@ -221,4 +221,79 @@ describe("game rooms API", () => {
     });
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
   });
+
+  it.each([0, 300_000])(
+    "forwards a %i ms web spectator delay",
+    async (spectatorDelayMs) => {
+      fetchMock.mockResolvedValue(Response.json({ matchId: "room-delay" }));
+      const response = await action({
+        request: new Request("http://app.test/api/game/rooms", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ preset: "m-league", spectatorDelayMs }),
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledWith("http://game.test/rooms", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          preset: "m-league",
+          spectatorDelayMs,
+          token: "game-token",
+        }),
+      });
+    }
+  );
+
+  it.each([0, 300_000])(
+    "forwards a %i ms mobile spectator delay",
+    async (spectatorDelayMs) => {
+      fetchMock.mockResolvedValue(Response.json({ matchId: "room-delay" }));
+      const response = await action({
+        request: new Request("http://app.test/api/game/rooms", {
+          method: "POST",
+          body: new URLSearchParams({
+            token: "native-game-token",
+            preset: "m-league",
+            spectatorDelayMs: String(spectatorDelayMs),
+          }),
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledWith("http://game.test/rooms", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          preset: "m-league",
+          token: "native-game-token",
+          spectatorDelayMs,
+        }),
+      });
+    }
+  );
+
+  it.each(["", "-1", "60000", "300001", "instant"])(
+    "rejects an unsupported mobile delay: %s",
+    async (spectatorDelayMs) => {
+      const response = await action({
+        request: new Request("http://app.test/api/game/rooms", {
+          method: "POST",
+          body: new URLSearchParams({
+            token: "native-game-token",
+            preset: "m-league",
+            spectatorDelayMs,
+          }),
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_spectator_delay",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
 });

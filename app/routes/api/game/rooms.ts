@@ -1,5 +1,6 @@
 import { isGameEnabled } from "~/game/feature-gate";
 import { listPresetIds } from "~/game/rules/presets";
+import { SpectatorDelayFormValueSchema } from "~/game/protocol/spectatorDelay";
 import { getGameServerHttpUrl } from "~/services/gameServer.server";
 import { signGameToken, verifyGameToken } from "~/utils/jwt.server";
 import { requireGameApiAccess } from "~/utils/gameAuth.server";
@@ -101,11 +102,24 @@ export async function action({
     if ((await verifyGameToken(token)) === null) {
       return errorResponse("invalid_or_expired_token", 401, true);
     }
+    const spectatorDelayValue = form.get("spectatorDelayMs");
+    const spectatorDelay = SpectatorDelayFormValueSchema.safeParse(
+      spectatorDelayValue ?? "0"
+    );
+    if (!spectatorDelay.success) {
+      return errorResponse("invalid_spectator_delay", 400, true);
+    }
     return forwardToGameServer(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ preset, token }),
+        body: JSON.stringify({
+          preset,
+          token,
+          ...(spectatorDelayValue !== null
+            ? { spectatorDelayMs: spectatorDelay.data }
+            : {}),
+        }),
       },
       true
     );
