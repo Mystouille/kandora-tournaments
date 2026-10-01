@@ -1,7 +1,9 @@
 import { consumeMobileAuthCode } from "~/services/mobileAuthCode.server";
 import {
   GAME_JWT_EXPIRATION_SECONDS,
+  MOBILE_REFRESH_JWT_EXPIRATION_SECONDS,
   signGameToken,
+  signMobileRefreshToken,
 } from "~/utils/jwt.server";
 
 const CORS_HEADERS = {
@@ -46,10 +48,17 @@ export async function action({ request }: { request: Request }): Promise<Respons
     return json({ error: "invalid_or_expired_code" }, 401);
   }
 
-  const token = await signGameToken(redeemed.userId);
+  const [token, refreshToken] = await Promise.all([
+    signGameToken(redeemed.userId),
+    signMobileRefreshToken(redeemed.userId),
+  ]);
+  const issuedAt = Date.now();
   return json({
     token,
+    refreshToken,
     username: redeemed.username,
-    expiresAt: Date.now() + GAME_JWT_EXPIRATION_SECONDS * 1000,
+    expiresAt: issuedAt + GAME_JWT_EXPIRATION_SECONDS * 1000,
+    refreshExpiresAt:
+      issuedAt + MOBILE_REFRESH_JWT_EXPIRATION_SECONDS * 1000,
   });
 }

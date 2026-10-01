@@ -138,6 +138,11 @@ shell mounts the production mobile Pixi table and routes actions over that
 socket. Watch uses the same table with a spectator handshake. The production
 web service must be deployed with the mobile API and auth routes before a newly
 built APK can create or connect to live rooms.
+The native shell persists a 12-hour game access token and a separate 30-day
+mobile refresh credential in its app-private WebView storage. It renews the
+short-lived access token on startup, foreground resume, and shortly before
+expiry, so routine app restarts do not require another Discord login while the
+refresh credential remains valid.
 
 Web and mobile share the canonical `/api/my-replays` contract and replay-query
 service. Authentication logic resolves both clients to the same user principal,

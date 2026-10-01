@@ -9,6 +9,9 @@ const GAME_JWT_ISSUER = "kandora-tournaments";
 const GAME_JWT_AUDIENCE = "kandora-game";
 const GAME_JWT_EXPIRATION = "12h";
 export const GAME_JWT_EXPIRATION_SECONDS = 12 * 60 * 60;
+const MOBILE_REFRESH_JWT_AUDIENCE = "kandora-mobile-refresh";
+const MOBILE_REFRESH_JWT_EXPIRATION = "30d";
+export const MOBILE_REFRESH_JWT_EXPIRATION_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * Threshold (in seconds) before expiration at which we re-issue the token.
@@ -31,6 +34,12 @@ export interface JwtPayload {
 export interface GameJwtPayload {
   sub: string;
   scope: "game";
+  exp: number;
+}
+
+export interface MobileRefreshJwtPayload {
+  sub: string;
+  scope: "mobile-refresh";
   exp: number;
 }
 
@@ -91,6 +100,38 @@ export async function verifyGameToken(
       return null;
     }
     return payload as unknown as GameJwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+export async function signMobileRefreshToken(userId: string): Promise<string> {
+  return new SignJWT({ scope: "mobile-refresh" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(userId)
+    .setIssuedAt()
+    .setIssuer(GAME_JWT_ISSUER)
+    .setAudience(MOBILE_REFRESH_JWT_AUDIENCE)
+    .setExpirationTime(MOBILE_REFRESH_JWT_EXPIRATION)
+    .sign(getSecret());
+}
+
+export async function verifyMobileRefreshToken(
+  token: string
+): Promise<MobileRefreshJwtPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret(), {
+      issuer: GAME_JWT_ISSUER,
+      audience: MOBILE_REFRESH_JWT_AUDIENCE,
+    });
+    if (
+      payload.scope !== "mobile-refresh" ||
+      typeof payload.sub !== "string" ||
+      typeof payload.exp !== "number"
+    ) {
+      return null;
+    }
+    return payload as unknown as MobileRefreshJwtPayload;
   } catch {
     return null;
   }

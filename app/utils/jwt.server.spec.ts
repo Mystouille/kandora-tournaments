@@ -9,8 +9,10 @@ vi.mock("config", () => ({
 
 import {
   signGameToken,
+  signMobileRefreshToken,
   signToken,
   verifyGameToken,
+  verifyMobileRefreshToken,
   verifyToken,
 } from "./jwt.server";
 
@@ -41,5 +43,18 @@ describe("game-scoped JWTs", () => {
     expect(payload.exp).toBeDefined();
     expect(payload.iat).toBeDefined();
     expect((payload.exp ?? 0) - (payload.iat ?? 0)).toBe(12 * 60 * 60);
+  });
+
+  it("keeps thirty-day mobile refresh credentials separate from game tokens", async () => {
+    const gameToken = await signGameToken("user-1");
+    const refreshToken = await signMobileRefreshToken("user-1");
+    const payload = decodeJwt(refreshToken);
+
+    expect((payload.exp ?? 0) - (payload.iat ?? 0)).toBe(30 * 24 * 60 * 60);
+    await expect(verifyMobileRefreshToken(refreshToken)).resolves.toEqual(
+      expect.objectContaining({ sub: "user-1", scope: "mobile-refresh" })
+    );
+    await expect(verifyGameToken(refreshToken)).resolves.toBeNull();
+    await expect(verifyMobileRefreshToken(gameToken)).resolves.toBeNull();
   });
 });

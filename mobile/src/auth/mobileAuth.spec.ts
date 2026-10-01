@@ -9,6 +9,7 @@ import {
   MobileAuthHttpError,
   saveMobileAuthSession,
   savePendingMobileAuth,
+  shouldRefreshMobileAuthSession,
   verifyMobileAuthSession,
 } from "./mobileAuth";
 
@@ -61,15 +62,66 @@ describe("native mobile authentication", () => {
     clearMobileAuthSession(storage);
   });
 
+  it("keeps an expired access token while its refresh credential is valid", () => {
+    const { storage } = createStorage();
+    const session = {
+      token: "expired-game-token",
+      username: "Alice",
+      expiresAt: 10_000,
+      refreshToken: "refresh-token",
+      refreshExpiresAt: 20_000,
+    };
+    saveMobileAuthSession(storage, session);
+
+    expect(loadMobileAuthSession(storage, 10_000)).toEqual(session);
+    expect(loadMobileAuthSession(storage, 20_000)).toBeNull();
+  });
+
+  it("refreshes only renewable sessions close to access-token expiry", () => {
+    const session = {
+      token: "game-token",
+      username: "Alice",
+      expiresAt: 400_000,
+      refreshToken: "refresh-token",
+      refreshExpiresAt: 1_000_000,
+    };
+
+    expect(shouldRefreshMobileAuthSession(session, 99_999)).toBe(false);
+    expect(shouldRefreshMobileAuthSession(session, 100_000)).toBe(true);
+    expect(
+      shouldRefreshMobileAuthSession(
+        {
+          token: session.token,
+          username: session.username,
+          expiresAt: session.expiresAt,
+        },
+        100_000
+      )
+    ).toBe(false);
+  });
+
   it("exchanges a callback code and verifies stored sessions", async () => {
     const expiresAt = Date.now() + 60_000;
+    const refreshExpiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        Response.json({ token: "game-token", username: "Alice", expiresAt })
+        Response.json({
+          token: "game-token",
+          refreshToken: "refresh-token",
+          username: "Alice",
+          expiresAt,
+          refreshExpiresAt,
+        })
       )
       .mockResolvedValueOnce(
-        Response.json({ authenticated: true, expiresAt: expiresAt - 1_000 })
+        Response.json({
+          authenticated: true,
+          token: "renewed-game-token",
+          expiresAt: expiresAt - 1_000,
+          refreshToken: "refresh-token",
+          refreshExpiresAt,
+        })
       );
 
     const session = await exchangeMobileAuthCode(
@@ -92,7 +144,11 @@ describe("native mobile authentication", () => {
         session,
         fetcher
       )
-    ).resolves.toEqual({ ...session, expiresAt: expiresAt - 1_000 });
+    ).resolves.toEqual({
+      ...session,
+      token: "renewed-game-token",
+      expiresAt: expiresAt - 1_000,
+    });
     expect(fetcher).toHaveBeenNthCalledWith(
       2,
       "https://play.example.com/api/mobile/auth/session",
@@ -100,6 +156,11 @@ describe("native mobile authentication", () => {
         method: "POST",
         body: expect.any(URLSearchParams),
       }
+    );
+    const verificationBody = fetcher.mock.calls[1]?.[1]?.body;
+    expect(verificationBody).toBeInstanceOf(URLSearchParams);
+    expect((verificationBody as URLSearchParams).get("refreshToken")).toBe(
+      "refresh-token"
     );
   });
 

@@ -4,24 +4,48 @@ import { webAppPath } from "../shell";
 const MOBILE_AUTH_SESSION_KEY = "kandora_mobile_auth_session_v1";
 const MOBILE_AUTH_PENDING_KEY = "kandora_mobile_auth_pending_v1";
 const PENDING_AUTH_LIFETIME_MS = 10 * 60 * 1000;
+export const MOBILE_AUTH_REFRESH_LEEWAY_MS = 5 * 60 * 1000;
 const VERIFIER_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
-const MobileAuthSessionSchema = z.object({
+const MobileAuthSessionBaseSchema = z.object({
   token: z.string().min(1),
   username: z.string().min(1),
   expiresAt: z.number().finite(),
 });
+
+const MobileAuthSessionSchema = MobileAuthSessionBaseSchema.extend({
+  refreshToken: z.string().min(1).optional(),
+  refreshExpiresAt: z.number().finite().optional(),
+}).refine(
+  (session) =>
+    (session.refreshToken === undefined) ===
+    (session.refreshExpiresAt === undefined),
+  { message: "Incomplete mobile refresh credentials" }
+);
 
 const PendingMobileAuthSchema = z.object({
   verifier: z.string().regex(VERIFIER_PATTERN),
   expiresAt: z.number().finite(),
 });
 
-const ExchangeResponseSchema = MobileAuthSessionSchema;
-const SessionResponseSchema = z.object({
-  authenticated: z.literal(true),
-  expiresAt: z.number().finite(),
+const ExchangeResponseSchema = MobileAuthSessionBaseSchema.extend({
+  refreshToken: z.string().min(1),
+  refreshExpiresAt: z.number().finite(),
 });
+const SessionResponseSchema = z
+  .object({
+    authenticated: z.literal(true),
+    token: z.string().min(1),
+    expiresAt: z.number().finite(),
+    refreshToken: z.string().min(1).optional(),
+    refreshExpiresAt: z.number().finite().optional(),
+  })
+  .refine(
+    (session) =>
+      (session.refreshToken === undefined) ===
+      (session.refreshExpiresAt === undefined),
+    { message: "Incomplete mobile refresh credentials" }
+  );
 
 interface MobileAuthStorage {
   getItem(key: string): string | null;
@@ -123,7 +147,11 @@ export function loadMobileAuthSession(
       return null;
     }
     const session = MobileAuthSessionSchema.parse(JSON.parse(raw) as unknown);
-    if (session.expiresAt <= now) {
+    const canRefresh =
+      session.refreshToken !== undefined &&
+      session.refreshExpiresAt !== undefined &&
+      session.refreshExpiresAt > now;
+    if (session.expiresAt <= now && !canRefresh) {
       removeItem(storage, MOBILE_AUTH_SESSION_KEY);
       return null;
     }
@@ -146,6 +174,18 @@ export function saveMobileAuthSession(
 
 export function clearMobileAuthSession(storage: MobileAuthStorage): void {
   removeItem(storage, MOBILE_AUTH_SESSION_KEY);
+}
+
+export function shouldRefreshMobileAuthSession(
+  session: MobileAuthSession,
+  now = Date.now()
+): boolean {
+  return (
+    session.refreshToken !== undefined &&
+    session.refreshExpiresAt !== undefined &&
+    session.refreshExpiresAt > now &&
+    session.expiresAt - now <= MOBILE_AUTH_REFRESH_LEEWAY_MS
+  );
 }
 
 async function checkedJson(response: Response): Promise<unknown> {
@@ -183,16 +223,31 @@ export async function verifyMobileAuthSession(
   session: MobileAuthSession,
   fetcher: typeof fetch = fetch
 ): Promise<MobileAuthSession> {
+  const body = new URLSearchParams({ token: session.token });
+  if (session.refreshToken !== undefined) {
+    body.set("refreshToken", session.refreshToken);
+  }
   const response = await fetcher(
     webAppPath(baseUrl, "/api/mobile/auth/session"),
     {
       method: "POST",
-      body: new URLSearchParams({ token: session.token }),
+      body,
     }
   );
   const result = SessionResponseSchema.parse(await checkedJson(response));
   if (result.expiresAt <= Date.now()) {
     throw new MobileAuthHttpError("Mobile authentication expired", 401);
   }
-  return { ...session, expiresAt: result.expiresAt };
+  return MobileAuthSessionSchema.parse({
+    ...session,
+    token: result.token,
+    expiresAt: result.expiresAt,
+    ...(result.refreshToken !== undefined &&
+    result.refreshExpiresAt !== undefined
+      ? {
+          refreshToken: result.refreshToken,
+          refreshExpiresAt: result.refreshExpiresAt,
+        }
+      : {}),
+  });
 }

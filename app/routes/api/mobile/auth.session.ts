@@ -1,4 +1,9 @@
-import { verifyGameToken } from "~/utils/jwt.server";
+import {
+  GAME_JWT_EXPIRATION_SECONDS,
+  signGameToken,
+  verifyGameToken,
+  verifyMobileRefreshToken,
+} from "~/utils/jwt.server";
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
@@ -17,6 +22,21 @@ function sessionBody(expiresAt: number) {
     expiresAt,
     wsUrl: process.env.GAME_WS_URL?.trim() || null,
     wsPath: "/ws/game",
+  };
+}
+
+function refreshableSessionBody(
+  token: string,
+  expiresAt: number,
+  refreshToken?: string,
+  refreshExpiresAt?: number
+) {
+  return {
+    ...sessionBody(expiresAt),
+    token,
+    ...(refreshToken !== undefined && refreshExpiresAt !== undefined
+      ? { refreshToken, refreshExpiresAt }
+      : {}),
   };
 }
 
@@ -50,11 +70,35 @@ export async function action({ request }: { request: Request }): Promise<Respons
     if (typeof token !== "string") {
       return json({ error: "invalid_body" }, 400);
     }
+    const refreshToken = form.get("refreshToken");
+    if (refreshToken !== null && typeof refreshToken !== "string") {
+      return json({ error: "invalid_body" }, 400);
+    }
+
     const payload = await verifyGameToken(token);
+    if (typeof refreshToken === "string") {
+      const refreshPayload = await verifyMobileRefreshToken(refreshToken);
+      if (
+        refreshPayload === null ||
+        (payload !== null && payload.sub !== refreshPayload.sub)
+      ) {
+        return json({ error: "invalid_or_expired_token" }, 401);
+      }
+      const renewedToken = await signGameToken(refreshPayload.sub);
+      return json(
+        refreshableSessionBody(
+          renewedToken,
+          Date.now() + GAME_JWT_EXPIRATION_SECONDS * 1000,
+          refreshToken,
+          refreshPayload.exp * 1000
+        )
+      );
+    }
+
     if (payload === null) {
       return json({ error: "invalid_or_expired_token" }, 401);
     }
-    return json(sessionBody(payload.exp * 1000));
+    return json(refreshableSessionBody(token, payload.exp * 1000));
   }
   return json({ error: "method_not_allowed" }, 405);
 }

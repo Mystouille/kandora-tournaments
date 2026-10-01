@@ -117,6 +117,7 @@ import {
   MobileAuthHttpError,
   saveMobileAuthSession,
   savePendingMobileAuth,
+  shouldRefreshMobileAuthSession,
   verifyMobileAuthSession,
   type MobileAuthSession,
 } from "./auth/mobileAuth";
@@ -187,6 +188,7 @@ export function App() {
     null
   );
   const authGenerationRef = useRef(0);
+  const authRefreshInFlightRef = useRef(false);
   const activeMatchDiscoveryGenerationRef = useRef(0);
   const activeMatchPromptGenerationRef = useRef<number | null>(null);
   const activeMatchAuthTokenRef = useRef<string | null>(null);
@@ -220,11 +222,14 @@ export function App() {
     useState(false);
   const [mobileAuthSession, setMobileAuthSession] =
     useState<MobileAuthSession | null>(null);
+  const mobileAuthSessionRef = useRef(mobileAuthSession);
+  mobileAuthSessionRef.current = mobileAuthSession;
   const [activeOnlineMatch, setActiveOnlineMatch] =
     useState<ActiveMatchSummary | null>(null);
   const [resumeActiveGameOpen, setResumeActiveGameOpen] = useState(false);
   const [activeMatchRefreshRevision, setActiveMatchRefreshRevision] =
     useState(0);
+  const [authRefreshRevision, setAuthRefreshRevision] = useState(0);
   const [controllersReady, setControllersReady] = useState(false);
   const [shellBusy, setShellBusy] = useState(false);
   const [gameMenuExpanded, setGameMenuExpanded] = useState(false);
@@ -517,11 +522,15 @@ export function App() {
   }, [webAppBaseUrl]);
 
   useEffect(() => {
-    if (authStatus !== "authenticated" || mobileAuthSession === null) {
+    if (
+      authStatus !== "authenticated" ||
+      mobileAuthSession === null ||
+      webAppBaseUrl === null
+    ) {
       return;
     }
-    const remaining = mobileAuthSession.expiresAt - Date.now();
-    if (remaining <= 0) {
+
+    const clearExpiredSession = (): void => {
       if (pendingContentIntentRef.current?.intent.kind !== "watch-replay") {
         contentIntentExecutionGateRef.current.supersede();
       }
@@ -536,29 +545,58 @@ export function App() {
       ) {
         setPage("home");
       }
-      return;
-    }
-    const timer = window.setTimeout(
-      () => {
-        if (pendingContentIntentRef.current?.intent.kind !== "watch-replay") {
-          contentIntentExecutionGateRef.current.supersede();
-        }
-        clearMobileAuthSession(window.localStorage);
-        void onlineControllerRef.current?.leave();
-        setMobileAuthSession(null);
-        setAuthStatus("signed_out");
+    };
+
+    const refreshIfNeeded = (): void => {
+      if (
+        authRefreshInFlightRef.current ||
+        !shouldRefreshMobileAuthSession(mobileAuthSession)
+      ) {
         if (
-          pageRef.current !== "replay-viewer" ||
-          replayViewerStateRef.current.directIntent === null ||
-          replayViewerStateRef.current.log === null
+          mobileAuthSession.expiresAt <= Date.now() &&
+          (mobileAuthSession.refreshExpiresAt === undefined ||
+            mobileAuthSession.refreshExpiresAt <= Date.now())
         ) {
-          setPage("home");
+          clearExpiredSession();
         }
-      },
-      Math.min(remaining, 2_147_483_647)
-    );
-    return () => window.clearTimeout(timer);
-  }, [authStatus, mobileAuthSession]);
+        return;
+      }
+
+      authRefreshInFlightRef.current = true;
+      const generation = authGenerationRef.current;
+      void verifyMobileAuthSession(webAppBaseUrl, mobileAuthSession)
+        .then((verified) => {
+          if (authGenerationRef.current !== generation) {
+            return;
+          }
+          saveMobileAuthSession(window.localStorage, verified);
+          setMobileAuthSession(verified);
+          setAuthError(null);
+        })
+        .catch((error: unknown) => {
+          if (authGenerationRef.current !== generation) {
+            return;
+          }
+          if (error instanceof MobileAuthHttpError && error.status === 401) {
+            clearExpiredSession();
+            return;
+          }
+          setAuthError("Could not refresh your Discord session. Retrying.");
+        })
+        .finally(() => {
+          authRefreshInFlightRef.current = false;
+        });
+    };
+
+    refreshIfNeeded();
+    const timer = window.setInterval(refreshIfNeeded, 60_000);
+    return () => window.clearInterval(timer);
+  }, [
+    authRefreshRevision,
+    authStatus,
+    mobileAuthSession,
+    webAppBaseUrl,
+  ]);
 
   useEffect(() => {
     const controller = new OnlineMatchController();
@@ -904,7 +942,15 @@ export function App() {
       );
       resumeAfterBackgroundRef.current = null;
       promptForActiveMatchOnRefreshRef.current = true;
-      setActiveMatchRefreshRevision((revision) => revision + 1);
+      const authSession = mobileAuthSessionRef.current;
+      if (
+        authSession !== null &&
+        shouldRefreshMobileAuthSession(authSession)
+      ) {
+        setAuthRefreshRevision((revision) => revision + 1);
+      } else {
+        setActiveMatchRefreshRevision((revision) => revision + 1);
+      }
       void nearbyController?.refreshPermissions().catch(() => undefined);
       if (resume === "nearby-host") {
         void nearbyController
