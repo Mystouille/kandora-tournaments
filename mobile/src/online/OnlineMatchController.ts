@@ -22,6 +22,7 @@ import {
   emptyOnlineGameEnrichment,
   getOnlineGameEnrichment,
   getOnlineGameConnectionDetails,
+  resolveOnlineWatchId,
   OnlineGameHttpError,
   type OnlineGameEnrichment,
 } from "./onlineGameApi";
@@ -82,6 +83,7 @@ interface OnlineSocket {
 
 interface OnlineMatchControllerDependencies {
   createRoom: typeof createOnlineRoom;
+  resolveWatchId: typeof resolveOnlineWatchId;
   getConnectionDetails: typeof getOnlineGameConnectionDetails;
   getSpectatorEnrichment: typeof getOnlineGameEnrichment;
   createSocket: (options: GameWSOptions) => OnlineSocket;
@@ -90,6 +92,7 @@ interface OnlineMatchControllerDependencies {
 
 const DEFAULT_DEPENDENCIES: OnlineMatchControllerDependencies = {
   createRoom: createOnlineRoom,
+  resolveWatchId: resolveOnlineWatchId,
   getConnectionDetails: getOnlineGameConnectionDetails,
   getSpectatorEnrichment: getOnlineGameEnrichment,
   createSocket: (options) => new GameWS(options),
@@ -122,6 +125,7 @@ export class OnlineMatchController {
   private baseUrl: string | null = null;
   private session: MobileAuthSession | null = null;
   private autoStartRequested = false;
+  private liveWatchGeneration = 0;
 
   constructor(
     private readonly dependencies: OnlineMatchControllerDependencies = DEFAULT_DEPENDENCIES
@@ -143,6 +147,7 @@ export class OnlineMatchController {
     preset: string,
     spectatorDelayMs: SpectatorDelayMs = 0
   ): Promise<void> {
+    this.liveWatchGeneration += 1;
     this.autoStartRequested = false;
     this.setState({
       status: "creating",
@@ -185,6 +190,35 @@ export class OnlineMatchController {
 
   watch(baseUrl: string, session: MobileAuthSession, matchId: string): void {
     this.attach(baseUrl, session, matchId, "spectator");
+  }
+
+  async watchLive(
+    baseUrl: string,
+    session: MobileAuthSession,
+    watchId: string
+  ): Promise<void> {
+    this.disconnect();
+    const generation = this.liveWatchGeneration;
+    this.setState({
+      ...INITIAL_ONLINE_MATCH_STATE,
+      status: "connecting",
+      mode: "spectator",
+    });
+    try {
+      const matchId = await this.dependencies.resolveWatchId(
+        baseUrl,
+        session,
+        watchId
+      );
+      if (generation !== this.liveWatchGeneration) {
+        return;
+      }
+      this.attach(baseUrl, session, matchId, "spectator");
+    } catch (error) {
+      if (generation === this.liveWatchGeneration) {
+        this.fail(error);
+      }
+    }
   }
 
   requestWaitingRoomAutoStart(): void {
@@ -290,6 +324,7 @@ export class OnlineMatchController {
     autoStart = false,
     takeover = false
   ): void {
+    this.liveWatchGeneration += 1;
     this.socket?.close();
     this.baseUrl = baseUrl;
     this.session = session;
@@ -487,6 +522,7 @@ export class OnlineMatchController {
   }
 
   private disconnect(error: string | null = null): void {
+    this.liveWatchGeneration += 1;
     this.socket?.close();
     this.socket = null;
     this.baseUrl = null;

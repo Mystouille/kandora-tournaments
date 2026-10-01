@@ -31,8 +31,10 @@ function setup() {
     voteContinue: vi.fn(),
   };
   const createRoom = vi.fn().mockResolvedValue("room-1");
+  const resolveWatchId = vi.fn().mockResolvedValue("relay-1");
   const controller = new OnlineMatchController({
     createRoom,
+    resolveWatchId,
     getConnectionDetails: vi.fn().mockResolvedValue({
       token: "game-token",
       wsUrl: "wss://game.test/ws/game/room-1",
@@ -47,6 +49,7 @@ function setup() {
   return {
     controller,
     createRoom,
+    resolveWatchId,
     getSpectatorEnrichment,
     socket,
     options: () => {
@@ -59,6 +62,120 @@ function setup() {
 }
 
 describe("online match controller", () => {
+  it("resolves a tracked Tenhou watch ID before connecting as a spectator", async () => {
+    const { controller, resolveWatchId, socket, options } = setup();
+    const opening = controller.watchLive(
+      "https://play.test",
+      session,
+      "WATCH123"
+    );
+
+    expect(controller.getState()).toMatchObject({
+      status: "connecting",
+      mode: "spectator",
+      matchId: null,
+    });
+    expect(socket.connect).not.toHaveBeenCalled();
+    await opening;
+
+    expect(resolveWatchId).toHaveBeenCalledExactlyOnceWith(
+      "https://play.test",
+      session,
+      "WATCH123"
+    );
+    expect(controller.getState()).toMatchObject({
+      status: "connecting",
+      mode: "spectator",
+      matchId: "relay-1",
+    });
+    expect(options().matchId).toBe("relay-1");
+    expect(options().spectate).toBe(true);
+    expect(socket.connect).toHaveBeenCalledOnce();
+  });
+
+  it("shows a relay preflight error without opening a socket", async () => {
+    const { controller, resolveWatchId, socket } = setup();
+    resolveWatchId.mockRejectedValue(new Error("This game is no longer live"));
+
+    await controller.watchLive("https://play.test", session, "WATCH123");
+
+    expect(controller.getState()).toMatchObject({
+      status: "error",
+      mode: "spectator",
+      matchId: null,
+      error: "This game is no longer live",
+    });
+    expect(socket.connect).not.toHaveBeenCalled();
+  });
+
+  it.each(["leave", "dispose"] as const)(
+    "does not reconnect a late Tenhou relay after %s",
+    async (action) => {
+      const { controller, resolveWatchId, socket } = setup();
+      let resolve!: (matchId: string) => void;
+      resolveWatchId.mockReturnValue(
+        new Promise<string>((fulfill) => {
+          resolve = fulfill;
+        })
+      );
+      const opening = controller.watchLive(
+        "https://play.test",
+        session,
+        "WATCH123"
+      );
+      await controller[action]();
+      resolve("late-relay");
+      await opening;
+
+      expect(controller.getState()).toEqual(INITIAL_ONLINE_MATCH_STATE);
+      expect(socket.connect).not.toHaveBeenCalled();
+    }
+  );
+
+  it("does not replace a newer native spectator session with an older relay", async () => {
+    const { controller, resolveWatchId, socket } = setup();
+    let resolve!: (matchId: string) => void;
+    resolveWatchId.mockReturnValue(
+      new Promise<string>((fulfill) => {
+        resolve = fulfill;
+      })
+    );
+    const opening = controller.watchLive(
+      "https://play.test",
+      session,
+      "WATCH123"
+    );
+    controller.watch("https://play.test", session, "native-room");
+    resolve("late-relay");
+    await opening;
+
+    expect(controller.getState()).toMatchObject({
+      mode: "spectator",
+      matchId: "native-room",
+    });
+    expect(socket.connect).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a failed preflight after the user leaves the live game", async () => {
+    const { controller, resolveWatchId } = setup();
+    let reject!: (error: Error) => void;
+    resolveWatchId.mockReturnValue(
+      new Promise<string>((_resolve, fail) => {
+        reject = fail;
+      })
+    );
+    const opening = controller.watchLive(
+      "https://play.test",
+      session,
+      "WATCH123"
+    );
+    await controller.leave();
+    reject(new Error("relay unavailable"));
+    await opening;
+
+    expect(controller.getState()).toEqual(INITIAL_ONLINE_MATCH_STATE);
+  });
+
   it("reports the enforced delay while waiting for spectator game data", () => {
     const { controller, options } = setup();
     controller.watch("https://play.test", session, "delayed-room");

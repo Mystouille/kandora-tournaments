@@ -91,6 +91,15 @@ modal for that match until app restart or a new sign-in without removing the
 lobby action. Web exposes the same highlighted Reconnect action but no automatic
 modal.
 
+The same list includes live Tenhou games monitored by ongoing, non-ignored
+tournaments, with the tournament name and seated players. Web and mobile share
+the database-only lobby query; listing games does not open upstream relays.
+Tapping **Watch** starts or reuses the tracked game's relay through
+`/api/game/watch` with the native game token, then opens the existing spectator
+table. Leaving while the relay is opening cancels the pending navigation.
+The list refreshes every ten seconds. Deploy the updated web API to expose the
+`tenhouLiveGames` entries; older web deployments continue to show native rooms.
+
 The create-game modal also offers **Instant** (the default) or **5 min**
 spectator delay in its bottom-left footer. The selected value is sent with
 the rules preset and enforced by the game server for every spectator, not

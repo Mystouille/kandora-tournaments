@@ -26,13 +26,28 @@ const LobbyRoomSchema = z.object({
   ),
 });
 
-const MobileLobbyResponseSchema = z.object({
+const TenhouLiveGameSchema = z.object({
+  watchId: z.string().min(1),
+  leagueName: z.string(),
+  startTime: z.number().nullable(),
+  players: z.array(
+    z.object({
+      seat: z.number().int().min(0).max(3),
+      displayName: z.string(),
+    })
+  ),
+});
+
+export const MobileLobbyResponseSchema = z.object({
   presets: z.array(LobbyPresetSchema),
   rooms: z.array(LobbyRoomSchema),
+  // Older web deployments still return only native rooms.
+  tenhouLiveGames: z.array(TenhouLiveGameSchema).default([]),
 });
 
 export type MobileLobbyPreset = z.infer<typeof LobbyPresetSchema>;
 export type MobileLobbyRoom = z.infer<typeof LobbyRoomSchema>;
+type TenhouLiveGame = z.infer<typeof TenhouLiveGameSchema>;
 
 export function roomOccupancy(room: MobileLobbyRoom): string {
   const occupied = room.seats.filter((seat) => seat !== null).length;
@@ -59,6 +74,7 @@ interface MobileLobbyProps {
   onJoinGame: (matchId: string) => void;
   onReconnectGame: (matchId: string) => void;
   onWatchGame: (matchId: string) => void;
+  onWatchTenhouGame: (watchId: string) => void;
   activeMatchId: string | null;
 }
 
@@ -69,10 +85,12 @@ export function MobileLobby({
   onJoinGame,
   onReconnectGame,
   onWatchGame,
+  onWatchTenhouGame,
   activeMatchId,
 }: MobileLobbyProps) {
   const [presets, setPresets] = useState<MobileLobbyPreset[]>([]);
   const [rooms, setRooms] = useState<MobileLobbyRoom[]>([]);
+  const [tenhouLiveGames, setTenhouLiveGames] = useState<TenhouLiveGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -92,6 +110,7 @@ export function MobileLobby({
       const data = MobileLobbyResponseSchema.parse(await response.json());
       setPresets(data.presets);
       setRooms(data.rooms.filter((room) => room.status !== "finished"));
+      setTenhouLiveGames(data.tenhouLiveGames);
       setSelectedPreset((current) =>
         data.presets.some((preset) => preset.id === current)
           ? current
@@ -135,6 +154,7 @@ export function MobileLobby({
   const presetNames = new Map(
     presets.map((preset) => [preset.id, preset.displayName])
   );
+  const gameCount = rooms.length + tenhouLiveGames.length;
 
   return (
     <main className="mobile-shell mobile-online-lobby">
@@ -173,29 +193,65 @@ export function MobileLobby({
             <div>
               <h2 id="available-games-title">Available games</h2>
               <span>
-                {rooms.length} open table{rooms.length === 1 ? "" : "s"}
+                {gameCount} open table{gameCount === 1 ? "" : "s"}
               </span>
             </div>
           </div>
 
-          {loading && rooms.length === 0 ? (
-            <div className="lobby-empty" aria-live="polite">
-              <LoaderCircle aria-hidden="true" className="spin" />
-              <span>Loading games</span>
-            </div>
-          ) : error !== null && rooms.length === 0 ? (
+          {error !== null && (
             <div className="lobby-empty lobby-error" role="alert">
               <span>{error}</span>
               <button type="button" onClick={() => void refresh()}>
                 Try again
               </button>
             </div>
-          ) : rooms.length === 0 ? (
-            <div className="lobby-empty">
-              <span>No games available.</span>
+          )}
+          {loading && gameCount === 0 ? (
+            <div className="lobby-empty" aria-live="polite">
+              <LoaderCircle aria-hidden="true" className="spin" />
+              <span>Loading games</span>
             </div>
+          ) : gameCount === 0 ? (
+            error === null && (
+              <div className="lobby-empty">
+                <span>No games available.</span>
+              </div>
+            )
           ) : (
             <ul className="online-room-list">
+              {tenhouLiveGames.map((game) => (
+                <li key={`tenhou:${game.watchId}`}>
+                  <div className="room-status-icon">
+                    <Eye aria-hidden="true" />
+                  </div>
+                  <div className="room-copy">
+                    <div>
+                      <strong>{game.leagueName}</strong>
+                      <span className="room-state room-state-playing">
+                        Live
+                      </span>
+                    </div>
+                    <span
+                      title={game.players
+                        .map((player) => player.displayName)
+                        .join(" · ")}
+                    >
+                      Tenhou ·{" "}
+                      {game.players
+                        .map((player) => player.displayName)
+                        .join(" · ")}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="room-action-button"
+                    aria-label={`Watch ${game.leagueName} on Tenhou`}
+                    onClick={() => onWatchTenhouGame(game.watchId)}
+                  >
+                    Watch
+                  </button>
+                </li>
+              ))}
               {rooms.map((room) => {
                 const action = roomAction(room, activeMatchId);
                 return (

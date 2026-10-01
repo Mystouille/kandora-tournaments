@@ -1534,6 +1534,20 @@ export function App() {
     );
   };
 
+  const watchTenhouGame = async (watchId: string): Promise<void> => {
+    const controller = onlineControllerRef.current;
+    if (
+      webAppBaseUrl === null ||
+      mobileAuthSession === null ||
+      controller === null
+    ) {
+      throw new Error("Online spectator session is unavailable");
+    }
+    await prepareOnlineMatch();
+    setPage("online-room");
+    await controller.watchLive(webAppBaseUrl, mobileAuthSession, watchId);
+  };
+
   const leaveOnlineRoom = async (): Promise<void> => {
     if (shellBusy) {
       return;
@@ -2428,6 +2442,12 @@ export function App() {
           }
           onWatchGame={(matchId) =>
             void watchOnlineGame(matchId).catch(() => setPage("lobby"))
+          }
+          onWatchTenhouGame={(watchId) =>
+            void watchTenhouGame(watchId).catch((error: unknown) => {
+              console.error("Failed to open live Tenhou game:", error);
+              setPage("lobby");
+            })
           }
         />
         {resumeActiveGamePrompt}

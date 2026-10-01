@@ -1,6 +1,8 @@
 import { isGameEnabled } from "~/game/feature-gate";
 import { listSelectablePresets } from "~/game/rules/presets";
 import { getGameServerHttpUrl } from "~/services/gameServer.server";
+import { getLobbyTenhouLiveGames } from "~/services/lobbyLiveGames.server";
+import { connectToDatabase } from "~/utils/dbConnection.server";
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
@@ -22,6 +24,7 @@ export async function loader(): Promise<Response> {
     return json({ error: "game_server_not_configured" }, 503);
   }
 
+  let rooms: unknown[];
   try {
     const response = await fetch(`${gameServerUrl}/rooms`, {
       headers: { accept: "application/json" },
@@ -30,21 +33,37 @@ export async function loader(): Promise<Response> {
       return json({ error: "rooms_unavailable" }, response.status);
     }
     const body = (await response.json()) as { rooms?: unknown };
-    return json({
-      presets: listSelectablePresets().map(({ id, displayName, description }) => ({
-        id,
-        displayName,
-        description,
-      })),
-      rooms: Array.isArray(body.rooms) ? body.rooms : [],
-    });
+    rooms = Array.isArray(body.rooms) ? body.rooms : [];
   } catch (error) {
     console.error("Failed to load mobile lobby:", error);
     return json({ error: "game_server_unreachable" }, 502);
   }
+
+  try {
+    await connectToDatabase();
+    const tenhouLiveGames = await getLobbyTenhouLiveGames();
+    return json({
+      presets: listSelectablePresets().map(
+        ({ id, displayName, description }) => ({
+          id,
+          displayName,
+          description,
+        })
+      ),
+      rooms,
+      tenhouLiveGames,
+    });
+  } catch (error) {
+    console.error("Failed to load mobile lobby tournament games:", error);
+    return json({ error: "tournament_games_unavailable" }, 503);
+  }
 }
 
-export async function action({ request }: { request: Request }): Promise<Response> {
+export async function action({
+  request,
+}: {
+  request: Request;
+}): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
