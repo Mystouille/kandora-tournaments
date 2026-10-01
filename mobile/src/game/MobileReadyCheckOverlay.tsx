@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type {
+  ActionWindowView,
+  PromptIntentContext,
+} from "~/game/protocol/timing";
+import { usePromptCountdown } from "~/game/client/time/usePromptCountdown";
 import {
   advanceReadyCheckTick,
   type ReadyCheckTickState,
@@ -9,6 +14,7 @@ import type { Seat } from "~/game/protocol/messages";
 export interface MobileReadyCheck {
   deadline: number;
   acked: [boolean, boolean, boolean, boolean];
+  window?: ActionWindowView | null;
 }
 
 export interface MobileResultPanelBounds {
@@ -34,12 +40,10 @@ export function MobileReadyCheckOverlay({
   readyCheck: MobileReadyCheck | null;
   mySeat: Seat | null;
   resultPanelBounds: MobileResultPanelBounds | null;
-  onReady: () => void;
+  onReady: (intent?: PromptIntentContext) => void;
 }) {
   const deadline = readyCheck?.deadline ?? null;
-  const [remainingMs, setRemainingMs] = useState(() =>
-    deadline === null ? 0 : Math.max(0, deadline - Date.now())
-  );
+  const countdown = usePromptCountdown(readyCheck?.window, deadline);
   const [submittedDeadline, setSubmittedDeadline] = useState<number | null>(
     null
   );
@@ -52,28 +56,7 @@ export function MobileReadyCheckOverlay({
   const locallyReady =
     acknowledged || (deadline !== null && submittedDeadline === deadline);
 
-  useEffect(() => {
-    if (deadline === null) {
-      setRemainingMs(0);
-      return;
-    }
-    let frame: number | null = null;
-    const update = (): void => {
-      const nextRemainingMs = Math.max(0, deadline - Date.now());
-      setRemainingMs(nextRemainingMs);
-      if (nextRemainingMs > 0) {
-        frame = requestAnimationFrame(update);
-      }
-    };
-    update();
-    return () => {
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
-      }
-    };
-  }, [deadline]);
-
-  const seconds = Math.ceil(remainingMs / 1000);
+  const seconds = Math.ceil(countdown.remainingMs / 1000);
   useEffect(() => {
     const tick = advanceReadyCheckTick(
       lastTickRef.current,
@@ -115,18 +98,25 @@ export function MobileReadyCheckOverlay({
       <button
         type="button"
         className="mobile-ready-check-button"
-        disabled={locallyReady}
+        disabled={locallyReady || !countdown.canRespond}
         onClick={() => {
-          if (!locallyReady) {
+          if (!locallyReady && countdown.canRespond) {
             setSubmittedDeadline(deadline);
-            onReady();
+            onReady(
+              readyCheck.window
+                ? {
+                    windowId: readyCheck.window.id,
+                    clockEpoch: readyCheck.window.clockEpoch,
+                  }
+                : undefined
+            );
           }
         }}
       >
         {locallyReady ? "CONFIRMED" : isPostHand ? "OK" : "GO"}
       </button>
       <output className="mobile-ready-check-countdown" aria-live="polite">
-        {seconds}s
+        {countdown.synchronized ? `${seconds}s` : "Synchronizing clock"}
       </output>
     </div>
   );

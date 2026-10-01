@@ -71,6 +71,9 @@ import {
   MobileReadyCheckOverlay,
   type MobileResultPanelBounds,
 } from "./game/MobileReadyCheckOverlay";
+import { refreshNativeTiming } from "./game/liveTimingBinding";
+import { MobileSessionVoteOverlay } from "./game/MobileSessionVoteOverlay";
+import { ClockQualityNotice } from "~/game/components/ClockQualityNotice";
 import { useReplaySwipeNavigation } from "./game/spectateSwipe";
 import { MobileReplays } from "./replays/MobileReplays";
 import {
@@ -909,6 +912,10 @@ export function App() {
         return;
       }
       const resume = resumeAfterBackgroundRef.current;
+      refreshNativeTiming(
+        onlineControllerRef.current,
+        nearbyControllerRef.current
+      );
       resumeAfterBackgroundRef.current = null;
       promptForActiveMatchOnRefreshRef.current = true;
       setActiveMatchRefreshRevision((revision) => revision + 1);
@@ -1293,17 +1300,52 @@ export function App() {
     }
   }, [onlineState.status]);
 
-  const submitReady = (): void => {
+  const submitReady = (
+    intent?: import("~/game/protocol/timing").PromptIntentContext
+  ): void => {
     if (onlineControllerRef.current?.getState().matchId === liveView.matchId) {
-      onlineControllerRef.current.ready();
+      onlineControllerRef.current.ready(intent);
     } else if (
       nearbyControllerRef.current?.getState().matchId === liveView.matchId
     ) {
-      void nearbyControllerRef.current.ready().catch(() => undefined);
+      void nearbyControllerRef.current
+        .ready(intent)
+        .catch((error: unknown) =>
+          console.error("Nearby ready reply rejected:", error)
+        );
     } else if (
       localControllerRef.current?.getState().matchId === liveView.matchId
     ) {
-      void localControllerRef.current?.ready();
+      void localControllerRef.current
+        ?.ready(intent)
+        .catch((error: unknown) =>
+          console.error("Local ready reply rejected:", error)
+        );
+    }
+  };
+
+  const submitVote = (
+    vote: "yes" | "no",
+    intent?: import("~/game/protocol/timing").PromptIntentContext
+  ): void => {
+    if (onlineControllerRef.current?.getState().matchId === liveView.matchId) {
+      onlineControllerRef.current.voteContinue(vote, intent);
+    } else if (
+      nearbyControllerRef.current?.getState().matchId === liveView.matchId
+    ) {
+      void nearbyControllerRef.current
+        .voteContinue(vote, intent)
+        .catch((error: unknown) =>
+          console.error("Nearby vote rejected:", error)
+        );
+    } else if (
+      localControllerRef.current?.getState().matchId === liveView.matchId
+    ) {
+      void localControllerRef.current
+        .voteContinue(vote, intent)
+        .catch((error: unknown) =>
+          console.error("Local vote rejected:", error)
+        );
     }
   };
 
@@ -2055,6 +2097,18 @@ export function App() {
       <main className="mobile-game-view">
         <section className="table-stage" aria-label="Mahjong game">
           <div ref={tableContainerRef} className="table-canvas" />
+          <ClockQualityNotice clockEpoch={liveView.serverClock?.clockEpoch} />
+          <MobileSessionVoteOverlay
+            vote={liveView.sessionVote}
+            window={
+              liveView.promptWindow?.kind === "session_vote"
+                ? liveView.promptWindow
+                : undefined
+            }
+            mySeat={liveView.mySeat}
+            seatNames={liveView.seatNames}
+            onVote={submitVote}
+          />
           {isLiveSpectating && onlineState.spectatorDelayMs > 0 && (
             <div className="spectator-delay-status">
               Spectator delay: {onlineState.spectatorDelayMs / 60_000} min

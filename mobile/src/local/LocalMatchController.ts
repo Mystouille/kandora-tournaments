@@ -4,7 +4,11 @@ import type { Seat, ServerMessage } from "~/game/protocol/messages";
 import { MatchProcess } from "~/game/server/src/match";
 import { createSystemMatchRuntime } from "~/game/server/src/runtime";
 import { createAuthorityClock } from "~/game/server/src/timing/authorityClock";
-import type { ActionIntentContext, TimingMode } from "~/game/protocol/timing";
+import type {
+  ActionIntentContext,
+  PromptIntentContext,
+  TimingMode,
+} from "~/game/protocol/timing";
 import { bindLiveClock, releaseLiveClock } from "~/game/client/time/liveClock";
 import { refreshScheduledWindow } from "~/game/client/time/liveTimingBinding";
 import type { MobileMatchRepositoryHandle } from "../persistence/mobileMatchRepository";
@@ -218,8 +222,27 @@ export class LocalMatchController {
     });
   }
 
-  ready(): Promise<void> {
-    return this.readyDirect().then(() => {
+  ready(intent?: PromptIntentContext): Promise<void> {
+    return this.readyDirect(intent).then(() => {
+      this.syncSnapshot();
+    });
+  }
+
+  async voteContinue(
+    vote: "yes" | "no",
+    intent?: PromptIntentContext
+  ): Promise<void> {
+    const { match, seat } = this.requireActiveMatch();
+    const receipt = {
+      ...match.promptReceipt(seat, match.authorityNow()),
+      ...(intent ?? {}),
+    };
+    match.reservePrompt(seat, vote, receipt);
+    await this.enqueue(async () => {
+      if (this.match !== match || this.humanSeat !== seat) {
+        throw new Error("The vote belongs to a replaced local match");
+      }
+      await match.handleVoteContinue(seat, vote, receipt);
       this.syncSnapshot();
     });
   }
@@ -250,9 +273,13 @@ export class LocalMatchController {
     });
   }
 
-  private async readyDirect(): Promise<void> {
+  private async readyDirect(intent?: PromptIntentContext): Promise<void> {
     const { match, seat } = this.requireActiveMatch();
-    await match.handleReady(seat);
+    const receipt = {
+      ...match.promptReceipt(seat, match.authorityNow()),
+      ...(intent ?? {}),
+    };
+    await match.handleReady(seat, receipt);
   }
 
   private async completeStartup(
@@ -270,7 +297,10 @@ export class LocalMatchController {
           if (seat === null) {
             throw new Error("Local player seat was lost during startup");
           }
-          await match.handleReady(seat);
+          await match.handleReady(
+            seat,
+            match.promptReceipt(seat, match.authorityNow())
+          );
         }
       } catch {
         // Match startup is between checkpointable boundaries.
@@ -303,6 +333,7 @@ export class LocalMatchController {
     this.detachCurrentMatch();
     this.match = match;
     this.humanSeat = seat;
+    match.configurePlayerTiming(seat, "direct", () => null);
     useMatchStore.getState().setMatch(match.matchId, seat);
     useMatchStore.getState().setConn("open");
     match.attachHuman(seat, this.send, async () => true);

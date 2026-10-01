@@ -101,9 +101,27 @@ preview metadata.
 The [authoritative timing implementation](../app/game/docs/plans/authoritative-timing/plan.md)
 is staged. Online play follows the room's negotiated mode; local and Nearby
 creation can opt in with `VITE_GAME_TIMING_MODE=windows-v2`. The default is
-legacy while remaining readiness/vote and native-device rollout gates are
-pending. Clock/receipt helpers are shared with web/server code rather than
-duplicated in the native shell.
+legacy while native-device rollout gates remain pending. Turn, call, declaration,
+ready and continue-vote prompts use the shared clock/window contract and captured
+intents. Ready acknowledgements still bypass the hand-ending command queue.
+Nearby reserves remote replies before its host queue and retains the same receipt
+and owner generation through execution. Local seats use known zero network delay,
+not the remote fallback allowance. Foreground refresh invalidates clock estimates
+without resetting the authoritative window or bank.
+
+The mobile table now includes a yes/no Buu continuation overlay, hydrated from
+authoritative snapshots on reconnect. Degraded or unsynchronized clock quality is
+visible; diagnostic observations never supply an acceptance timestamp.
+Version-6 checkpoints preserve fixed-prompt identity, partial acknowledgements/
+votes, remaining duration and exact bank balances using one restoration reference.
+Clock/receipt/countdown helpers are shared rather than duplicated in the shell.
+
+Device evidence must come from a build containing these changes. The installed
+September 28 Android build was inspected without replacing it, as requested; an
+isolated SQLite round-trip on that old build proves bridge/storage availability
+only, not the new timing or foreground controllers. Current-code Android
+lifecycle/storage, two-device Nearby and iOS verification remain open. The
+30 FPS Playwright profile is deferred, not a passing native or fairness result.
 
 Resume/Reconnect is an explicit transport takeover. The destination receives a
 fresh private snapshot, while the old client is closed and shows "Game resumed

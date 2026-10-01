@@ -5,6 +5,7 @@ import { clockSampleForProbe } from "~/game/server/src/transport/clockSync";
 import { ServerClock } from "~/game/client/time/serverClock";
 import { bindLiveClock, releaseLiveClock } from "~/game/client/time/liveClock";
 import { refreshScheduledWindow } from "~/game/client/time/liveTimingBinding";
+import { reportClockQuality } from "~/game/client/time/timingDiagnostics";
 
 export class NearbyTiming {
   readonly clientClock = new ServerClock();
@@ -12,6 +13,7 @@ export class NearbyTiming {
   private clockProbe = 0;
   private interval: ReturnType<typeof setInterval> | null = null;
   private probing = false;
+  private probeSender: (() => void) | null = null;
 
   constructor(private readonly clock: AuthorityClock) {}
 
@@ -63,6 +65,7 @@ export class NearbyTiming {
       if (!result.accepted) {
         throw new Error(`Nearby clock sample rejected: ${result.reason}`);
       }
+      reportClockQuality(this.clientClock.quality());
       refreshScheduledWindow();
     } else if ("clock" in message && message.clock && !this.probing) {
       this.probing = true;
@@ -72,6 +75,7 @@ export class NearbyTiming {
         this.clientClock.createProbe(probeId);
         send({ type: "clock_probe", matchId, probeId });
       };
+      this.probeSender = probe;
       probe();
       this.interval = setInterval(probe, 5_000);
     }
@@ -89,12 +93,20 @@ export class NearbyTiming {
     });
   }
 
+  refresh(): void {
+    if (this.probeSender !== null) {
+      this.clientClock.invalidate();
+      this.probeSender();
+    }
+  }
+
   reset(): void {
     if (this.interval !== null) {
       clearInterval(this.interval);
       this.interval = null;
     }
     this.probing = false;
+    this.probeSender = null;
     this.profiles.clear();
     this.clientClock.invalidate();
     releaseLiveClock(this);

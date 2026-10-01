@@ -7,7 +7,10 @@ import {
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState, Seat, ServerMessage } from "~/game/protocol/messages";
 import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
-import type { ActionIntentContext } from "~/game/protocol/timing";
+import type {
+  ActionIntentContext,
+  PromptIntentContext,
+} from "~/game/protocol/timing";
 import {
   advanceLiveSpectateTimeline,
   createLiveSpectateTimeline,
@@ -66,14 +69,15 @@ interface OnlineSocket {
   connect(): void;
   close(): void;
   forceReconnect(): void;
+  refreshClock?(): void;
   act(actionId: string, intent?: ActionIntentContext): void;
-  ready(): void;
+  ready(intent?: PromptIntentContext): void;
   setWaitingRoomReady(ready: boolean): void;
   addWaitingRoomBot(): void;
   kickWaitingRoomSeat(seat: Seat): void;
   startMatch(): void;
   leaveSeat(): void;
-  voteContinue(vote: "yes" | "no"): void;
+  voteContinue(vote: "yes" | "no", intent?: PromptIntentContext): void;
 }
 
 interface OnlineMatchControllerDependencies {
@@ -215,12 +219,28 @@ export class OnlineMatchController {
     }
   }
 
-  ready(): void {
-    this.socket?.ready();
+  ready(intent?: PromptIntentContext): void {
+    if (intent) {
+      this.socket?.ready(intent);
+    } else {
+      this.socket?.ready();
+    }
   }
 
-  voteContinue(vote: "yes" | "no"): void {
-    this.socket?.voteContinue(vote);
+  refreshClock(): void {
+    if (this.socket?.refreshClock) {
+      this.socket.refreshClock();
+    } else {
+      this.socket?.forceReconnect();
+    }
+  }
+
+  voteContinue(vote: "yes" | "no", intent?: PromptIntentContext): void {
+    if (intent) {
+      this.socket?.voteContinue(vote, intent);
+    } else {
+      this.socket?.voteContinue(vote);
+    }
   }
 
   reconnect(): void {

@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState } from "~/game/protocol/messages";
-import type { MatchState } from "~/game/rules/state";
+import {
+  FIXED_PROMPT_VERSION,
+  TIMING_CAPABILITY,
+} from "~/game/protocol/timing";
+import { editMatchState } from "~/game/testing/matchState";
 import {
   MatchProcess,
   setDelayAfterDiscardMs,
@@ -254,6 +258,7 @@ describe("Nearby mobile match controller", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     useMatchStore.getState().reset();
     setReadyCheckMs(0);
     setDelayAfterDiscardMs(350);
@@ -379,134 +384,221 @@ describe("Nearby mobile match controller", () => {
     expect(controller.getState().status).toBe("playing");
   });
 
-  it("keeps a post-hand ready gate open until the Nearby host confirms", async () => {
-    setReadyCheckMs(0);
-    setDelayAfterDiscardMs(0);
-    setNextHandDelayMs(60_000);
+  it.each(["legacy", "windows-v2"] as const)(
+    "keeps a %s post-hand ready gate open until the Nearby host confirms",
+    async (timingMode) => {
+      setReadyCheckMs(0);
+      setDelayAfterDiscardMs(0);
+      setNextHandDelayMs(60_000);
+      const transport = new FakeNearbyTransport();
+      const controller = new NearbyMatchController(
+        memoryPersistence(),
+        transport,
+        timingMode
+      );
+      await controller.host({
+        deviceId: "mobile:host",
+        displayName: "Host",
+      });
+      transport.emit("connectionInitiated", {
+        endpointId: "remote-endpoint",
+        endpointName: "Guest",
+        authenticationDigits: "3141",
+        incoming: true,
+      });
+      await controller.waitForIdle();
+      transport.emit("connectionResult", {
+        endpointId: "remote-endpoint",
+        endpointName: "Guest",
+        status: "connected",
+      });
+      transport.emit("message", {
+        endpointId: "remote-endpoint",
+        data: encodeNearbyFrame({
+          version: NEARBY_PROTOCOL_VERSION,
+          kind: "hello",
+          deviceId: "mobile:guest",
+          displayName: "Guest",
+          timingCapabilities: [TIMING_CAPABILITY],
+          fixedPromptVersion: FIXED_PROMPT_VERSION,
+        }),
+      });
+      await controller.waitForIdle();
+
+      const matchId = controller.getState().matchId;
+      if (matchId === null) {
+        throw new Error("expected an active Nearby room");
+      }
+      await controller.setWaitingRoomReady(true);
+      transport.emit("message", {
+        endpointId: "remote-endpoint",
+        data: encodeNearbyFrame({
+          version: NEARBY_PROTOCOL_VERSION,
+          kind: "client",
+          message: {
+            type: "set_room_ready",
+            matchId,
+            ready: true,
+          },
+        }),
+      });
+      await controller.waitForIdle();
+      await controller.startMatch();
+      await controller.waitForIdle();
+
+      const controllerInternals = controller as unknown as {
+        match: MatchProcess | null;
+        enqueueCommand(operation: () => Promise<void>): Promise<void>;
+      };
+      const match = controllerInternals.match;
+      if (match === null) {
+        throw new Error("expected the host match process");
+      }
+      editMatchState(match, (state) => {
+        state.phase = "hand_ended";
+        state.lastHandResult = {
+          reason: "exhaustive_draw",
+          winner: null,
+          loser: null,
+          delta: [0, 0, 0, 0],
+          tenpai: [false, false, false, false],
+          abortKind: null,
+          winHan: null,
+          winYakuman: null,
+        };
+      });
+
+      const advancing = controllerInternals.enqueueCommand(() =>
+        match.owners.lifecycle.hand.afterHandEnd()
+      );
+      await vi.waitFor(() => {
+        expect(useMatchStore.getState().readyCheck).not.toBeNull();
+      });
+
+      const hostSeat = useMatchStore.getState().mySeat;
+      const guestSeat = controller
+        .getState()
+        .roomState?.seats.find(
+          ({ occupant }) =>
+            occupant.kind === "human" && occupant.userId === "mobile:guest"
+        )?.seat;
+      if (hostSeat === null || guestSeat === undefined) {
+        throw new Error("expected host and guest seat assignments");
+      }
+      expect(useMatchStore.getState().readyCheck?.acked[hostSeat]).toBe(false);
+      const guestWindow = match.owners.timing.promptTiming?.view(guestSeat);
+      if (timingMode === "windows-v2") {
+        expect(guestWindow?.kind).toBe("ready");
+        transport.emit("message", {
+          endpointId: "remote-endpoint",
+          data: encodeNearbyFrame({
+            version: NEARBY_PROTOCOL_VERSION,
+            kind: "client",
+            message: {
+              type: "ready",
+              matchId: "another-match",
+              windowId: guestWindow?.id,
+              clockEpoch: guestWindow?.clockEpoch,
+            },
+          }),
+        });
+        await vi.waitFor(() => {
+          expect(serverFrames(transport, "remote-endpoint")).toContainEqual(
+            expect.objectContaining({
+              message: expect.objectContaining({
+                type: "error",
+                code: "matchid_mismatch",
+              }),
+            })
+          );
+        });
+        expect(match.owners.timing.promptTiming?.hasReserved("ready")).toBe(
+          false
+        );
+      }
+      const reserve = vi.spyOn(match, "reservePrompt");
+
+      transport.emit("message", {
+        endpointId: "remote-endpoint",
+        data: encodeNearbyFrame({
+          version: NEARBY_PROTOCOL_VERSION,
+          kind: "client",
+          message: {
+            type: "ready",
+            matchId,
+            windowId: guestWindow?.id,
+            clockEpoch: guestWindow?.clockEpoch,
+          },
+        }),
+      });
+      await vi.waitFor(() => {
+        expect(useMatchStore.getState().readyCheck?.acked[guestSeat]).toBe(
+          true
+        );
+      });
+      expect(useMatchStore.getState().readyCheck?.acked[hostSeat]).toBe(false);
+      if (timingMode === "windows-v2") {
+        const remoteCalls = reserve.mock.calls.filter(
+          ([seat]) => seat === guestSeat
+        );
+        expect(remoteCalls).toHaveLength(2);
+        expect(remoteCalls[0][2]).toBe(remoteCalls[1][2]);
+        expect(remoteCalls[0][2].ownerGeneration).toBe(
+          match.owners.connections.view(guestSeat).generation
+        );
+      }
+      expect(match.createCheckpoint()).toMatchObject({
+        checkpointKind: "ready_check",
+        readyContinuation: "next_hand",
+      });
+
+      await controller.ready();
+      await advancing;
+
+      expect(useMatchStore.getState().readyCheck).toBeNull();
+      expect(match.createCheckpoint()).not.toMatchObject({
+        checkpointKind: "ready_check",
+      });
+      await controller.pause();
+    }
+  );
+
+  it("explicitly rejects turn-only timing clients from a fixed-prompt Nearby room", async () => {
     const transport = new FakeNearbyTransport();
     const controller = new NearbyMatchController(
       memoryPersistence(),
-      transport
+      transport,
+      "windows-v2"
     );
-    await controller.host({
-      deviceId: "mobile:host",
-      displayName: "Host",
-    });
-    transport.emit("connectionInitiated", {
-      endpointId: "remote-endpoint",
-      endpointName: "Guest",
-      authenticationDigits: "3141",
-      incoming: true,
-    });
-    await controller.waitForIdle();
-    transport.emit("connectionResult", {
-      endpointId: "remote-endpoint",
-      endpointName: "Guest",
-      status: "connected",
-    });
+    await controller.host({ deviceId: "mobile:host", displayName: "Host" });
     transport.emit("message", {
       endpointId: "remote-endpoint",
       data: encodeNearbyFrame({
         version: NEARBY_PROTOCOL_VERSION,
         kind: "hello",
         deviceId: "mobile:guest",
-        displayName: "Guest",
+        displayName: "Old guest",
+        timingCapabilities: [TIMING_CAPABILITY],
       }),
     });
     await controller.waitForIdle();
-
-    const matchId = controller.getState().matchId;
-    if (matchId === null) {
-      throw new Error("expected an active Nearby room");
-    }
-    await controller.setWaitingRoomReady(true);
-    transport.emit("message", {
-      endpointId: "remote-endpoint",
-      data: encodeNearbyFrame({
-        version: NEARBY_PROTOCOL_VERSION,
-        kind: "client",
-        message: {
-          type: "set_room_ready",
-          matchId,
-          ready: true,
-        },
-      }),
-    });
-    await controller.waitForIdle();
-    await controller.startMatch();
-    await controller.waitForIdle();
-
-    const controllerInternals = controller as unknown as {
-      match: MatchProcess | null;
-      enqueueCommand(operation: () => Promise<void>): Promise<void>;
-    };
-    const match = controllerInternals.match;
-    if (match === null) {
-      throw new Error("expected the host match process");
-    }
-    const matchInternals = match as unknown as {
-      state: MatchState;
-      afterHandEnd(): Promise<void>;
-    };
-    matchInternals.state.phase = "hand_ended";
-    matchInternals.state.lastHandResult = {
-      reason: "exhaustive_draw",
-      winner: null,
-      loser: null,
-      delta: [0, 0, 0, 0],
-      tenpai: [false, false, false, false],
-      abortKind: null,
-      winHan: null,
-      winYakuman: null,
-    };
-
-    const advancing = controllerInternals.enqueueCommand(() =>
-      matchInternals.afterHandEnd()
+    expect(serverFrames(transport, "remote-endpoint")).toContainEqual(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          type: "error",
+          code: "timing_update_required",
+        }),
+      })
     );
-    await vi.waitFor(() => {
-      expect(useMatchStore.getState().readyCheck).not.toBeNull();
-    });
-
-    const hostSeat = useMatchStore.getState().mySeat;
-    const guestSeat = controller
-      .getState()
-      .roomState?.seats.find(
-        ({ occupant }) =>
-          occupant.kind === "human" && occupant.userId === "mobile:guest"
-      )?.seat;
-    if (hostSeat === null || guestSeat === undefined) {
-      throw new Error("expected host and guest seat assignments");
-    }
-    expect(useMatchStore.getState().readyCheck?.acked[hostSeat]).toBe(false);
-
-    transport.emit("message", {
-      endpointId: "remote-endpoint",
-      data: encodeNearbyFrame({
-        version: NEARBY_PROTOCOL_VERSION,
-        kind: "client",
-        message: {
-          type: "ready",
-          matchId,
-        },
-      }),
-    });
-    await vi.waitFor(() => {
-      expect(useMatchStore.getState().readyCheck?.acked[guestSeat]).toBe(true);
-    });
-    expect(useMatchStore.getState().readyCheck?.acked[hostSeat]).toBe(false);
-    expect(match.createCheckpoint()).toMatchObject({
-      checkpointKind: "ready_check",
-      readyContinuation: "next_hand",
-    });
-
-    await controller.ready();
-    await advancing;
-
-    expect(useMatchStore.getState().readyCheck).toBeNull();
-    expect(match.createCheckpoint()).not.toMatchObject({
-      checkpointKind: "ready_check",
-    });
-    await controller.pause();
+    expect(
+      controller
+        .getState()
+        .roomState?.seats.some(
+          ({ occupant }) =>
+            occupant.kind === "human" && occupant.userId === "mobile:guest"
+        )
+    ).toBe(false);
+    await controller.leave();
   });
 
   it("discovers, auto-accepts, handshakes, and sends validated guest commands", async () => {

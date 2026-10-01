@@ -16,6 +16,10 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5198,
     strictPort: true,
+    hmr: false,
+    watch: {
+      ignored: [/[\\/]app[\\/]game[\\/]/],
+    },
     fs: { allow: [repositoryRoot] },
   },
   plugins: [
