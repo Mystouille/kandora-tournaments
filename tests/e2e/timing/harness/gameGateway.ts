@@ -208,7 +208,6 @@ export async function installGameGateway(
           {
             repository: roomRepository,
             runtime: runtime.runtime,
-            timingMode: "windows-v2",
           }
         );
         rooms.set(matchId, {

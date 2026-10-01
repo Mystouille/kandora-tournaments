@@ -35,7 +35,7 @@ function persistence(): MobileMatchRepositoryHandle {
 function controller(
   storage: MobileMatchRepositoryHandle
 ): LocalMatchController {
-  const host = new LocalMatchController(storage, "windows-v2");
+  const host = new LocalMatchController(storage);
   ownedControllers.add(host);
   return host;
 }

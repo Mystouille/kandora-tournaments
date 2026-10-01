@@ -99,11 +99,9 @@ ready. Shared game links include the configured delay in their Discord
 preview metadata.
 
 The [authoritative timing implementation](../app/game/docs/plans/authoritative-timing/plan.md)
-is staged. Online play follows the room's negotiated mode; local and Nearby
-creation can opt in with `VITE_GAME_TIMING_MODE=windows-v2`. The default is
-legacy while native-device rollout gates remain pending. Turn, call, declaration,
-ready and continue-vote prompts use the shared clock/window contract and captured
-intents. Ready acknowledgements still bypass the hand-ending command queue.
+is active for online, local, and Nearby play. Turn, call, declaration, ready and
+continue-vote prompts use the shared clock/window contract and captured intents.
+Ready acknowledgements still bypass the hand-ending command queue.
 Nearby reserves remote replies before its host queue and retains the same receipt
 and owner generation through execution. Local seats use known zero network delay,
 not the remote fallback allowance. Foreground refresh invalidates clock estimates
@@ -112,8 +110,9 @@ without resetting the authoritative window or bank.
 The mobile table now includes a yes/no Buu continuation overlay, hydrated from
 authoritative snapshots on reconnect. Degraded or unsynchronized clock quality is
 visible; diagnostic observations never supply an acceptance timestamp.
-Version-6 checkpoints preserve fixed-prompt identity, partial acknowledgements/
+Version-7 checkpoints preserve fixed-prompt identity, partial acknowledgements/
 votes, remaining duration and exact bank balances using one restoration reference.
+Versions 1-6 migrate to the same authoritative window format when loaded.
 Clock/receipt/countdown helpers are shared rather than duplicated in the shell.
 
 Device evidence must come from a build containing these changes. The installed

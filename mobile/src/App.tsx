@@ -93,10 +93,7 @@ import type { ReplayLog } from "~/game/replay/types";
 import type { ReplayLocationRequest } from "~/game/replay/replayLocation";
 import type { Seat } from "~/game/protocol/messages";
 import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
-import {
-  TimingModeSchema,
-  type ActionIntentContext,
-} from "~/game/protocol/timing";
+import type { ActionIntentContext } from "~/game/protocol/timing";
 import type { ActiveMatchSummary } from "~/game/protocol/activeMatch";
 import type { MyReplayLogDetails } from "./replays/myReplaysApi";
 import {
@@ -738,21 +735,10 @@ export function App() {
           return;
         }
         repositoryRef.current = handle;
-        const controller = new LocalMatchController(
-          handle,
-          TimingModeSchema.parse(
-            import.meta.env.VITE_GAME_TIMING_MODE ?? "legacy"
-          )
-        );
+        const controller = new LocalMatchController(handle);
         localControllerRef.current = controller;
         unsubscribeLocal = controller.subscribe(setLocalState);
-        const nearbyController = new NearbyMatchController(
-          handle,
-          undefined,
-          TimingModeSchema.parse(
-            import.meta.env.VITE_GAME_TIMING_MODE ?? "legacy"
-          )
-        );
+        const nearbyController = new NearbyMatchController(handle);
         nearbyControllerRef.current = nearbyController;
         unsubscribeNearby = nearbyController.subscribe(setNearbyState);
         setStorageState(handle.storage);

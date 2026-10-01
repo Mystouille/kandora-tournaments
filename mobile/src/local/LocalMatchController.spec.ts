@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { useMatchStore } from "~/game/client/store";
+import { liveServerNow } from "~/game/client/time/liveClock";
 import {
   setDelayAfterDiscardMs,
   setReadyCheckMs,
@@ -28,6 +29,19 @@ function memoryPersistence(): MobileMatchRepositoryHandle {
   };
 }
 
+async function waitUntilWindowOpens(
+  view: ReturnType<typeof useMatchStore.getState>
+): Promise<void> {
+  const window = view.actionWindow;
+  const now = liveServerNow();
+  if (window === undefined || window === null || now === null) {
+    throw new Error("expected a synchronized local action window");
+  }
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.max(0, window.opensAt - now) + 10)
+  );
+}
+
 async function reachDrawDiscardWindow(
   controller: LocalMatchController
 ): Promise<ReturnType<typeof useMatchStore.getState>> {
@@ -40,6 +54,7 @@ async function reachDrawDiscardWindow(
     if (pass === undefined) {
       throw new Error("expected a discard or pass action");
     }
+    await waitUntilWindowOpens(view);
     await controller.act(pass.id);
   }
   throw new Error("local player did not reach a discard window");
@@ -79,6 +94,7 @@ describe("local mobile match controller", () => {
       throw new Error("expected a safe local action");
     }
     const beforeSeq = initialView.lastSeq;
+    await waitUntilWindowOpens(initialView);
     await controller.act(action.id);
 
     const advancedView = useMatchStore.getState();

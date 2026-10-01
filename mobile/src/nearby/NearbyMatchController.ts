@@ -16,7 +16,6 @@ import {
   type ActionIntentContext,
   type PromptIntentContext,
   type InputReceipt,
-  type TimingMode,
 } from "~/game/protocol/timing";
 import { createAuthorityClock } from "~/game/server/src/timing/authorityClock";
 import { NearbyTiming } from "./timing";
@@ -165,8 +164,7 @@ export class NearbyMatchController {
 
   constructor(
     private readonly persistence: MobileMatchRepositoryHandle,
-    private readonly transport: NearbyTransport = NearbyConnections as unknown as NearbyTransport,
-    private readonly timingMode: TimingMode = "legacy"
+    private readonly transport: NearbyTransport = NearbyConnections as unknown as NearbyTransport
   ) {}
 
   subscribe(listener: StateListener): () => void {
@@ -267,7 +265,6 @@ export class NearbyMatchController {
           repository: this.persistence.repository,
           eventJournalStore: this.persistence.eventJournalStore,
           runtime: createSystemMatchRuntime(seed, this.authorityClock),
-          timingMode: this.timingMode,
         },
         undefined,
         undefined,
@@ -845,9 +842,8 @@ export class NearbyMatchController {
   ): Promise<void> {
     if (frame.kind === "hello") {
       if (
-        this.match?.timingMode === "windows-v2" &&
-        (!frame.timingCapabilities?.includes(TIMING_CAPABILITY) ||
-          frame.fixedPromptVersion !== FIXED_PROMPT_VERSION)
+        !frame.timingCapabilities?.includes(TIMING_CAPABILITY) ||
+        frame.fixedPromptVersion !== FIXED_PROMPT_VERSION
       ) {
         await this.sendError(
           endpointId,

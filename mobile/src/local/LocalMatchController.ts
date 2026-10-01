@@ -7,7 +7,6 @@ import { createAuthorityClock } from "~/game/server/src/timing/authorityClock";
 import type {
   ActionIntentContext,
   PromptIntentContext,
-  TimingMode,
 } from "~/game/protocol/timing";
 import { bindLiveClock, releaseLiveClock } from "~/game/client/time/liveClock";
 import { refreshScheduledWindow } from "~/game/client/time/liveTimingBinding";
@@ -82,10 +81,7 @@ export class LocalMatchController {
     }
   };
 
-  constructor(
-    private readonly persistence: MobileMatchRepositoryHandle,
-    private readonly timingMode: TimingMode = "legacy"
-  ) {}
+  constructor(private readonly persistence: MobileMatchRepositoryHandle) {}
 
   subscribe(listener: LocalMatchControllerListener): () => void {
     this.listener = listener;
@@ -168,7 +164,6 @@ export class LocalMatchController {
           repository: this.persistence.repository,
           eventJournalStore: this.persistence.eventJournalStore,
           runtime: createSystemMatchRuntime(seed, this.authorityClock),
-          timingMode: this.timingMode,
         },
         undefined,
         undefined,
