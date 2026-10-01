@@ -4,6 +4,14 @@ import { Spin, Typography } from "antd";
 import { useLocale } from "../contexts/LocaleContext";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { useHighlight } from "../contexts/HighlightContext";
+import {
+  buildRankingData,
+  isEliminatedOnDay,
+  type Series,
+  type SeriesPoint,
+} from "./scoreEvolutionData";
+
+export type { Series, SeriesPoint } from "./scoreEvolutionData";
 
 const { Text } = Typography;
 
@@ -65,17 +73,6 @@ function resolveOverlaps(
   return result;
 }
 
-export interface SeriesPoint {
-  x: string;
-  y: number;
-}
-
-export interface Series {
-  id: string;
-  label: string;
-  data: SeriesPoint[];
-}
-
 type NivoSeries = { id: string; data: SeriesPoint[] };
 
 interface ScoreEvolutionChartProps {
@@ -84,7 +81,6 @@ interface ScoreEvolutionChartProps {
   error?: string | null;
   activeDay?: string | null;
   onSliceClick?: (day: string) => void;
-  eliminatedEntityIds?: string[];
 }
 
 export default function ScoreEvolutionChart({
@@ -93,7 +89,6 @@ export default function ScoreEvolutionChart({
   error,
   activeDay,
   onSliceClick,
-  eliminatedEntityIds,
 }: ScoreEvolutionChartProps) {
   const { t } = useLocale();
   const { isDark } = useAppTheme();
@@ -124,20 +119,18 @@ export default function ScoreEvolutionChart({
     [series]
   );
 
-  // Build a set of eliminated labels (nivo uses label as series id)
-  const eliminatedLabels = useMemo(() => {
-    if (!eliminatedEntityIds || eliminatedEntityIds.length === 0) {
-      return new Set<string>();
-    }
-    const idSet = new Set(eliminatedEntityIds);
-    const labels = new Set<string>();
-    for (const s of series) {
-      if (idSet.has(s.id)) {
-        labels.add(s.label);
-      }
-    }
-    return labels;
-  }, [series, eliminatedEntityIds]);
+  const eliminationDatesByLabel = useMemo(
+    () =>
+      new Map(
+        series
+          .filter(
+            (item): item is Series & { eliminatedAt: string } =>
+              item.eliminatedAt !== undefined
+          )
+          .map((item) => [item.label, item.eliminatedAt])
+      ),
+    [series]
+  );
 
   // Build a color map from nivo's category10 scheme
   const category10 = useMemo(
@@ -164,68 +157,7 @@ export default function ScoreEvolutionChart({
     return map;
   }, [nivoData, category10]);
 
-  // Compute ranking series from cumulative score data
-  const rankingData = useMemo(() => {
-    if (nivoData.length < 2) {
-      return [];
-    }
-
-    // Collect all unique days
-    const allDays = new Set<string>();
-    for (const s of nivoData) {
-      for (const pt of s.data) {
-        allDays.add(pt.x);
-      }
-    }
-    const sortedDays = [...allDays].sort();
-
-    // For each series, build a map day -> cumulative y
-    const seriesDayMaps = nivoData.map((s) => {
-      const m = new Map<string, number>();
-      for (const pt of s.data) {
-        m.set(pt.x, pt.y);
-      }
-      return m;
-    });
-
-    // Build ranking series
-    return nivoData.map((s, sIdx) => {
-      const data: { x: string; y: number }[] = [];
-      for (const day of sortedDays) {
-        // Get each series' value for this day (or last known)
-        const scores = nivoData.map((_, idx) => ({
-          idx,
-          val: seriesDayMaps[idx].get(day),
-        }));
-        // Only include series that have a value up to this day
-        const withValues = scores
-          .map(({ idx, val }) => {
-            if (val !== undefined) {
-              return { idx, val };
-            }
-            // Find last known value before this day
-            let last: number | undefined;
-            for (const pt of nivoData[idx].data) {
-              if (pt.x <= day) {
-                last = pt.y;
-              } else {
-                break;
-              }
-            }
-            return last !== undefined ? { idx, val: last } : null;
-          })
-          .filter((x): x is { idx: number; val: number } => x !== null);
-
-        // Sort descending by value to assign ranks
-        withValues.sort((a, b) => b.val - a.val);
-        const rank = withValues.findIndex((w) => w.idx === sIdx);
-        if (rank !== -1) {
-          data.push({ x: day, y: rank + 1 });
-        }
-      }
-      return { id: s.id, data };
-    });
-  }, [nivoData]);
+  const rankingData = useMemo(() => buildRankingData(series), [series]);
 
   const theme = isDark
     ? {
@@ -336,24 +268,62 @@ export default function ScoreEvolutionChart({
                   return (
                     <g>
                       {computedSeries.map((s) => {
-                        const isEliminated = eliminatedLabels.has(s.id);
+                        const eliminatedAt = eliminationDatesByLabel.get(s.id);
+                        const eliminationIndex = s.data.findIndex((point) =>
+                          isEliminatedOnDay(eliminatedAt, String(point.data.x))
+                        );
+                        const activeData =
+                          eliminationIndex === -1
+                            ? s.data
+                            : eliminationIndex === 0
+                              ? []
+                              : s.data.slice(0, eliminationIndex + 1);
+                        const eliminatedData =
+                          eliminationIndex === -1
+                            ? []
+                            : s.data.slice(eliminationIndex);
                         const isActive =
                           !highlightedLabel || s.id === highlightedLabel;
                         return (
-                          <path
-                            key={s.id}
-                            d={
-                              lineGenerator(s.data.map((d) => d.position)) || ""
-                            }
-                            fill="none"
-                            stroke={isEliminated ? "#999" : s.color}
-                            strokeWidth={isActive && highlightedLabel ? 3 : 2}
-                            strokeDasharray={isEliminated ? "6 4" : undefined}
-                            opacity={isEliminated ? 0.4 : isActive ? 1 : 0.15}
-                            style={{
-                              transition: "opacity 0.2s, stroke-width 0.2s",
-                            }}
-                          />
+                          <g key={s.id}>
+                            {activeData.length > 0 && (
+                              <path
+                                d={
+                                  lineGenerator(
+                                    activeData.map((d) => d.position)
+                                  ) || ""
+                                }
+                                fill="none"
+                                stroke={s.color}
+                                strokeWidth={
+                                  isActive && highlightedLabel ? 3 : 2
+                                }
+                                opacity={isActive ? 1 : 0.15}
+                                style={{
+                                  transition: "opacity 0.2s, stroke-width 0.2s",
+                                }}
+                              />
+                            )}
+                            {eliminatedData.length > 0 && (
+                              <path
+                                d={
+                                  lineGenerator(
+                                    eliminatedData.map((d) => d.position)
+                                  ) || ""
+                                }
+                                fill="none"
+                                stroke="#999"
+                                strokeWidth={
+                                  isActive && highlightedLabel ? 3 : 2
+                                }
+                                strokeDasharray="6 4"
+                                opacity={0.4}
+                                style={{
+                                  transition: "opacity 0.2s, stroke-width 0.2s",
+                                }}
+                              />
+                            )}
+                          </g>
                         );
                       })}
                     </g>
@@ -606,22 +576,58 @@ export default function ScoreEvolutionChart({
               return (
                 <g>
                   {computedSeries.map((s) => {
-                    const isEliminated = eliminatedLabels.has(s.id);
+                    const eliminatedAt = eliminationDatesByLabel.get(s.id);
+                    const eliminationIndex = s.data.findIndex((point) =>
+                      isEliminatedOnDay(eliminatedAt, String(point.data.x))
+                    );
+                    const activeData =
+                      eliminationIndex === -1
+                        ? s.data
+                        : eliminationIndex === 0
+                          ? []
+                          : s.data.slice(0, eliminationIndex + 1);
+                    const eliminatedData =
+                      eliminationIndex === -1
+                        ? []
+                        : s.data.slice(eliminationIndex);
                     const isActive =
                       !highlightedLabel || s.id === highlightedLabel;
                     return (
-                      <path
-                        key={s.id}
-                        d={lineGenerator(s.data.map((d) => d.position)) || ""}
-                        fill="none"
-                        stroke={isEliminated ? "#999" : s.color}
-                        strokeWidth={isActive && highlightedLabel ? 3 : 2}
-                        strokeDasharray={isEliminated ? "6 4" : undefined}
-                        opacity={isEliminated ? 0.4 : isActive ? 1 : 0.15}
-                        style={{
-                          transition: "opacity 0.2s, stroke-width 0.2s",
-                        }}
-                      />
+                      <g key={s.id}>
+                        {activeData.length > 0 && (
+                          <path
+                            d={
+                              lineGenerator(
+                                activeData.map((d) => d.position)
+                              ) || ""
+                            }
+                            fill="none"
+                            stroke={s.color}
+                            strokeWidth={isActive && highlightedLabel ? 3 : 2}
+                            opacity={isActive ? 1 : 0.15}
+                            style={{
+                              transition: "opacity 0.2s, stroke-width 0.2s",
+                            }}
+                          />
+                        )}
+                        {eliminatedData.length > 0 && (
+                          <path
+                            d={
+                              lineGenerator(
+                                eliminatedData.map((d) => d.position)
+                              ) || ""
+                            }
+                            fill="none"
+                            stroke="#999"
+                            strokeWidth={isActive && highlightedLabel ? 3 : 2}
+                            strokeDasharray="6 4"
+                            opacity={0.4}
+                            style={{
+                              transition: "opacity 0.2s, stroke-width 0.2s",
+                            }}
+                          />
+                        )}
+                      </g>
                     );
                   })}
                 </g>
@@ -662,7 +668,10 @@ export default function ScoreEvolutionChart({
                     }
                     const isActive =
                       !highlightedLabel || s.id === highlightedLabel;
-                    const isEliminated = eliminatedLabels.has(s.id);
+                    const isEliminated = isEliminatedOnDay(
+                      eliminationDatesByLabel.get(s.id),
+                      String(last.data.x)
+                    );
                     const labelColor = isEliminated ? "#999" : s.color;
                     const adjustedY =
                       adjustedPositions.get(s.id) ?? last.position.y;

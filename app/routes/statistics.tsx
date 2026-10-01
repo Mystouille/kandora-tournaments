@@ -639,7 +639,6 @@ export default function Statistics({
                             phaseFilter={phaseFilter}
                             startDate={rankingStartDate}
                             endDate={rankingEndDate}
-                            eliminatedEntityIds={eliminatedEntityIds}
                           />
                         ),
                       },

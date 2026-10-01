@@ -319,22 +319,51 @@ describe("score evolution API", () => {
       });
     });
 
-    it.each(["both", "phase0"])(
-      "keeps all teams for %s",
-      async (phaseFilter) => {
-        const response = await loadPhaseGraph({
-          phaseFilter,
-          startDate: "",
-          endDate: phaseFilter === "phase0" ? "2026-08-31T23:59:59.999Z" : "",
-        });
-        const { series } = await response.json();
+    it("keeps all teams and annotates when eliminated teams stop qualifying", async () => {
+      const response = await loadPhaseGraph({
+        phaseFilter: "both",
+        startDate: "",
+      });
+      const { series } = await response.json();
 
-        expect(series.map((s: { id: string }) => s.id)).toEqual(
-          teamIds.map(String)
-        );
-        expect(mocks.findGames).toHaveBeenCalledTimes(1);
-      }
-    );
+      expect(series.map((s: { id: string }) => s.id)).toEqual(
+        teamIds.map(String)
+      );
+      expect(
+        series.map((s: { eliminatedAt?: string }) => s.eliminatedAt ?? null)
+      ).toEqual([null, null, "2026-09-01", "2026-09-01"]);
+      expect(
+        series.map((s: { data: { x: string }[] }) =>
+          s.data.map((point) => point.x)
+        )
+      ).toEqual(
+        Array.from({ length: 4 }, () => [
+          "2026-08-15",
+          "2026-09-01",
+          "2026-09-15",
+        ])
+      );
+      expect(mocks.findGames).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps all teams without elimination metadata in one phase", async () => {
+      const response = await loadPhaseGraph({
+        phaseFilter: "phase0",
+        startDate: "",
+        endDate: "2026-08-31T23:59:59.999Z",
+      });
+      const { series } = await response.json();
+
+      expect(series.map((s: { id: string }) => s.id)).toEqual(
+        teamIds.map(String)
+      );
+      expect(
+        series.every(
+          (s: { eliminatedAt?: string }) => s.eliminatedAt === undefined
+        )
+      ).toBe(true);
+      expect(mocks.findGames).toHaveBeenCalledTimes(1);
+    });
 
     it("intersects an explicit team selection with the qualifiers", async () => {
       const response = await loadPhaseGraph({
@@ -456,6 +485,30 @@ describe("score evolution API", () => {
           },
         ],
       });
+    });
+
+    it("marks unseeded teams eliminated at the final phase boundary", async () => {
+      config.regularPhase = config.regularPhases![0];
+      delete config.regularPhases;
+      config.finalPhase = {
+        id: "finals",
+        scoring: { type: "bracket-delta" },
+        scoreCarryOver: { num: 0, den: 1 },
+        stages: [],
+      };
+      mocks.findBracket.mockReturnValue(
+        selectedLean({ seedings: [{ seed: 1, teamId: teamIds[1] }] })
+      );
+
+      const response = await loadPhaseGraph({
+        phaseFilter: "both",
+        startDate: "",
+      });
+      const { series } = await response.json();
+
+      expect(
+        series.map((s: { eliminatedAt?: string }) => s.eliminatedAt ?? null)
+      ).toEqual(["2026-09-01", null, "2026-09-01", "2026-09-01"]);
     });
 
     it("uses bracket user seedings for an individual final phase", async () => {

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { basePath } from "../../utils/basePath";
 import ScoreBreakdownChart from "../ScoreBreakdownChart";
 import ScoreEvolutionChart from "../ScoreEvolutionChart";
-import type { Series } from "../ScoreEvolutionChart";
+import type { Series } from "../scoreEvolutionData";
 import type { PhaseFilter } from "./types";
 
 interface GraphsTabProps {
@@ -13,7 +13,6 @@ interface GraphsTabProps {
   phaseFilter: PhaseFilter;
   startDate: string | null;
   endDate: string | null;
-  eliminatedEntityIds?: string[];
 }
 
 export default function GraphsTab({
@@ -23,7 +22,6 @@ export default function GraphsTab({
   phaseFilter,
   startDate,
   endDate,
-  eliminatedEntityIds,
 }: GraphsTabProps) {
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -62,8 +60,6 @@ export default function GraphsTab({
   const [activeDay, setActiveDay] = useState<string | null>(null);
 
   const seriesData = data ?? [];
-  const chartEliminatedEntityIds =
-    phaseFilter === "both" ? eliminatedEntityIds : undefined;
 
   return (
     <div style={{ padding: "24px 0" }}>
@@ -71,7 +67,6 @@ export default function GraphsTab({
         series={seriesData}
         activeDay={activeDay}
         onActiveDayChange={setActiveDay}
-        eliminatedEntityIds={chartEliminatedEntityIds}
       />
       <ScoreEvolutionChart
         series={seriesData}
@@ -79,7 +74,6 @@ export default function GraphsTab({
         error={error ? error.message : null}
         activeDay={activeDay}
         onSliceClick={setActiveDay}
-        eliminatedEntityIds={chartEliminatedEntityIds}
       />
     </div>
   );

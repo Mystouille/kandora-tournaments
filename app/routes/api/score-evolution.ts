@@ -30,30 +30,18 @@ function getTeamMemberIds(team: Team, phase?: OrderedPhase): string[] {
   );
 }
 
-async function loadQualifiedPhaseIds(
-  league: League,
-  leagueType: LeagueTypeConfig,
-  phase: OrderedPhase,
-  teams: Team[]
-): Promise<Set<string>> {
-  if (phase.kind === "final") {
-    const bracket = await BracketModel.findOne({ league: league._id })
-      .select("seedings")
-      .lean<Bracket | null>();
-    return new Set(
-      (bracket?.seedings ?? []).map((seeding) =>
-        getSeedingParticipantId(seeding, leagueType.isTeamMode).toString()
-      )
-    );
-  }
+interface RankingGame {
+  startTime: Date;
+  phaseId?: string | null;
+  results: { userId: string; score: number }[];
+}
 
-  // Qualification must use complete league results, not the graph's date or
-  // participant filters, and includes qualifiers with no games in this phase.
+async function loadRankingGames(league: League): Promise<RankingGame[]> {
   const games = await GameModel.find({ league: league._id, isValid: true })
     .select("startTime phaseId results")
     .sort({ startTime: 1 })
     .lean<Game[]>();
-  const rankingGames = games.map((game) => ({
+  return games.map((game) => ({
     startTime: game.startTime,
     phaseId: game.phaseId,
     results: (game.results ?? []).map((result) => ({
@@ -61,6 +49,15 @@ async function loadQualifiedPhaseIds(
       score: result.score,
     })),
   }));
+}
+
+function computeQualifiedRegularPhaseIds(
+  league: League,
+  leagueType: LeagueTypeConfig,
+  phase: OrderedPhase,
+  teams: Team[],
+  rankingGames: RankingGame[]
+): Set<string> {
   const participants = leagueType.isTeamMode
     ? teams
     : [
@@ -82,6 +79,98 @@ async function loadQualifiedPhaseIds(
   return new Set(result.standings.map((standing) => standing.teamId));
 }
 
+async function loadFinalQualifiedPhaseIds(
+  league: League,
+  leagueType: LeagueTypeConfig
+): Promise<Set<string> | null> {
+  const bracket = await BracketModel.findOne({ league: league._id })
+    .select("seedings")
+    .lean<Bracket | null>();
+  if (!bracket) {
+    return null;
+  }
+  return new Set(
+    (bracket.seedings ?? []).map((seeding) =>
+      getSeedingParticipantId(seeding, leagueType.isTeamMode).toString()
+    )
+  );
+}
+
+async function loadQualifiedPhaseIds(
+  league: League,
+  leagueType: LeagueTypeConfig,
+  phase: OrderedPhase,
+  teams: Team[]
+): Promise<Set<string>> {
+  if (phase.kind === "final") {
+    return (
+      (await loadFinalQualifiedPhaseIds(league, leagueType)) ??
+      new Set<string>()
+    );
+  }
+
+  // Qualification must use complete league results, not the graph's date or
+  // participant filters, and includes qualifiers with no games in this phase.
+  const rankingGames = await loadRankingGames(league);
+  return computeQualifiedRegularPhaseIds(
+    league,
+    leagueType,
+    phase,
+    teams,
+    rankingGames
+  );
+}
+
+async function loadTeamEliminationDates(
+  league: League,
+  leagueType: LeagueTypeConfig,
+  teams: Team[]
+): Promise<Map<string, string>> {
+  const phases = resolveOrderedPhases(leagueType);
+  const remainingTeamIds = new Set(teams.map((team) => team._id.toString()));
+  const eliminationDates = new Map<string, string>();
+  let rankingGames: RankingGame[] | null = null;
+
+  for (let phaseIndex = 1; phaseIndex < phases.length; phaseIndex++) {
+    const cutoff = league.phaseCutoffTimes?.[phaseIndex - 1];
+    if (!cutoff) {
+      continue;
+    }
+
+    const phase = phases[phaseIndex];
+    let qualifiedIds: Set<string>;
+    if (phase.kind === "final") {
+      const finalQualifiedIds = await loadFinalQualifiedPhaseIds(
+        league,
+        leagueType
+      );
+      if (!finalQualifiedIds) {
+        continue;
+      }
+      qualifiedIds = finalQualifiedIds;
+    } else {
+      rankingGames ??= await loadRankingGames(league);
+      qualifiedIds = computeQualifiedRegularPhaseIds(
+        league,
+        leagueType,
+        phase,
+        teams,
+        rankingGames
+      );
+    }
+
+    const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
+    for (const teamId of [...remainingTeamIds]) {
+      if (!qualifiedIds.has(teamId)) {
+        eliminationDates.set(teamId, cutoffDay);
+        remainingTeamIds.delete(teamId);
+      }
+    }
+  }
+
+  return eliminationDates;
+}
+
 /**
  * GET /api/score-evolution
  *
@@ -95,9 +184,11 @@ async function loadQualifiedPhaseIds(
  *   startDate   – ISO date string (optional)
  *   endDate     – ISO date string (optional)
  *
- * Returns an array of series: { id, label, data: [{ x: "YYYY-MM-DD", y: number }] }
- * where y is the cumulative score at the end of each day. The caller supplies
- * the selected phase's date boundaries via startDate/endDate.
+ * Returns an array of series:
+ * { id, label, eliminatedAt?, data: [{ x: "YYYY-MM-DD", y: number }] }
+ * where y is the cumulative score at the end of each day and eliminatedAt is
+ * the first day after the team's last qualified phase. The caller supplies the
+ * selected phase's date boundaries via startDate/endDate.
  */
 export async function loader({ request }: Route.LoaderArgs) {
   try {
@@ -200,6 +291,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     let resolvedPlayerIds: string[] = [];
     // Map: teamId -> list of member IDs (for team aggregation)
     const teamMemberMap = new Map<string, string[]>();
+    let resolvedTeamsData: Team[] = [];
 
     // When nothing is selected, default to all teams in the selected leagues
     let effectiveTeamIds = teamIds;
@@ -234,15 +326,15 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     if (useTeamMode) {
       // Fetch teams and get their member lists
-      const teamsData = await Team.find({
+      resolvedTeamsData = await Team.find({
         _id: {
           $in: effectiveTeamIds.map((id) => new mongoose.Types.ObjectId(id)),
         },
       })
-        .select("_id displayName roster finalsRoster")
+        .select("_id displayName leagueId roster finalsRoster")
         .lean<Team[]>();
 
-      for (const team of teamsData) {
+      for (const team of resolvedTeamsData) {
         const memberIds = getTeamMemberIds(team, selectedPhase);
         teamMemberMap.set(team._id.toString(), memberIds);
         resolvedPlayerIds.push(...memberIds);
@@ -283,6 +375,36 @@ export async function loader({ request }: Route.LoaderArgs) {
       );
       if (resolvedPlayerIds.length === 0) {
         return Response.json({ series: [] });
+      }
+    }
+
+    const teamEliminationDates = new Map<string, string>();
+    if (useTeamMode && phaseFilter === "both" && resolvedTeamsData.length > 0) {
+      const allLeagueTeams = await Team.find({
+        leagueId: {
+          $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)),
+        },
+      })
+        .select("_id leagueId roster finalsRoster")
+        .lean<Team[]>();
+
+      for (const league of leaguesDocs) {
+        const leagueType = league.leagueTypeConfig;
+        if (!leagueType?.isTeamMode) {
+          continue;
+        }
+        const leagueId = league._id.toString();
+        const leagueTeams = allLeagueTeams.filter(
+          (team) => team.leagueId.toString() === leagueId
+        );
+        const leagueEliminationDates = await loadTeamEliminationDates(
+          league,
+          leagueType,
+          leagueTeams
+        );
+        for (const [teamId, eliminatedAt] of leagueEliminationDates) {
+          teamEliminationDates.set(teamId, eliminatedAt);
+        }
       }
     }
 
@@ -366,20 +488,27 @@ export async function loader({ request }: Route.LoaderArgs) {
         allDays.add(e.day);
       }
     }
+    if (allDays.size > 0 && teamEliminationDates.size > 0) {
+      const actualDays = [...allDays].sort();
+      const latestActualDay = actualDays[actualDays.length - 1];
+      const startDay = startDate?.slice(0, 10) ?? null;
+      const endDay = endDate?.slice(0, 10) ?? null;
+      for (const eliminatedAt of teamEliminationDates.values()) {
+        if (
+          eliminatedAt <= latestActualDay &&
+          (!startDay || eliminatedAt >= startDay) &&
+          (!endDay || eliminatedAt <= endDay)
+        ) {
+          allDays.add(eliminatedAt);
+        }
+      }
+    }
     const sortedDays = [...allDays].sort();
 
     // Build cumulative series
     if (useTeamMode) {
       // One series per team: sum of all members' cumulative scores
-      const teamsData = await Team.find({
-        _id: {
-          $in: effectiveTeamIds.map((id) => new mongoose.Types.ObjectId(id)),
-        },
-      })
-        .select("_id displayName roster finalsRoster")
-        .lean<Team[]>();
-
-      const series = teamsData.map((team) => {
+      const series = resolvedTeamsData.map((team) => {
         const memberIds = getTeamMemberIds(team, selectedPhase);
 
         // For each day, compute cumulative score of all members combined
@@ -403,10 +532,12 @@ export async function loader({ request }: Route.LoaderArgs) {
           dataPoints.push({ x: day, y: Math.round(teamDayTotal * 10) / 10 });
         }
 
+        const eliminatedAt = teamEliminationDates.get(team._id.toString());
         return {
           id: team._id.toString(),
           label: team.displayName,
           data: dataPoints,
+          ...(eliminatedAt ? { eliminatedAt } : {}),
         };
       });
 

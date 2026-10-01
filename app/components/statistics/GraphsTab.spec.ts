@@ -1,7 +1,7 @@
 import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Series } from "../ScoreEvolutionChart";
+import type { Series } from "../scoreEvolutionData";
 
 const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
@@ -27,7 +27,6 @@ function renderGraph(
       phaseFilter: "both",
       startDate: null,
       endDate: null,
-      eliminatedEntityIds: ["eliminated-team"],
       ...overrides,
     })
   );
@@ -73,19 +72,24 @@ describe("GraphsTab phase selection", () => {
     );
   });
 
-  it.each(["both", "phase0", "phase1"] as const)(
-    "only applies current elimination styling to all-phases graphs (%s)",
-    (phaseFilter) => {
-      renderGraph({ phaseFilter });
+  it("passes phase-aware elimination metadata through to both charts", () => {
+    const series: Series[] = [
+      {
+        id: "eliminated-team",
+        label: "Eliminated Team",
+        eliminatedAt: "2026-09-01",
+        data: [{ x: "2026-08-31", y: 42 }],
+      },
+    ];
+    mocks.useQuery.mockReturnValue({
+      data: series,
+      isLoading: false,
+      error: null,
+    });
 
-      const expectedIds =
-        phaseFilter === "both" ? ["eliminated-team"] : undefined;
-      expect(mocks.breakdown.mock.calls[0][0].eliminatedEntityIds).toEqual(
-        expectedIds
-      );
-      expect(mocks.evolution.mock.calls[0][0].eliminatedEntityIds).toEqual(
-        expectedIds
-      );
-    }
-  );
+    renderGraph();
+
+    expect(mocks.breakdown.mock.calls[0][0].series).toEqual(series);
+    expect(mocks.evolution.mock.calls[0][0].series).toEqual(series);
+  });
 });

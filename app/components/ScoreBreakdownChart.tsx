@@ -5,7 +5,7 @@ import { CaretRightOutlined, PauseOutlined } from "@ant-design/icons";
 import { useLocale } from "../contexts/LocaleContext";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { useHighlight } from "../contexts/HighlightContext";
-import type { Series } from "./ScoreEvolutionChart";
+import { isEliminatedOnDay, type Series } from "./scoreEvolutionData";
 
 const { Text } = Typography;
 
@@ -26,7 +26,6 @@ interface ScoreBreakdownChartProps {
   series: Series[];
   activeDay?: string | null;
   onActiveDayChange?: (day: string | null) => void;
-  eliminatedEntityIds?: string[];
 }
 
 interface BarData {
@@ -46,7 +45,6 @@ export default function ScoreBreakdownChart({
   series,
   activeDay,
   onActiveDayChange,
-  eliminatedEntityIds,
 }: ScoreBreakdownChartProps) {
   const { t } = useLocale();
   const { isDark } = useAppTheme();
@@ -62,28 +60,26 @@ export default function ScoreBreakdownChart({
     [series]
   );
 
-  // Build a set of eliminated labels
-  const eliminatedLabels = useMemo(() => {
-    if (!eliminatedEntityIds || eliminatedEntityIds.length === 0) {
-      return new Set<string>();
-    }
-    const idSet = new Set(eliminatedEntityIds);
-    const labels = new Set<string>();
-    for (const s of series) {
-      if (idSet.has(s.id)) {
-        labels.add(s.label);
-      }
-    }
-    return labels;
-  }, [series, eliminatedEntityIds]);
+  const eliminationDatesByLabel = useMemo(
+    () =>
+      new Map(
+        series
+          .filter(
+            (item): item is Series & { eliminatedAt: string } =>
+              item.eliminatedAt !== undefined
+          )
+          .map((item) => [item.label, item.eliminatedAt])
+      ),
+    [series]
+  );
 
-  // Resolve color for a series by index, graying out eliminated ones
+  // Resolve color for a series by index and its status on the selected day.
   const resolveColor = useCallback(
-    (label: string, index: number) =>
-      eliminatedLabels.has(label)
+    (label: string, index: number, day: string) =>
+      isEliminatedOnDay(eliminationDatesByLabel.get(label), day)
         ? "#999"
         : CATEGORY10[index % CATEGORY10.length],
-    [eliminatedLabels]
+    [eliminationDatesByLabel]
   );
 
   // Collect all unique sorted days
@@ -118,7 +114,7 @@ export default function ScoreBreakdownChart({
       return {
         seriesId: s.id as string,
         value: last ? last.y : 0,
-        color: resolveColor(s.id as string, i),
+        color: resolveColor(s.id as string, i, latestDay),
       };
     });
     return { date: latestDay, points };
@@ -142,7 +138,7 @@ export default function ScoreBreakdownChart({
         return {
           seriesId: s.id as string,
           value: val,
-          color: resolveColor(s.id as string, i),
+          color: resolveColor(s.id as string, i, day),
         };
       });
       return { date: day, points };
