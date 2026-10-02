@@ -27,6 +27,11 @@ import {
   computeNonTeamRankingData,
 } from "~/services/league-strategies/regularRankingStrategies";
 import { computeMultiPhaseStandings } from "~/services/league-strategies/multiPhaseStrategies";
+import { loadAllPhaseScores } from "~/services/statisticsPhaseScores.server";
+import {
+  getPhaseTeamMemberIds,
+  totalTimelineScore,
+} from "~/services/league-strategies/phaseScoreTimeline";
 
 import { getLeagueApiCache } from "~/services/leagueApiCache.server";
 
@@ -72,7 +77,7 @@ interface PlayerStanding {
  *   startDate   – ISO date string (optional)
  *   endDate     – ISO date string (optional)
  *
- * Returns { standings: PlayerStanding[] }
+ * Returns { standings: PlayerStanding[] }, including phase carry-over in all-phase totals.
  * In team mode, each team entry also includes a `members` array of PlayerStanding[].
  */
 export async function loader({ request }: Route.LoaderArgs) {
@@ -181,14 +186,14 @@ export async function loader({ request }: Route.LoaderArgs) {
           $in: effectiveTeamIds.map((id) => new mongoose.Types.ObjectId(id)),
         },
       })
-        .select("_id displayName roster pictures")
+        .select("_id displayName roster finalsRoster pictures")
         .lean<Team[]>();
 
       for (const team of teamsData) {
-        const memberIds = [
-          ...(team.roster.members ?? []).map((m) => m.toString()),
-          ...(team.roster.substitutes ?? []).map((m) => m.toString()),
-        ];
+        const memberIds = getPhaseTeamMemberIds(
+          team,
+          phaseIndex === null ? undefined : "regular"
+        );
         teamMemberMap.set(team._id.toString(), memberIds);
         resolvedPlayerIds.push(...memberIds);
       }
@@ -205,15 +210,15 @@ export async function loader({ request }: Route.LoaderArgs) {
             $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)),
           },
         })
-          .select("_id roster")
+          .select("_id roster finalsRoster")
           .lean<Team[]>();
         for (const team of allTeams) {
-          for (const memberId of team.roster.members ?? []) {
-            resolvedPlayerIds.push(memberId.toString());
-          }
-          for (const memberId of team.roster.substitutes ?? []) {
-            resolvedPlayerIds.push(memberId.toString());
-          }
+          resolvedPlayerIds.push(
+            ...getPhaseTeamMemberIds(
+              team,
+              phaseIndex === null ? undefined : "regular"
+            )
+          );
         }
         const gamePlayerRows = await Game.aggregate([
           {
@@ -347,10 +352,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       .select("_id gameId league results")
       .lean<Game[]>();
 
-    if (
-      matchingGames.length === 0 &&
-      selectedPhaseParticipantIds === null
-    ) {
+    if (matchingGames.length === 0 && selectedPhaseParticipantIds === null) {
       const result = { standings: [] };
       setCache(cacheKey, result);
       return Response.json(result);
@@ -545,11 +547,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
 
     // ---------- Build player standings ----------
+    const allPhaseScores =
+      phaseFilter === "both"
+        ? await loadAllPhaseScores(leagues, startDate, endDate)
+        : null;
     const buildPlayerStanding = (pid: string): PlayerStanding => {
       const stats = playerStats.get(pid);
       const user = userMap.get(pid);
-      const totalScore =
-        (stats?.totalScore ?? 0) + (phaseScoreOffsets.get(pid) ?? 0);
+      const totalScore = allPhaseScores
+        ? totalTimelineScore(allPhaseScores.players.get(pid))
+        : (stats?.totalScore ?? 0) + (phaseScoreOffsets.get(pid) ?? 0);
       const rawPoints = stats?.rawPoints ?? 0;
       const bonusPoints = Math.round((totalScore - rawPoints) * 10) / 10;
       const gameCount = stats?.gameCount ?? 0;
@@ -592,14 +599,14 @@ export async function loader({ request }: Route.LoaderArgs) {
           $in: effectiveTeamIds.map((id) => new mongoose.Types.ObjectId(id)),
         },
       })
-        .select("_id displayName roster pictures")
+        .select("_id displayName roster finalsRoster pictures")
         .lean<Team[]>();
 
       const standings = teamsData.map((team) => {
-        const memberIds = [
-          ...(team.roster.members ?? []).map((m) => m.toString()),
-          ...(team.roster.substitutes ?? []).map((m) => m.toString()),
-        ];
+        const memberIds = getPhaseTeamMemberIds(
+          team,
+          phaseIndex === null ? undefined : "regular"
+        );
         const members = memberIds
           .map(buildPlayerStanding)
           .filter((m: PlayerStanding) => m.gameCount > 0)
@@ -615,11 +622,13 @@ export async function loader({ request }: Route.LoaderArgs) {
           phaseScoreOffsets.get(team._id.toString()) ?? 0;
         const totalScore = useFactionMode
           ? (bestMember?.totalScore ?? 0)
-          : phaseScoreOffset +
-            members.reduce(
-              (sum: number, m: PlayerStanding) => sum + m.totalScore,
-              0
-            );
+          : allPhaseScores
+            ? totalTimelineScore(allPhaseScores.teams.get(team._id.toString()))
+            : phaseScoreOffset +
+              members.reduce(
+                (sum: number, m: PlayerStanding) => sum + m.totalScore,
+                0
+              );
         const rawPoints = useFactionMode
           ? (bestMember?.rawPoints ?? 0)
           : members.reduce(

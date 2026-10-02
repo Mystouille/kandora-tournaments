@@ -94,6 +94,56 @@ async function expectHistogramScore(page: Page, value: number) {
   ).toBeVisible();
 }
 
+test("all-phases charts preserve history and display the carry-over step", async ({
+  page,
+}) => {
+  const carryOverDays = ["2026-08-15", "2026-09-01", "2026-09-15"];
+  await page.route("**/api/score-evolution?**", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("phaseFilter")).toBe(
+      "both"
+    );
+    return route.fulfill({
+      json: {
+        series: [
+          {
+            id: "team-1",
+            label: "Team One",
+            data: carryOverDays.map((x, i) => ({ x, y: [60, 30, 90][i] })),
+          },
+          {
+            id: "team-2",
+            label: "Team Two",
+            data: carryOverDays.map((x, i) => ({ x, y: [10, 5, 5][i] })),
+          },
+        ],
+      },
+    });
+  });
+  await page.reload();
+  await expect(
+    page.getByText(`Score Breakdown \u2014 ${carryOverDays[2]}`, {
+      exact: true,
+    })
+  ).toBeVisible();
+  await expectHistogramScore(page, 90);
+  await page.getByRole("slider").focus();
+  await page.getByRole("slider").press("Home");
+  await expect(
+    page.getByText(`Score Breakdown \u2014 ${carryOverDays[0]}`, {
+      exact: true,
+    })
+  ).toBeVisible();
+  await expectHistogramScore(page, 60);
+  await page.getByRole("slider").focus();
+  await page.getByRole("slider").press("ArrowRight");
+  await expect(
+    page.getByText(`Score Breakdown \u2014 ${carryOverDays[1]}`, {
+      exact: true,
+    })
+  ).toBeVisible();
+  await expectHistogramScore(page, 30);
+});
+
 for (const [graphIndex, graphName] of ["ranking", "score"].entries()) {
   test(`${graphName} slices update the histogram after slider use`, async ({
     page,

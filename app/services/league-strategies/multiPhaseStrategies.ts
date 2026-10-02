@@ -97,22 +97,20 @@ export function computeMultiPhaseStandings(
     const phaseDef = phases[p];
     const phaseGames = phaseBuckets[p];
 
-    // Filter games to only include advancing teams (if narrowed).
-    const filteredGames: RegularGameInput[] =
+    // Exclude non-qualifiers from totals without changing the table's placements.
+    const phaseUserToTeamMap =
       advancingTeamIds != null
-        ? phaseGames.map((g) => ({
-            ...g,
-            results: g.results.filter((r) => {
-              const teamId = userToTeamMap.get(r.userId);
-              return teamId != null && advancingTeamIds!.has(teamId);
-            }),
-          }))
-        : phaseGames;
+        ? new Map(
+            [...userToTeamMap].filter(([, teamId]) =>
+              advancingTeamIds?.has(teamId)
+            )
+          )
+        : userToTeamMap;
 
     const { sortedTeams } = computeTeamBasedRankingData(
-      filteredGames,
+      phaseGames,
       rules,
-      userToTeamMap,
+      phaseUserToTeamMap,
       { enableCap: false }
     );
 

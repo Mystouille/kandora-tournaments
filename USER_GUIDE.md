@@ -360,6 +360,16 @@ that applies to every tab, and a set of **tabs** below it.
 Most tables and cards are sortable, and the **pinned** entity stays highlighted so
 you can track one team or player across every view.
 
+With **All phases**, Listing totals and Graphs apply each configured score
+carry-over at its phase boundary instead of adding every phase at full value.
+Earlier graph points retain their original scores; the boundary appears even
+if no game was played that day. Eliminated participants remain visible at
+their last qualifying score. Team carry-over is rounded on the team total,
+so it can differ slightly from the sum of individually rounded member scores.
+Game counts, placements, and other played-game statistics are not scaled.
+Date filters still limit the games contributing to scores; qualification is
+calculated from the complete league history, not the selected players or dates.
+
 Configured team colors appear as left-to-right, opaque-to-transparent
 backgrounds on Listing name cells (including expanded members), complete
 participant rows in Rankings, More Rankings and Games, team names in the

@@ -349,7 +349,179 @@ describe("score evolution API", () => {
           "2026-09-15",
         ])
       );
-      expect(mocks.findGames).toHaveBeenCalledTimes(2);
+      expect(
+        series.map((s: { data: { y: number }[] }) =>
+          s.data.map((point) => point.y)
+        )
+      ).toEqual([
+        [60, 30, 90],
+        [10, 5, 5],
+        [-20, -20, -20],
+        [-50, -50, -50],
+      ]);
+    });
+
+    it("applies all-phases retention to individuals without hiding eliminated players", async () => {
+      config.isTeamMode = false;
+      teams = [];
+      const response = await loadPhaseGraph({
+        entityType: "player",
+        phaseFilter: "both",
+        startDate: "",
+      });
+      expect(response.status).toBe(200);
+      const { series } = await response.json();
+      expect(
+        series.map((entry: { data: { y: number }[] }) =>
+          entry.data.map((point) => point.y)
+        )
+      ).toEqual([
+        [60, 30, 90],
+        [10, 5, 5],
+        [-20, -20, -20],
+        [-50, -50, -50],
+      ]);
+    });
+
+    it("keeps qualification independent of selected teams", async () => {
+      const response = await loadPhaseGraph({
+        phaseFilter: "both",
+        startDate: "",
+        teamIds: String(teamIds[1]),
+      });
+      expect(response.status).toBe(200);
+      const { series } = await response.json();
+      expect(series).toHaveLength(1);
+      expect(series[0].data).toEqual([
+        { x: "2026-08-15", y: 10 },
+        { x: "2026-09-01", y: 5 },
+      ]);
+    });
+
+    it("does not apply a boundary after the requested end date", async () => {
+      const response = await loadPhaseGraph({
+        phaseFilter: "both",
+        startDate: "",
+        endDate: "2026-08-31T23:59:59.999Z",
+      });
+      expect(response.status).toBe(200);
+      const { series } = await response.json();
+      expect(series[0].data).toEqual([{ x: "2026-08-15", y: 60 }]);
+    });
+
+    it("shows the carry-over boundary even before the next phase has games", async () => {
+      games.splice(1);
+      const response = await loadPhaseGraph({
+        phaseFilter: "both",
+        startDate: "",
+        endDate: phaseTwoStart,
+      });
+      expect(response.status).toBe(200);
+      const { series } = await response.json();
+      expect(series[0].data).toEqual([
+        { x: "2026-08-15", y: 60 },
+        { x: "2026-09-01", y: 30 },
+      ]);
+    });
+
+    it("combines each league's adjusted history without applying its fraction to another league", async () => {
+      const secondLeagueId = new mongoose.Types.ObjectId(
+        "68dd947b149082099405b7ff"
+      );
+      const secondConfig: LeagueTypeConfig = {
+        ...config,
+        isTeamMode: false,
+        regularPhases: [
+          {
+            id: "regular",
+            scoring: { type: "cumulative" },
+            progression: {
+              advancingCount: 4,
+              scoreRetention: { num: 1, den: 4 },
+            },
+          },
+          { id: "finals", scoring: { type: "cumulative" } },
+        ],
+      };
+      mocks.findLeagues.mockReturnValue(
+        selectedLean([
+          {
+            _id: leagueId,
+            rulesConfig: { gameRules: "MLEAGUE", isTeamMode: true },
+            phaseCutoffTimes: [new Date(phaseTwoStart)],
+            leagueTypeConfig: config,
+          },
+          {
+            _id: secondLeagueId,
+            rulesConfig: { gameRules: "MLEAGUE", isTeamMode: false },
+            phaseCutoffTimes: [new Date("2026-09-05T00:00:00Z")],
+            leagueTypeConfig: secondConfig,
+          },
+        ])
+      );
+      games.push(
+        { ...makeGame("2026-08-15T20:00:00Z"), league: secondLeagueId },
+        { ...makeGame("2026-09-15T20:00:00Z"), league: secondLeagueId }
+      );
+      const response = await loadPhaseGraph({
+        leagueIds: `${leagueId},${secondLeagueId}`,
+        phaseFilter: "both",
+        startDate: "",
+        entityType: "player",
+        playerIds: String(members[0]),
+      });
+      expect(response.status).toBe(200);
+      const { series } = await response.json();
+      expect(series[0].data).toEqual([
+        { x: "2026-08-15", y: 120 },
+        { x: "2026-09-01", y: 90 },
+        { x: "2026-09-05", y: 45 },
+        { x: "2026-09-15", y: 165 },
+      ]);
+    });
+
+    it.each([0, 1, 2])(
+      "applies %i/2 carry-over into seeded finals in all phases",
+      async (numerator) => {
+        config.regularPhase = config.regularPhases![0];
+        delete config.regularPhases;
+        config.finalPhase = {
+          id: "finals",
+          scoring: { type: "bracket-delta" },
+          scoreCarryOver: { num: numerator, den: 2 },
+          stages: [],
+        };
+        mocks.findBracket.mockReturnValue(
+          selectedLean({
+            seedings: teamIds
+              .slice(0, 2)
+              .map((teamId, index) => ({ seed: index + 1, teamId })),
+          })
+        );
+        const response = await loadPhaseGraph({
+          phaseFilter: "both",
+          startDate: "",
+        });
+        expect(response.status).toBe(200);
+        const { series } = await response.json();
+        expect(series[0].data).toEqual([
+          { x: "2026-08-15", y: 60 },
+          { x: "2026-09-01", y: numerator * 30 },
+          { x: "2026-09-15", y: numerator * 30 + 60 },
+        ]);
+      }
+    );
+
+    it("does not include invalid game scores in carry-over or new-phase totals", async () => {
+      games.push({ ...makeGame("2026-08-16T20:00:00Z"), isValid: false });
+      games.push({ ...makeGame("2026-09-16T20:00:00Z"), isValid: false });
+      const response = await loadPhaseGraph({
+        phaseFilter: "both",
+        startDate: "",
+      });
+      expect(response.status).toBe(200);
+      const { series } = await response.json();
+      expect(series[0].data.at(-1)).toEqual({ x: "2026-09-15", y: 90 });
     });
 
     it("keeps all teams without elimination metadata in one phase", async () => {

@@ -50,6 +50,7 @@ vi.mock("~/services/leagueApiCache.server", () => ({
 }));
 
 import { loader } from "./player-standings";
+import { loader as scoreEvolutionLoader } from "./score-evolution";
 
 const leagueId = new mongoose.Types.ObjectId("68dd947b149082099405b7e1");
 const phaseTwoStart = "2026-09-01T00:00:00.000Z";
@@ -92,19 +93,17 @@ describe("player standings API phase carry-over", () => {
         { id: "finals", scoring: { type: "cumulative" } },
       ],
     };
-    const teams: Pick<
-      Team,
-      "_id" | "displayName" | "leagueId" | "roster"
-    >[] = teamIds.map((_id, index) => ({
-      _id,
-      displayName: `Team ${index + 1}`,
-      leagueId,
-      roster: {
-        captain: memberIds[index],
-        members: [memberIds[index]],
-        substitutes: [],
-      },
-    }));
+    const teams: Pick<Team, "_id" | "displayName" | "leagueId" | "roster">[] =
+      teamIds.map((_id, index) => ({
+        _id,
+        displayName: `Team ${index + 1}`,
+        leagueId,
+        roster: {
+          captain: memberIds[index],
+          members: [memberIds[index]],
+          substitutes: [],
+        },
+      }));
     const phaseOneGame = {
       _id: new mongoose.Types.ObjectId("000000000000000000000101"),
       gameId: "phase-one",
@@ -118,12 +117,7 @@ describe("player standings API phase carry-over", () => {
         place: index + 1,
       })),
     };
-    const phaseTwoPlayers = [
-      memberIds[0],
-      memberIds[2],
-      memberIds[3],
-      guestId,
-    ];
+    const phaseTwoPlayers = [memberIds[0], memberIds[2], memberIds[3], guestId];
     const phaseTwoGame = {
       _id: new mongoose.Types.ObjectId("000000000000000000000102"),
       gameId: "phase-two",
@@ -187,31 +181,25 @@ describe("player standings API phase carry-over", () => {
     mocks.findGameRecords.mockImplementation(
       (filter: { gameId: { $in: string[] } }) =>
         selectedLean(
-          filter.gameId.$in.includes(phaseTwoGame.gameId)
-            ? [
-                {
-                  gameId: phaseTwoGame.gameId,
-                  byUserData: phaseTwoGame.results.map((result, index) => ({
-                    userDbId: result.userId,
-                    teamDbId:
-                      teams.find((team) =>
-                        team.roster.members.some((id) =>
-                          id.equals(result.userId)
-                        )
-                      )?._id ?? null,
-                    teamName:
-                      teams.find((team) =>
-                        team.roster.members.some((id) =>
-                          id.equals(result.userId)
-                        )
-                      )?.displayName ?? null,
-                    score: result.score,
-                    place: index + 1,
-                    roundEvents: [],
-                  })),
-                },
-              ]
-            : []
+          games
+            .filter((game) => filter.gameId.$in.includes(game.gameId))
+            .map((game) => ({
+              gameId: game.gameId,
+              byUserData: game.results.map((result, index) => ({
+                userDbId: result.userId,
+                teamDbId:
+                  teams.find((team) =>
+                    team.roster.members.some((id) => id.equals(result.userId))
+                  )?._id ?? null,
+                teamName:
+                  teams.find((team) =>
+                    team.roster.members.some((id) => id.equals(result.userId))
+                  )?.displayName ?? null,
+                score: result.score,
+                place: index + 1,
+                roundEvents: [],
+              })),
+            }))
         )
     );
     mocks.findUsers.mockReturnValue(
@@ -259,5 +247,90 @@ describe("player standings API phase carry-over", () => {
       { label: "Team 1", totalScore: 90, gameCount: 1 },
       { label: "Team 2", totalScore: 5, gameCount: 0 },
     ]);
+  });
+
+  it("applies carry-over in all-phases listings and preserves played-game statistics", async () => {
+    const searchParams = new URLSearchParams({
+      leagueIds: leagueId.toString(),
+      entityType: "team",
+      phaseFilter: "both",
+    });
+    const response = await loader({
+      request: new Request(
+        `http://localhost/api/player-standings?${searchParams}`
+      ),
+      params: {},
+      context: {},
+      unstable_pattern: "/api/player-standings",
+    });
+    expect(response.status).toBe(200);
+    const { standings } = await response.json();
+    expect(
+      standings.map(
+        (standing: {
+          label: string;
+          totalScore: number;
+          gameCount: number;
+          rawPoints: number;
+          bonusPoints: number;
+        }) => ({
+          label: standing.label,
+          totalScore: standing.totalScore,
+          gameCount: standing.gameCount,
+          balanced:
+            Math.abs(
+              standing.rawPoints + standing.bonusPoints - standing.totalScore
+            ) < 1e-9,
+        })
+      )
+    ).toEqual([
+      { label: "Team 1", totalScore: 90, gameCount: 2, balanced: true },
+      { label: "Team 2", totalScore: 5, gameCount: 1, balanced: true },
+      { label: "Team 3", totalScore: -20, gameCount: 2, balanced: true },
+      { label: "Team 4", totalScore: -50, gameCount: 2, balanced: true },
+    ]);
+    const graphResponse = await scoreEvolutionLoader({
+      request: new Request(
+        `http://localhost/api/score-evolution?${searchParams}`
+      ),
+      params: {},
+      context: {},
+      unstable_pattern: "/api/score-evolution",
+    });
+    expect(graphResponse.status).toBe(200);
+    const { series } = await graphResponse.json();
+    expect(
+      series.map((entry: { id: string; data: { y: number }[] }) => ({
+        id: entry.id,
+        score: entry.data.at(-1)?.y,
+      }))
+    ).toEqual(
+      standings.map((entry: { id: string; totalScore: number }) => ({
+        id: entry.id,
+        score: entry.totalScore,
+      }))
+    );
+  });
+
+  it("uses the same carry-over in the individual listing", async () => {
+    const searchParams = new URLSearchParams({
+      leagueIds: leagueId.toString(),
+      entityType: "player",
+      entityIds: memberIds.map(String).join(","),
+      phaseFilter: "both",
+    });
+    const response = await loader({
+      request: new Request(
+        `http://localhost/api/player-standings?${searchParams}`
+      ),
+      params: {},
+      context: {},
+      unstable_pattern: "/api/player-standings",
+    });
+    expect(response.status).toBe(200);
+    const { standings } = await response.json();
+    expect(
+      standings.map((entry: { totalScore: number }) => entry.totalScore)
+    ).toEqual([90, 5, -20, -50]);
   });
 });
