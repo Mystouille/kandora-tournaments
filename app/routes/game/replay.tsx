@@ -7,6 +7,7 @@ import {
   useSearchParams,
 } from "react-router";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
+import type { FocusedDiscardDrawingFrame } from "~/game/client/pixi/geometry/reviewDrawingGeometry";
 import {
   applyReplayEvent,
   initialView,
@@ -29,6 +30,7 @@ import {
   base64ToBytes,
   decodeDrawing,
   encodeDrawing,
+  ReviewDrawingError,
   reviewerColor,
   smoothDrawingForDisplay,
   type Drawing,
@@ -552,6 +554,12 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     w: number;
     h: number;
   } | null>(null);
+  const [drawingFrame, setDrawingFrame] =
+    useState<FocusedDiscardDrawingFrame | null>(null);
+  const [drawingInputError, setDrawingInputError] = useState<{
+    contextKey: string;
+    text: string;
+  } | null>(null);
   // Global mouseup/touchend listener: while the user presses the
   // comment stack the annotation is hidden, but the moment they
   // release the mouse *anywhere* on the page we show it again.
@@ -639,6 +647,24 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     ? (localEditBaselines[index] ?? null)
     : (currentServerEdit?.updatedAt ?? null);
   const handleDraftChange = (next: ReviewDraft): void => {
+    if (next.strokes !== draft.strokes) {
+      try {
+        encodeDrawing({ strokes: next.strokes });
+      } catch (error) {
+        if (!(error instanceof ReviewDrawingError)) {
+          throw error;
+        }
+        setDrawingInputError({
+          contextKey: `${index}:${focusSeat}`,
+          text:
+            error.code === "drawing-too-large"
+              ? t.review.cartridge.drawingTooLarge
+              : t.review.cartridge.drawingUnavailable,
+        });
+        return;
+      }
+    }
+    setDrawingInputError(null);
     if (next.mode === null) {
       setDraftDrawingTouched(false);
       setDraftBaseUpdatedAt(null);
@@ -907,7 +933,9 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       if (drawingBase64) {
         try {
           strokes = decodeDrawing(base64ToBytes(drawingBase64)).strokes;
-        } catch {
+        } catch (error) {
+          console.error("Failed to restore review drawing", error);
+          message.error(t.review.cartridge.drawingUnavailable);
           strokes = [];
         }
       }
@@ -1024,23 +1052,32 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     }
     return [...authorsByIdx.keys()].sort((a, b) => a - b);
   }, [review, localEdits, currentUserId]);
-  // Decode the saved drawing once per (review,index) pair. Legacy v1
-  // drawings are smoothed on the way out to round off their coarse
-  // quantization grid; dense high-precision drawings pass through
-  // `smoothDrawingForDisplay` untouched.
-  const savedDrawing = useMemo<Drawing | null>(() => {
-    if (!currentUserEdit?.drawingBase64) {
-      return null;
+  const decodedDrawings = useMemo(() => {
+    const layers: Array<{ author: string; color: string; strokes: Stroke[] }> =
+      [];
+    const failedAuthors: string[] = [];
+    for (const edit of editsAtIndex) {
+      if (!edit.drawingBase64) {
+        continue;
+      }
+      try {
+        const drawing = smoothDrawingForDisplay(
+          decodeDrawing(base64ToBytes(edit.drawingBase64))
+        );
+        layers.push({
+          author: edit.author,
+          color: reviewerColor(edit.colorIndex),
+          strokes: drawing.strokes,
+        });
+      } catch {
+        failedAuthors.push(edit.author);
+      }
     }
-    try {
-      const decoded = decodeDrawing(
-        base64ToBytes(currentUserEdit.drawingBase64)
-      );
-      return smoothDrawingForDisplay(decoded);
-    } catch {
-      return null;
-    }
-  }, [currentUserEdit]);
+    return { layers, failedAuthors };
+  }, [editsAtIndex]);
+  const savedDrawing =
+    decodedDrawings.layers.find((layer) => layer.author === currentUserId) ??
+    null;
   // Strokes to render in the overlay: while drawing, show the
   // user's in-progress strokes; otherwise show the saved drawing
   // \u2014 but only when the focused seat matches the seat the
@@ -1060,34 +1097,15 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
   // Read-only drawings authored by *other* reviewers at this event,
   // each rendered in that reviewer's color. Hidden (like the user's
   // own) when the focused seat differs from the review's locked seat.
-  const otherAuthorDrawings = useMemo<
-    Array<{ author: string; color: string; strokes: Stroke[] }>
-  >(() => {
-    if (seatMismatch) {
-      return [];
-    }
-    const out: Array<{ author: string; color: string; strokes: Stroke[] }> = [];
-    for (const e of editsAtIndex) {
-      if (e.author === currentUserId || !e.drawingBase64) {
-        continue;
-      }
-      try {
-        const strokes = smoothDrawingForDisplay(
-          decodeDrawing(base64ToBytes(e.drawingBase64))
-        ).strokes;
-        if (strokes.length > 0) {
-          out.push({
-            author: e.author,
-            color: reviewerColor(e.colorIndex),
-            strokes,
-          });
-        }
-      } catch {
-        /* skip undecodable drawing */
-      }
-    }
-    return out;
-  }, [editsAtIndex, currentUserId, seatMismatch]);
+  const otherAuthorDrawings = seatMismatch
+    ? []
+    : decodedDrawings.layers.filter((layer) => layer.author !== currentUserId);
+  const drawingErrorText =
+    drawingInputError?.contextKey === `${index}:${focusSeat}`
+      ? drawingInputError.text
+      : !seatMismatch && decodedDrawings.failedAuthors.length > 0
+        ? t.review.cartridge.drawingUnavailable
+        : null;
 
   /**
    * Lazily create the review document on the first publish. We do
@@ -1545,6 +1563,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         renderer.setBottomHandBoundsListener((rect) => {
           setBottomHandBounds(rect);
         });
+        renderer.setFocusedDiscardDrawingListener(setDrawingFrame);
         // Replay playback should show the win-info panel fully
         // revealed on every seek — the staged per-yaku reveal is
         // only meaningful in live play, where the panel appears
@@ -1598,6 +1617,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     return () => {
       cancelled = true;
       if (rendererRef.current) {
+        rendererRef.current.setFocusedDiscardDrawingListener(null);
         rendererRef.current.destroy();
         rendererRef.current = null;
       }
@@ -2209,6 +2229,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             strokes={d.strokes}
             drawing={false}
             color={d.color}
+            frame={drawingFrame}
             onStrokesChange={() => {}}
           />
         ))}
@@ -2216,10 +2237,20 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           strokes={myOverlayStrokes}
           drawing={draft.mode === "pen"}
           color={myColor}
+          frame={drawingFrame}
+          contextKey={`${index}:${focusSeat}`}
           onStrokesChange={(next) => {
             handleDraftChange({ ...draft, strokes: next });
           }}
         />
+        {drawingErrorText && (
+          <div
+            role="alert"
+            className="absolute top-12 left-2 z-50 rounded bg-red-950 px-3 py-2 text-red-100"
+          >
+            {drawingErrorText}
+          </div>
+        )}
         {/* Saved-text bubbles: one stacked bubble per reviewer who
             left a text note at this event, each headed by the
             reviewer's name in bold in their assigned color. New
@@ -2394,6 +2425,10 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           )}
         <ReplayReviewCartridge
           canEdit={canContributeToReview}
+          drawingAvailable={
+            drawingFrame !== null &&
+            !decodedDrawings.failedAuthors.includes(currentUserId ?? "")
+          }
           savedText={currentUserEdit?.text ?? ""}
           savedHasDrawing={Boolean(currentUserEdit?.drawingBase64)}
           savedStrokes={savedDrawing?.strokes ?? []}

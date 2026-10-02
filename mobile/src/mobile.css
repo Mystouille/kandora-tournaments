@@ -1427,6 +1427,18 @@ button {
   pointer-events: none;
 }
 
+.mobile-replay-drawing-error {
+  position: absolute;
+  top: 4rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 46;
+  padding: 0.5rem;
+  color: #fecaca;
+  background: #450a0a;
+  pointer-events: none;
+}
+
 .mobile-replay-comments-overlay {
   position: absolute;
   z-index: 50;

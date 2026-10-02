@@ -21,6 +21,8 @@ vi.mock("~/contexts/LocaleContext", () => ({
           undoAll: "Cancel",
           drawHint: "Draw on the table. Submit when done.",
           nothingToSave: "Nothing to save",
+          drawingTooLarge: "Drawing too large",
+          drawingUnavailable: "Drawing unavailable",
           discardAllTooltip: "Discard all non-published annotations",
           seatLockedTooltip: "Locked to {name}",
         },
@@ -37,6 +39,36 @@ vi.mock("~/components/editor/RichTextEditor", () => ({
 import { ReplayReviewCartridge } from "./ReplayReviewCartridge";
 
 describe("ReplayReviewCartridge", () => {
+  it("disables capture until renderer geometry is available without disabling text", () => {
+    const html = renderToStaticMarkup(
+      createElement(ReplayReviewCartridge, {
+        canEdit: true,
+        drawingAvailable: false,
+        savedText: "",
+        savedHasDrawing: false,
+        savedStrokes: [],
+        draft: { mode: null, text: "", strokes: [] },
+        onDraftChange: vi.fn(),
+        onSubmitText: vi.fn(),
+        onSubmitDrawing: vi.fn(),
+        onRemoveDrawing: vi.fn(),
+        publishing: false,
+        seatMismatch: false,
+        reviewSeatName: "",
+        annotationBottom: "0px",
+        onTextEditorHeightChange: vi.fn(),
+      })
+    );
+    const drawingButton = html.match(
+      /<button[^>]*aria-label="Freehand draw"[^>]*>/
+    )?.[0];
+    const textButton = html.match(
+      /<button[^>]*aria-label="Add text comment"[^>]*>/
+    )?.[0];
+    expect(drawingButton).toContain("disabled");
+    expect(textButton).not.toContain("disabled");
+  });
+
   it("separates icon-only text and freehand tools", () => {
     const html = renderToStaticMarkup(
       createElement(ReplayReviewCartridge, {
@@ -61,9 +93,7 @@ describe("ReplayReviewCartridge", () => {
     expect(html).not.toContain("Freehand drawing");
     expect(html).toContain('aria-label="Add text comment"');
     expect(html).toContain('aria-label="Freehand draw"');
-    expect(html).toContain(
-      'aria-label="Remove drawings from this event"'
-    );
+    expect(html).toContain('aria-label="Remove drawings from this event"');
     expect(html).not.toContain("Discard all non-published annotations");
   });
 

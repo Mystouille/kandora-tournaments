@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { SerializedReview } from "../../types/replayReview";
 import {
+  base64ToBytes,
+  bytesToBase64,
+  decodeDrawing,
+  encodeDrawing,
+  type Drawing,
+} from "../../game/replay/reviewDrawing";
+import {
   REVIEW_DRAFT_MAX_AGE_MS,
   REVIEW_DRAFT_STORAGE_PREFIX,
   moveReviewDraft,
@@ -88,6 +95,41 @@ function review(
 }
 
 describe("review draft storage", () => {
+  it("recovers pending and active anchored strokes with their coordinate spaces intact", () => {
+    const drawing: Drawing = {
+      strokes: [
+        { points: [{ x: 0, y: 1 }] },
+        { space: "focused-discard", points: [{ x: -320.5, y: 1024.25 }] },
+      ],
+    };
+    const drawingBase64 = bytesToBase64(encodeDrawing(drawing));
+    const draft = snapshot({
+      pending: [
+        {
+          eventIndex: 4,
+          patch: { text: "local", drawingBase64 },
+          baseUpdatedAt: "2026-08-20T10:00:00.000Z",
+        },
+      ],
+      active: {
+        eventIndex: 4,
+        mode: "pen",
+        drawingBase64,
+        baseUpdatedAt: "2026-08-20T10:00:00.000Z",
+      },
+    });
+    const storage = createStorage();
+    expect(writeReviewDraft(draft, storage)).toBe("written");
+    const restored = readReviewDraft(identity, 1_000_001, storage);
+    expect(restored).toEqual(draft);
+    expect(
+      decodeDrawing(base64ToBytes(restored!.active!.drawingBase64!))
+    ).toEqual(drawing);
+    const reconciled = reconcileReviewDraft(restored!, review(), "user-1", 100);
+    expect(reconciled.pending[0].patch?.drawingBase64).toBe(drawingBase64);
+    expect(reconciled.conflictEventIndices).toEqual([]);
+  });
+
   it("round-trips an exact identity and isolates other users", () => {
     const storage = createStorage();
     expect(writeReviewDraft(snapshot(), storage)).toBe("written");
@@ -106,10 +148,10 @@ describe("review draft storage", () => {
       parseReviewDraftSnapshot(JSON.stringify({ ...snapshot(), version: 2 }))
     ).toBeNull();
     expect(
-      parseReviewDraftSnapshot(
-        JSON.stringify(snapshot()),
-        { ...identity, reviewShortId: "Other12345" }
-      )
+      parseReviewDraftSnapshot(JSON.stringify(snapshot()), {
+        ...identity,
+        reviewShortId: "Other12345",
+      })
     ).toBeNull();
   });
 
@@ -122,7 +164,10 @@ describe("review draft storage", () => {
     expect(readReviewDraft(identity, now, storage)).toBeNull();
     expect(storage.values.size).toBe(0);
 
-    storage.values.set(reviewDraftStorageKey(identity), JSON.stringify(expired));
+    storage.values.set(
+      reviewDraftStorageKey(identity),
+      JSON.stringify(expired)
+    );
     storage.values.set("unrelated", "value");
     expect(pruneExpiredReviewDrafts(now, storage)).toBe(1);
     expect(storage.values.get("unrelated")).toBe("value");
@@ -143,9 +188,7 @@ describe("review draft storage", () => {
     const storage = createStorage([
       [
         reviewDraftStorageKey(expiredIdentity),
-        JSON.stringify(
-          snapshot({ identity: expiredIdentity, updatedAt: 1 })
-        ),
+        JSON.stringify(snapshot({ identity: expiredIdentity, updatedAt: 1 })),
       ],
     ]);
     let attempts = 0;
@@ -239,12 +282,8 @@ describe("review draft reconciliation", () => {
       reconcileReviewDraft(deletion, review(), "user-1", 20).pending
     ).toHaveLength(1);
     expect(
-      reconcileReviewDraft(
-        deletion,
-        { ...review(), edits: [] },
-        "user-1",
-        20
-      ).alreadyAppliedEventIndices
+      reconcileReviewDraft(deletion, { ...review(), edits: [] }, "user-1", 20)
+        .alreadyAppliedEventIndices
     ).toEqual([4]);
   });
 

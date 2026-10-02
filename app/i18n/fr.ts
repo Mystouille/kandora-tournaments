@@ -1071,7 +1071,12 @@ export const fr: Translations = {
       save: "Enregistrer",
       cancel: "Quitter",
       undoAll: "Annuler",
-      drawHint: "Dessinez sur la table, puis enregistrez.",
+      drawHint:
+        "Les dessins suivent les défausses du joueur observé, même s'ils recouvrent d'autres éléments. Enregistrez quand vous avez terminé.",
+      drawingTooLarge:
+        "Le dessin est trop volumineux pour être enregistré. Simplifiez-le et réessayez.",
+      drawingUnavailable:
+        "Un dessin de la review n'a pas pu être affiché. Rechargez ou mettez à jour l'application.",
       nothingToSave: "Rien à enregistrer",
       linkCopied: "Lien copié",
       copyFailed: "Échec de la copie",

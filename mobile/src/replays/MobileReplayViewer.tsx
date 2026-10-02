@@ -36,6 +36,7 @@ import {
 import type { ReplayLog } from "~/game/replay/types";
 import { waitsForReplayView } from "~/game/replay/waits";
 import type { TableRenderer } from "~/game/client/pixi/TableRenderer";
+import type { FocusedDiscardDrawingFrame } from "~/game/client/pixi/geometry/reviewDrawingGeometry";
 import { mobileTableLayout } from "~/game/client/pixi/layouts/mobileTableLayout";
 import { ReplayDrawingOverlay } from "~/game/routes/ReplayDrawingOverlay";
 import { useReplaySwipeNavigation } from "../game/spectateSwipe";
@@ -594,6 +595,8 @@ function LoadedMobileReplayViewer({
   const [displayOpen, setDisplayOpen] = useState(false);
   const [commentsVisible, setCommentsVisible] = useState(review !== null);
   const [handTop, setHandTop] = useState<number | null>(null);
+  const [drawingFrame, setDrawingFrame] =
+    useState<FocusedDiscardDrawingFrame | null>(null);
   const [rendererState, setRendererState] = useState<
     "loading" | "ready" | "error"
   >("loading");
@@ -633,9 +636,10 @@ function LoadedMobileReplayViewer({
       review === null ||
       (review.seat !== null && review.seat !== focusSeat)
     ) {
-      return [];
+      return { layers: [], failed: false };
     }
     const layers: Array<{ key: string; color: string; strokes: Stroke[] }> = [];
+    let failed = false;
     for (const edit of review.edits) {
       if (edit.eventIndex !== index || edit.drawingBase64 === null) {
         continue;
@@ -651,9 +655,11 @@ function LoadedMobileReplayViewer({
             strokes: drawing.strokes,
           });
         }
-      } catch {}
+      } catch {
+        failed = true;
+      }
     }
-    return layers;
+    return { layers, failed };
   }, [focusSeat, index, review]);
 
   useEffect(() => {
@@ -685,6 +691,7 @@ function LoadedMobileReplayViewer({
         renderer.setBottomHandBoundsListener((bounds) => {
           setHandTop(bounds?.y ?? null);
         });
+        renderer.setFocusedDiscardDrawingListener(setDrawingFrame);
         await renderer.mount(container);
         if (disposed) {
           renderer.destroy();
@@ -704,6 +711,7 @@ function LoadedMobileReplayViewer({
       disposed = true;
       rendererRef.current = null;
       renderer?.setBottomHandBoundsListener(null);
+      renderer?.setFocusedDiscardDrawingListener(null);
       renderer?.destroy();
     };
   }, []);
@@ -761,12 +769,13 @@ function LoadedMobileReplayViewer({
       <section className="table-stage" aria-label="Mahjong replay">
         <div ref={containerRef} className="table-canvas" />
         <div className="mobile-replay-drawing-layers" aria-hidden="true">
-          {drawingLayers.map((layer) => (
+          {drawingLayers.layers.map((layer) => (
             <ReplayDrawingOverlay
               key={layer.key}
               strokes={layer.strokes}
               drawing={false}
               color={layer.color}
+              frame={drawingFrame}
               aspectRatio={
                 mobileTableLayout.viewport.w / mobileTableLayout.viewport.h
               }
@@ -774,6 +783,11 @@ function LoadedMobileReplayViewer({
             />
           ))}
         </div>
+        {drawingLayers.failed && (
+          <div role="alert" className="mobile-replay-drawing-error">
+            A review drawing could not be displayed. Reload or update the app.
+          </div>
+        )}
         {commentsVisible && review !== null && (
           <MobileReplayCommentsOverlay
             edits={textEditsAtIndex}

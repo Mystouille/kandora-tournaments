@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { bytesToBase64, encodeDrawing } from "~/game/replay/reviewDrawing";
 import {
   MobileReplayDisplayMenu,
   MobileReplayCommentsOverlay,
@@ -29,6 +30,56 @@ const log = {
 };
 
 describe("mobile replay viewer", () => {
+  it.each([false, true])(
+    "reads anchored drawings and explicitly reports malformed new drawings (invalid=%s)",
+    (invalid) => {
+      const drawingBase64 = bytesToBase64(
+        invalid
+          ? new Uint8Array([3, 1, 255])
+          : encodeDrawing({
+              strokes: [
+                {
+                  space: "focused-discard",
+                  points: [{ x: -50, y: 700 }],
+                },
+              ],
+            })
+      );
+      const html = renderToStaticMarkup(
+        createElement(MobileReplayViewer, {
+          log,
+          seatEnrichment: [null, null, null, null],
+          review: {
+            shortId: "review-1",
+            seat: 0,
+            targetName: "Player 0",
+            edits: [
+              {
+                eventIndex: -1,
+                authorName: "Reviewer",
+                colorIndex: 0,
+                text: "",
+                drawingBase64,
+                updatedAt: "2026-01-02T03:04:05.000Z",
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+          onClose: vi.fn(),
+          onRetry: vi.fn(),
+        })
+      );
+      if (invalid) {
+        expect(html).toContain('role="alert"');
+        expect(html).toContain("could not be displayed");
+      } else {
+        expect(html).toContain('aria-label="Review drawing"');
+        expect(html).not.toContain("could not be displayed");
+      }
+    }
+  );
+
   it("rotates team enrichment with the focused player", () => {
     const enrichment = [
       { teamName: "Team 0", teamLogoUrl: "https://app.test/0.webp" },

@@ -1,5 +1,12 @@
 import mongoose from "mongoose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  bytesToBase64,
+  decodeDrawing,
+  encodeDrawing,
+  MAX_DRAWING_BYTES,
+  type Drawing,
+} from "../../game/replay/reviewDrawing";
 
 const mocks = vi.hoisted(() => ({
   connectToDatabase: vi.fn(),
@@ -122,6 +129,69 @@ describe("replay review collaboration", () => {
     });
     mocks.notifyReviewContributors.mockResolvedValue(undefined);
     mocks.resolveReplayReviewTarget.mockResolvedValue({ name: "Target Name" });
+  });
+
+  it("publishes and reads anchored drawings without changing them in a text-only edit", async () => {
+    const review = makeReview();
+    mocks.findReview.mockResolvedValue(review);
+    const drawing: Drawing = {
+      strokes: [
+        {
+          space: "focused-discard",
+          points: [{ x: -200.5, y: 900.25 }],
+        },
+      ],
+    };
+    const drawingBase64 = bytesToBase64(encodeDrawing(drawing));
+    const published = await mutate({ eventIndex: 4, seat: 0, drawingBase64 });
+    expect(published.response.status).toBe(200);
+    expect(published.data.edit).toMatchObject({ drawingBase64 });
+    expect(decodeDrawing(review.edits[0].drawing!)).toEqual(drawing);
+
+    const changed = await mutate({
+      eventIndex: 4,
+      seat: 0,
+      text: "Updated note",
+    });
+    expect(changed.response.status).toBe(200);
+    expect(changed.data.edit).toMatchObject({
+      text: "Updated note",
+      drawingBase64,
+    });
+    mocks.findReview.mockReturnValue({ lean: async () => review });
+    const fetched = await loader({ params: { shortId: review.shortId } });
+    expect(await fetched.json()).toMatchObject({
+      review: { edits: [{ drawingBase64, text: "Updated note" }] },
+    });
+  });
+
+  it("rejects malformed v3 annotations without saving a partial edit", async () => {
+    const review = makeReview();
+    mocks.findReview.mockResolvedValue(review);
+    const result = await mutate({
+      eventIndex: 4,
+      seat: 0,
+      drawingBase64: bytesToBase64(new Uint8Array([3, 1, 255])),
+    });
+    expect(result.response.status).toBe(400);
+    expect(result.data.error).toBe("bad-drawing");
+    expect(review.save).not.toHaveBeenCalled();
+    expect(review.edits).toHaveLength(0);
+  });
+
+  it("retains the 64 KiB limit for new-format annotations", async () => {
+    const review = makeReview();
+    mocks.findReview.mockResolvedValue(review);
+    const bytes = new Uint8Array(MAX_DRAWING_BYTES + 1);
+    bytes[0] = 3;
+    const result = await mutate({
+      eventIndex: 4,
+      seat: 0,
+      drawingBase64: bytesToBase64(bytes),
+    });
+    expect(result.response.status).toBe(413);
+    expect(result.data.error).toBe("drawing-too-large");
+    expect(review.save).not.toHaveBeenCalled();
   });
 
   it("lets anonymous viewers read a shared review with author metadata", async () => {

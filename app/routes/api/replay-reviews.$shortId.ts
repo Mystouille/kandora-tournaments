@@ -2,7 +2,11 @@ import mongoose from "mongoose";
 import { connectToDatabase } from "../../utils/dbConnection.server";
 import { getAuthenticatedUser } from "../../utils/jwt.server";
 import { ReplayReviewModel } from "../../core/models/game/ReplayReview";
-import { base64ToBytes } from "../../game/replay/reviewDrawing";
+import {
+  base64ToBytes,
+  decodeDrawing,
+  MAX_DRAWING_BYTES,
+} from "../../game/replay/reviewDrawing";
 import {
   effectiveReviewAuthor,
   resolveReviewersForDoc,
@@ -277,12 +281,13 @@ export async function action({
         const bytes = base64ToBytes(body.drawingBase64);
         // Cap drawing blob at 64 KB — far more than the codec ever
         // produces for a single event.
-        if (bytes.length > 64 * 1024) {
+        if (bytes.length > MAX_DRAWING_BYTES) {
           return Response.json(
             { ok: false, error: "drawing-too-large" },
             { status: 413 }
           );
         }
+        decodeDrawing(bytes);
         drawingBuffer = Buffer.from(bytes);
       } catch {
         return Response.json(

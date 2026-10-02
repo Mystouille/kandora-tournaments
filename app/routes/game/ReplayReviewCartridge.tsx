@@ -7,7 +7,7 @@ import {
   HighlightOutlined,
   SaveOutlined,
 } from "@ant-design/icons";
-import type { Stroke } from "~/game/replay/reviewDrawing";
+import { ReviewDrawingError, type Stroke } from "~/game/replay/reviewDrawing";
 import { useLocale } from "~/contexts/LocaleContext";
 import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
@@ -28,6 +28,7 @@ export interface ReviewDraft {
 interface ReplayReviewCartridgeProps {
   /** Whether the current signed-in user may contribute to this review. */
   canEdit: boolean;
+  drawingAvailable?: boolean;
   /** Saved edit for the current event (from the server). */
   savedText: string;
   savedHasDrawing: boolean;
@@ -48,14 +49,14 @@ interface ReplayReviewCartridgeProps {
   onRemoveDrawing: () => Promise<void> | void;
   /**
    * `true` while the parent is pushing edits to the server. Used
-    * to disable destructive controls mid-publish.
+   * to disable destructive controls mid-publish.
    */
   publishing: boolean;
   /**
    * `true` when the review is locked to a seat that differs from
    * the currently focused seat. Adding new annotations is
    * forbidden in this state (text + freehand buttons are
-  * disabled) but drawing removal remains available so the author can
+   * disabled) but drawing removal remains available so the author can
    * still wrap up the review.
    */
   seatMismatch: boolean;
@@ -83,6 +84,7 @@ interface ReplayReviewCartridgeProps {
  */
 export function ReplayReviewCartridge({
   canEdit,
+  drawingAvailable = true,
   savedText,
   savedHasDrawing,
   savedStrokes,
@@ -195,6 +197,15 @@ export function ReplayReviewCartridge({
     try {
       await onSubmitDrawing(draft.strokes);
       onDraftChange({ mode: null, text: "", strokes: [] });
+    } catch (error) {
+      if (!(error instanceof ReviewDrawingError)) {
+        throw error;
+      }
+      message.error(
+        error.code === "drawing-too-large"
+          ? tr.drawingTooLarge
+          : tr.drawingUnavailable
+      );
     } finally {
       setSubmitting(false);
     }
@@ -312,16 +323,13 @@ export function ReplayReviewCartridge({
               </Button>
             </Tooltip>
             <div className="w-px h-7 bg-emerald-700/60 mx-1" />
-            <Tooltip
-              title={seatLockTooltip ?? tr.drawTooltip}
-              zIndex={10001}
-            >
+            <Tooltip title={seatLockTooltip ?? tr.drawTooltip} zIndex={10001}>
               <Button
                 type={inPen ? "primary" : "text"}
                 size="middle"
                 icon={<HighlightOutlined />}
                 onClick={inPen ? cancel : startPen}
-                disabled={seatMismatch}
+                disabled={seatMismatch || (!drawingAvailable && !inPen)}
                 aria-label={tr.drawTooltip}
               />
             </Tooltip>

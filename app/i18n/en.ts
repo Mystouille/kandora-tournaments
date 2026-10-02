@@ -1048,7 +1048,12 @@ export const en: Translations = {
       save: "Save",
       cancel: "Exit",
       undoAll: "Cancel",
-      drawHint: "Draw on the table. Submit when done.",
+      drawHint:
+        "Drawings follow the focused player's discards, even when they overlap other elements. Submit when done.",
+      drawingTooLarge:
+        "The drawing is too large to save. Simplify it and try again.",
+      drawingUnavailable:
+        "A review drawing could not be displayed. Reload or update the app.",
       nothingToSave: "Nothing to save",
       linkCopied: "Link copied",
       copyFailed: "Copy failed",

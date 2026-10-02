@@ -959,6 +959,8 @@ export interface Translations extends CoreTranslations {
       cancel: string;
       undoAll: string;
       drawHint: string;
+      drawingTooLarge: string;
+      drawingUnavailable: string;
       nothingToSave: string;
       linkCopied: string;
       copyFailed: string;
