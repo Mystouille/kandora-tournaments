@@ -675,6 +675,8 @@ export interface Translations extends CoreTranslations {
       rosterUnlinkedNameHelp: string;
       rosterUnlinkedNamePlaceholder: string;
       rosterTeamNameLabel: string;
+      rosterTeamColorLabel: string;
+      rosterNoColor: string;
       rosterTeamNamePlaceholder: string;
       rosterTeamNameRequired: string;
       rosterTeamNameDuplicate: string;

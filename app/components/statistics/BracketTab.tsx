@@ -24,6 +24,11 @@ import { useAppTheme } from "../../contexts/ThemeContext";
 import type { TeamOption } from "./types";
 import { CopyLogIdButton } from "./CopyLogIdButton";
 import { WatchReplayButton } from "./WatchReplayButton";
+import {
+  teamColorForeground,
+  teamColorGradient,
+  teamColorLabelStyle,
+} from "../../utils/teamColors";
 
 const { Text, Title } = Typography;
 
@@ -167,9 +172,6 @@ function BracketCard({
 
   const advancingCount =
     phase.isComplete && !isFinalPhase ? (phase.advancingCount ?? 0) : 0;
-  const advanceBg = isDark
-    ? "rgba(82, 196, 26, 0.10)"
-    : "rgba(82, 196, 26, 0.08)";
   const advanceBorder = isDark
     ? "rgba(82, 196, 26, 0.35)"
     : "rgba(82, 196, 26, 0.45)";
@@ -228,10 +230,11 @@ function BracketCard({
                   display: "flex",
                   alignItems: "center",
                   gap: 10,
-                  padding: "6px 10px",
+                  padding: isAdvancing ? "5px 9px" : "6px 10px",
                   borderRadius: 6,
-                  background: isAdvancing ? advanceBg : slotBg,
-                  border: `1px solid ${isAdvancing ? advanceBorder : borderColor}`,
+                  backgroundColor: slotBg,
+                  backgroundImage: teamColorGradient(slot.team?.color),
+                  border: `${isAdvancing ? 2 : 1}px solid ${isAdvancing ? advanceBorder : borderColor}`,
                 }}
               >
                 {/* Rank badge (only when phase is complete) */}
@@ -265,10 +268,14 @@ function BracketCard({
                   pictures={slot.team?.pictures ?? null}
                   icon={<UserOutlined />}
                   size={20}
-                  style={{ flexShrink: 0 }}
+                  style={{
+                    flexShrink: 0,
+                    ...teamColorLabelStyle(slot.team?.color),
+                  }}
                 />
                 <Text
                   style={{
+                    ...teamColorLabelStyle(slot.team?.color),
                     flex: 1,
                     fontWeight: slot.team ? 600 : 400,
                     fontStyle: slot.team ? "normal" : "italic",
@@ -462,6 +469,8 @@ function BracketCard({
                               borderBottom: `2px solid ${borderColor}`,
                               whiteSpace: "nowrap",
                               minWidth: 110,
+                              backgroundColor: s.team?.color ?? undefined,
+                              color: teamColorForeground(s.team?.color),
                             }}
                           >
                             <div
@@ -1197,7 +1206,8 @@ export default function BracketTab({ phases, isLoading }: BracketTabProps) {
                 />
                 <Card
                   style={{
-                    background: isDark ? "#1f1f1f" : "#ffffff",
+                    backgroundColor: isDark ? "#1f1f1f" : "#ffffff",
+                    backgroundImage: teamColorGradient(winner?.team?.color),
                     border: `1px solid ${isDark ? "#303030" : "#e8e8e8"}`,
                     borderRadius: 10,
                     minWidth: 160,
@@ -1220,6 +1230,7 @@ export default function BracketTab({ phases, isLoading }: BracketTabProps) {
                     <Text
                       strong={!!winner?.team}
                       style={{
+                        ...teamColorLabelStyle(winner?.team?.color),
                         fontStyle: winner?.team ? "normal" : "italic",
                         opacity: winner?.team ? 1 : 0.5,
                         fontSize: "0.95rem",

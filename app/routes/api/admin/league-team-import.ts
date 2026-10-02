@@ -1,7 +1,15 @@
 import mongoose from "mongoose";
 import { UserModel } from "../../../core/models/shared/User";
 import { TeamModel } from "../../../core/models/tournament/Team";
-import { LeagueModel, Platform, type League } from "../../../core/models/tournament/League";
+import {
+  getImportedTeamColor,
+  snapshotTeamColors,
+} from "../../../utils/teamColors";
+import {
+  LeagueModel,
+  Platform,
+  type League,
+} from "../../../core/models/tournament/League";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type {
   TeamConfig,
@@ -415,10 +423,16 @@ export async function action({ request }: { request: Request }) {
         { seasonId: league.platformConfig.seasonId ?? undefined }
       );
 
+      const existingColors = snapshotTeamColors(
+        await TeamModel.find({ leagueId: league._id })
+          .select("simpleName color")
+          .lean()
+      );
+
       // Delete all existing teams for this league before creating fresh ones
       await TeamModel.deleteMany({ leagueId: league._id }).exec();
 
-      for (const teamConfig of teamConfigs) {
+      for (const [teamIndex, teamConfig] of teamConfigs.entries()) {
         const memberUserIds: string[] = [];
 
         for (const member of teamConfig.members) {
@@ -437,6 +451,11 @@ export async function action({ request }: { request: Request }) {
         await TeamModel.create({
           simpleName: teamConfig.name,
           displayName: teamConfig.name,
+          color: getImportedTeamColor(
+            existingColors,
+            teamConfig.name,
+            teamIndex
+          ),
           leagueId: league._id,
           roster: {
             captain: new mongoose.Types.ObjectId(memberUserIds[0]),

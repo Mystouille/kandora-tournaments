@@ -6,6 +6,7 @@ export interface SeriesPoint {
 export interface Series {
   id: string;
   label: string;
+  color?: string;
   data: SeriesPoint[];
   eliminatedAt?: string;
 }

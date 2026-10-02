@@ -816,6 +816,8 @@ export const en: Translations = {
         "The player will be created without a platform link. They cannot play on the platform until linked.",
       rosterUnlinkedNamePlaceholder: "Display name",
       rosterTeamNameLabel: "Team name",
+      rosterTeamColorLabel: "Team color",
+      rosterNoColor: "No color",
       rosterTeamNamePlaceholder: "Team name",
       rosterTeamNameRequired: "Team name is required",
       rosterTeamNameDuplicate: "A team with this name already exists",

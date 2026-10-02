@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { basePath } from "../../utils/basePath";
 import { useTelemetry } from "../../contexts/TelemetryContext";
+import { buildTeamColorLookup } from "../../utils/teamColors";
 import { LS_LEAGUE_FILTERS_KEY } from "./cardConfig";
 import type {
   LeagueOption,
@@ -232,6 +233,7 @@ export function useStatisticsFilters(initialLeagueSlug?: string) {
 
   // All teams are already scoped to this league by the API
   const filteredTeams = teams;
+  const teamColors = useMemo(() => buildTeamColorLookup(teams), [teams]);
 
   const filteredUsers = useMemo(() => {
     if (!selectedLeague) {
@@ -285,6 +287,7 @@ export function useStatisticsFilters(initialLeagueSlug?: string) {
     // Data
     selectedLeagueData,
     teams,
+    teamColors,
     users: filteredUsers,
     brackets,
     eliminatedTeams,

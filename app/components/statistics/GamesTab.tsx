@@ -20,6 +20,11 @@ import { WatchReplayButton } from "./WatchReplayButton";
 import { WatchLiveButton } from "./WatchLiveButton";
 import { TeamLogo } from "../TeamLogo";
 import { PlayerAvatar } from "../PlayerAvatar";
+import {
+  teamColorGradient,
+  teamColorLabelStyle,
+  type TeamColorMap,
+} from "../../utils/teamColors";
 
 const { Text } = Typography;
 
@@ -77,6 +82,7 @@ interface GamesTabProps {
   highlightedPlayerIds: Set<string>;
   autoRefresh: boolean;
   teams: TeamOption[];
+  playerColors?: TeamColorMap;
 }
 
 const MEDAL_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32", "#888888"];
@@ -114,6 +120,7 @@ export default function GamesTab({
   highlightedPlayerIds,
   autoRefresh,
   teams,
+  playerColors,
 }: GamesTabProps) {
   const { t, locale } = useLocale();
   const { isDark } = useAppTheme();
@@ -198,8 +205,7 @@ export default function GamesTab({
     refetchInterval: 30_000,
   });
   const ongoingGames = ongoingData?.games ?? [];
-  const liveSpectatingEnabled =
-    ongoingData?.liveSpectatingEnabled === true;
+  const liveSpectatingEnabled = ongoingData?.liveSpectatingEnabled === true;
 
   // Apply intersection filtering client-side
   const filteredGames = useMemo(() => {
@@ -326,6 +332,7 @@ export default function GamesTab({
                 locale={locale}
                 highlightedPlayerIds={highlightedPlayerIds}
                 liveSpectatingEnabled={liveSpectatingEnabled}
+                playerColors={playerColors}
               />
             ))}
           </div>
@@ -345,6 +352,7 @@ export default function GamesTab({
             isDark={isDark}
             locale={locale}
             highlightedPlayerIds={highlightedPlayerIds}
+            playerColors={playerColors}
           />
         ))}
       </div>
@@ -369,11 +377,13 @@ function GameCard({
   isDark,
   locale,
   highlightedPlayerIds,
+  playerColors,
 }: {
   game: GameEntry;
   isDark: boolean;
   locale: string;
   highlightedPlayerIds: Set<string>;
+  playerColors?: TeamColorMap;
 }) {
   const cardBg = isDark
     ? "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)"
@@ -444,6 +454,7 @@ function GameCard({
             rank={idx}
             isDark={isDark}
             highlighted={highlightedPlayerIds.has(player.userId)}
+            teamColor={playerColors?.get(player.userId)}
           />
         ))}
       </div>
@@ -458,6 +469,7 @@ function OngoingGameCard({
   locale,
   highlightedPlayerIds,
   liveSpectatingEnabled,
+  playerColors,
 }: {
   game: OngoingGameEntry;
   leagueSlug?: string;
@@ -465,6 +477,7 @@ function OngoingGameCard({
   locale: string;
   highlightedPlayerIds: Set<string>;
   liveSpectatingEnabled: boolean;
+  playerColors?: TeamColorMap;
 }) {
   const cardBg = isDark
     ? "linear-gradient(135deg, #2a1a1a 0%, #3e1616 100%)"
@@ -509,20 +522,22 @@ function OngoingGameCard({
             </Text>
           )}
         </div>
-        {liveSpectatingEnabled && game.platform === "tenhou" && game.watchId && (
-          <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-            <WatchLiveButton
-              watchId={game.watchId}
-              leagueSlug={leagueSlug}
-            />
-          </div>
-        )}
+        {liveSpectatingEnabled &&
+          game.platform === "tenhou" &&
+          game.watchId && (
+            <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+              <WatchLiveButton watchId={game.watchId} leagueSlug={leagueSlug} />
+            </div>
+          )}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {game.players.map((player) => {
           const highlighted =
             player.userId != null && highlightedPlayerIds.has(player.userId);
+          const teamColor = player.userId
+            ? playerColors?.get(player.userId)
+            : null;
           return (
             <div
               key={`${game.gameId}-${player.seat}`}
@@ -532,7 +547,8 @@ function OngoingGameCard({
                 gap: 8,
                 padding: "4px 8px",
                 borderRadius: 6,
-                background: highlighted
+                backgroundImage: teamColorGradient(teamColor),
+                backgroundColor: highlighted
                   ? isDark
                     ? "rgba(24, 144, 255, 0.12)"
                     : "rgba(24, 144, 255, 0.08)"
@@ -543,7 +559,7 @@ function OngoingGameCard({
                 size={28}
                 src={player.avatarUrl}
                 leaguePicture={player.leaguePicture}
-                style={{ flexShrink: 0 }}
+                style={{ flexShrink: 0, ...teamColorLabelStyle(teamColor) }}
               />
               <div
                 style={{
@@ -557,6 +573,7 @@ function OngoingGameCard({
                 <Text
                   strong
                   style={{
+                    ...teamColorLabelStyle(teamColor),
                     fontSize: "0.9rem",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -577,6 +594,7 @@ function OngoingGameCard({
                     <Text
                       type="secondary"
                       style={{
+                        ...teamColorLabelStyle(teamColor),
                         fontSize: "0.8rem",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -602,13 +620,16 @@ function PlayerRow({
   rank,
   isDark,
   highlighted,
+  teamColor,
 }: {
   player: PlayerEntry;
   rank: number;
   isDark: boolean;
   highlighted: boolean;
+  teamColor?: string | null;
 }) {
   const { t } = useLocale();
+  const labelStyle = teamColorLabelStyle(teamColor);
   const _medalColor = MEDAL_COLORS[rank] ?? MEDAL_COLORS[3];
   const medalLabel = rank < 3 ? MEDAL_LABELS[rank] : `${rank + 1}th`;
 
@@ -635,12 +656,14 @@ function PlayerRow({
         gap: 8,
         padding: "4px 8px",
         borderRadius: 6,
-        background: rowBg,
+        backgroundColor: rowBg,
+        backgroundImage: teamColorGradient(teamColor),
       }}
     >
       {/* Medal */}
       <span
         style={{
+          ...(rank >= 3 ? labelStyle : {}),
           fontSize: rank < 3 ? "1.1rem" : "0.8rem",
           width: 28,
           textAlign: "center",
@@ -655,7 +678,7 @@ function PlayerRow({
         size={28}
         src={player.avatarUrl}
         leaguePicture={player.leaguePicture}
-        style={{ flexShrink: 0 }}
+        style={{ flexShrink: 0, ...labelStyle }}
       />
 
       {/* Name and team */}
@@ -671,6 +694,7 @@ function PlayerRow({
         <Text
           strong
           style={{
+            ...labelStyle,
             fontSize: "0.9rem",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -683,7 +707,7 @@ function PlayerRow({
                 ? isDark
                   ? "#d4b106"
                   : "#ad8b00"
-                : undefined,
+                : labelStyle.color,
           }}
         >
           {player.name}
@@ -724,6 +748,7 @@ function PlayerRow({
             <Text
               type="secondary"
               style={{
+                ...labelStyle,
                 fontSize: "0.8rem",
                 overflow: "hidden",
                 textOverflow: "ellipsis",

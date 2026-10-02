@@ -835,6 +835,8 @@ export const fr: Translations = {
         "Le joueur sera créé sans lien plateforme. Il ne pourra pas jouer sur la plateforme tant qu'il n'est pas lié.",
       rosterUnlinkedNamePlaceholder: "Nom affiché",
       rosterTeamNameLabel: "Nom de l'équipe",
+      rosterTeamColorLabel: "Couleur de l'équipe",
+      rosterNoColor: "Aucune couleur",
       rosterTeamNamePlaceholder: "Nom de l'équipe",
       rosterTeamNameRequired: "Le nom de l'équipe est obligatoire",
       rosterTeamNameDuplicate: "Une équipe portant ce nom existe déjà",

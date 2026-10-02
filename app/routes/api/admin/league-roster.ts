@@ -8,6 +8,7 @@ import { UserModel } from "../../../core/models/shared/User";
 import { connectToDatabase } from "../../../utils/dbConnection.server";
 import { requireLeagueAdmin } from "../../../utils/league-permissions.server";
 import { slugify } from "../../../utils/slugify";
+import { isTeamColor, resolveRosterTeamColor } from "../../../utils/teamColors";
 import { createConnectorForLeague } from "../../../services/connectors/createConnectorForLeague.server";
 import type { TeamEntry } from "../../../services/connectors/ILeagueTournamentConnector.server";
 import {
@@ -32,6 +33,7 @@ interface TeamPayload {
   teamId?: string | null;
   simpleName: string;
   displayName: string;
+  color?: string | null;
   players: PlayerInRoster[];
 }
 
@@ -241,7 +243,7 @@ export async function loader({ request }: { request: Request }) {
   const isTeamMode = league.rulesConfig.isTeamMode;
 
   const teams = await TeamModel.find({ leagueId: league._id })
-    .select("_id simpleName displayName roster")
+    .select("_id simpleName displayName roster color")
     .lean();
   const leagueUsers = isTeamMode
     ? []
@@ -334,6 +336,7 @@ export async function loader({ request }: { request: Request }) {
       _id: t._id.toString(),
       simpleName: t.simpleName,
       displayName: t.displayName,
+      color: t.color ?? null,
       players: playerEntries,
     };
   });
@@ -520,12 +523,25 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
+  for (const team of requestedTeams) {
+    if (
+      team.color !== undefined &&
+      team.color !== null &&
+      !isTeamColor(team.color)
+    ) {
+      return Response.json(
+        { error: "Team color must be a six-digit hex value or null" },
+        { status: 400 }
+      );
+    }
+  }
+
   // Snapshot existing teams once: used both to skip no-op writes and to
   // detect whether the platform-side team config actually needs to be
   // re-pushed.
   const existingTeams = isTeamMode
     ? await TeamModel.find({ leagueId: league._id })
-        .select("_id simpleName displayName roster")
+        .select("_id simpleName displayName roster color")
         .lean()
     : [];
   const existingLeagueUsers = isTeamMode
@@ -804,7 +820,7 @@ export async function action({ request }: { request: Request }) {
       anyTeamPlatformChange = true;
     }
 
-    for (const teamPayload of teams) {
+    for (const [teamIndex, teamPayload] of teams.entries()) {
       const memberObjIds = teamPayload.players
         .filter((p) => !p.isSubstitute)
         .map((p) => new mongoose.Types.ObjectId(p.userId));
@@ -836,12 +852,18 @@ export async function action({ request }: { request: Request }) {
       const existing =
         teamPayload.teamId && existingTeamMap.has(teamPayload.teamId)
           ? existingTeamMap.get(teamPayload.teamId)!
-          : null;
+          : undefined;
+      const color = resolveRosterTeamColor(
+        teamPayload.color,
+        existing,
+        teamIndex
+      );
 
       if (!existing) {
         await TeamModel.create({
           simpleName: teamPayload.simpleName,
           displayName: teamPayload.displayName,
+          color,
           leagueId: league._id,
           roster: rosterDoc,
         });
@@ -868,6 +890,7 @@ export async function action({ request }: { request: Request }) {
         existing.simpleName !== teamPayload.simpleName ||
         existing.displayName !== teamPayload.displayName;
       const captainChanged = existingCaptain !== captainId;
+      const colorChanged = (existing.color ?? null) !== color;
       const membersChanged = !sameOrder(existingMemberIds, submittedMemberIds);
       const subsChanged = !sameOrder(existingSubIds, submittedSubIds);
       const unionChanged = !sameSet(
@@ -875,7 +898,13 @@ export async function action({ request }: { request: Request }) {
         [...submittedMemberIds, ...submittedSubIds]
       );
 
-      if (!nameChanged && !captainChanged && !membersChanged && !subsChanged) {
+      if (
+        !nameChanged &&
+        !captainChanged &&
+        !membersChanged &&
+        !subsChanged &&
+        !colorChanged
+      ) {
         // Nothing changed for this team — skip the write entirely.
         continue;
       }
@@ -886,6 +915,7 @@ export async function action({ request }: { request: Request }) {
           $set: {
             simpleName: teamPayload.simpleName,
             displayName: teamPayload.displayName,
+            color,
             roster: rosterDoc,
           },
         }

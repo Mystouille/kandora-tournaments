@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, normalizePath } from "vite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { WebSocketServer } from "ws";
@@ -11,8 +11,24 @@ const repositoryRoot = resolve(root, "..", "..", "..", "..");
 
 export default defineConfig({
   root,
+  cacheDir: resolve(
+    repositoryRoot,
+    "scriptsIgnored",
+    "browser-test-vite-cache"
+  ),
   esbuild: { jsx: "automatic" },
-  resolve: { alias: { "~": resolve(repositoryRoot, "app") } },
+  resolve: {
+    alias: {
+      "~": resolve(repositoryRoot, "app"),
+      "../utils/league-permissions.server": resolve(
+        repositoryRoot,
+        "tests",
+        "e2e",
+        "statistics",
+        "adminPermissionStub.ts"
+      ),
+    },
+  },
   optimizeDeps: {
     entries: [
       resolve(root, "index.html"),
@@ -23,7 +39,14 @@ export default defineConfig({
         "statistics",
         "graphsHarness.tsx"
       ),
-    ],
+      resolve(
+        repositoryRoot,
+        "tests",
+        "e2e",
+        "statistics",
+        "teamColorsHarness.tsx"
+      ),
+    ].map(normalizePath),
   },
   server: {
     host: "127.0.0.1",

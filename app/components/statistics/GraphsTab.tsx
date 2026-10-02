@@ -13,6 +13,7 @@ interface GraphsTabProps {
   phaseFilter: PhaseFilter;
   startDate: string | null;
   endDate: string | null;
+  teamColors?: ReadonlyMap<string, string>;
 }
 
 export default function GraphsTab({
@@ -22,6 +23,7 @@ export default function GraphsTab({
   phaseFilter,
   startDate,
   endDate,
+  teamColors,
 }: GraphsTabProps) {
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -59,7 +61,16 @@ export default function GraphsTab({
   // Shared active day state for syncing bar chart <-> line charts
   const [activeDay, setActiveDay] = useState<string | null>(null);
 
-  const seriesData = data ?? [];
+  const seriesData = useMemo(
+    () =>
+      entityType === "team" && teamColors
+        ? (data ?? []).map((series) => {
+            const color = teamColors.get(series.id);
+            return color ? { ...series, color } : series;
+          })
+        : (data ?? []),
+    [data, entityType, teamColors]
+  );
 
   return (
     <div style={{ padding: "24px 0" }}>

@@ -231,6 +231,10 @@ server, new vs existing user). Confirm to import.
 > **Team-mode CSV import replaces all existing teams** for the tournament. Use
 > **Edit Roster** (below) for incremental changes.
 
+Both CSV and platform imports preserve the color of teams with the same team
+name, including teams with no color. New team names receive a default color from
+the graph palette. Other team-replacement behavior is unchanged.
+
 ### 6.2 Changing a roster later — Edit Roster
 
 Open **Edit Roster** (`/admin/online-tournaments/{id}/edit-roster`). This is the
@@ -246,6 +250,11 @@ You can:
   each player.
 - **Move a player** to another team, or **remove** them.
 - **Rename a team** inline, or **create a new team** (team mode).
+- **Set or clear a team color** with the picker next to its name. New teams start
+  with a default color from the graph palette; existing teams without a color
+  remain uncolored. Clearing the picker removes colored statistics backgrounds.
+  Save the roster to apply the change. Color-only edits do not trigger platform
+  synchronization.
 - **Edit a player's platform ID** — validated when you save.
 - **Sync to platform** — when the tournament has a platform tournament ID, enable
   this to push the roster to the platform's team configuration on save. If the
@@ -350,6 +359,21 @@ that applies to every tab, and a set of **tabs** below it.
 
 Most tables and cards are sortable, and the **pinned** entity stays highlighted so
 you can track one team or player across every view.
+
+Configured team colors appear as left-to-right, opaque-to-transparent
+backgrounds on Listing name cells (including expanded members), complete
+participant rows in Rankings, More Rankings and Games, team names in the
+team-based Yaku Map, and Bracket slots. Players inherit their team's color.
+Teams with no configured color have no team-colored backgrounds.
+
+Team graphs use the configured color, or an automatic graph-palette fallback
+when a team has no color. Automatic team graph colors are assigned from the
+complete roster, so filtering does not reassign them. Player graph colors and
+the player-based Yaku Map's existing color scheme are unchanged.
+
+In Bracket, qualification is indicated by a thicker green outline, not a green
+background. **Show details** uses solid team colors for its team column headers,
+without a gradient; uncolored teams keep neutral headers.
 
 ---
 

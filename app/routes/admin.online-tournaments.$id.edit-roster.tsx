@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Checkbox,
+  ColorPicker,
   Form,
   Input,
   List,
@@ -28,6 +29,7 @@ import {
 } from "@ant-design/icons";
 import { useLocale } from "../contexts/LocaleContext";
 import { basePath } from "../utils/basePath";
+import { getDefaultTeamColor } from "../utils/teamColors";
 import type { Route } from "./+types/admin.online-tournaments.$id.edit-roster";
 import { requireLeagueAdminOrRedirect } from "../utils/league-permissions.server";
 
@@ -60,6 +62,7 @@ interface RosterTeam {
   _id: string | null; // null for newly created teams
   simpleName: string;
   displayName: string;
+  color: string | null;
   players: RosterPlayer[];
 }
 
@@ -74,6 +77,7 @@ interface RosterData {
     _id: string;
     simpleName: string;
     displayName: string;
+    color?: string | null;
     players: RosterPlayer[];
   }>;
   players: RosterPlayer[];
@@ -91,6 +95,7 @@ function rosterTeamsFromData(data: RosterData): RosterTeam[] {
         _id: INDIVIDUAL_ROSTER_KEY,
         simpleName: data.leagueName,
         displayName: data.leagueName,
+        color: null,
         players: data.players,
       },
     ];
@@ -100,6 +105,7 @@ function rosterTeamsFromData(data: RosterData): RosterTeam[] {
     _id: team._id,
     simpleName: team.simpleName,
     displayName: team.displayName,
+    color: team.color ?? null,
     players: team.players,
   }));
 }
@@ -382,6 +388,7 @@ export default function EditRosterPage() {
         _id: tempTeamId(),
         simpleName: name,
         displayName: name,
+        color: getDefaultTeamColor(prev.length),
         players: [],
       },
     ]);
@@ -416,11 +423,10 @@ export default function EditRosterPage() {
       const teamsPayload = data.isTeamMode
         ? teams.map((team) => ({
             teamId:
-              team._id && !team._id.startsWith("__new_team_")
-                ? team._id
-                : null,
+              team._id && !team._id.startsWith("__new_team_") ? team._id : null,
             simpleName: team.simpleName,
             displayName: team.displayName,
+            color: team.color,
             players: team.players,
           }))
         : [];
@@ -431,7 +437,7 @@ export default function EditRosterPage() {
         body: JSON.stringify({
           leagueId: data.leagueId,
           teams: teamsPayload,
-          players: data.isTeamMode ? undefined : teams[0]?.players ?? [],
+          players: data.isTeamMode ? undefined : (teams[0]?.players ?? []),
           platformIdUpdates: platformIdEdits,
           syncToPlatform: data.isTeamMode && syncToPlatform,
         }),
@@ -557,18 +563,61 @@ export default function EditRosterPage() {
               type="inner"
               title={
                 data.isTeamMode ? (
-                  <Input
-                    value={team.displayName}
-                    onChange={(e) =>
-                      updateTeam(teamKey, (currentTeam) => ({
-                        ...currentTeam,
-                        displayName: e.target.value,
-                        simpleName: e.target.value,
-                      }))
-                    }
-                    style={{ maxWidth: 280 }}
-                    size="small"
-                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Input
+                      value={team.displayName}
+                      onChange={(e) =>
+                        updateTeam(teamKey, (currentTeam) => ({
+                          ...currentTeam,
+                          displayName: e.target.value,
+                          simpleName: e.target.value,
+                        }))
+                      }
+                      style={{ maxWidth: 280 }}
+                      size="small"
+                    />
+                    <ColorPicker
+                      value={team.color}
+                      allowClear
+                      disabledAlpha
+                      onChange={(value) =>
+                        updateTeam(teamKey, (currentTeam) => ({
+                          ...currentTeam,
+                          color: value.cleared ? null : value.toHexString(),
+                        }))
+                      }
+                      onClear={() =>
+                        updateTeam(teamKey, (currentTeam) => ({
+                          ...currentTeam,
+                          color: null,
+                        }))
+                      }
+                    >
+                      <Button
+                        size="small"
+                        aria-label={`${tt.rosterTeamColorLabel}: ${team.displayName}`}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: 2,
+                            border: "1px solid currentColor",
+                            backgroundColor: team.color ?? undefined,
+                          }}
+                        />
+                        {team.color ?? tt.rosterNoColor}
+                      </Button>
+                    </ColorPicker>
+                  </div>
                 ) : (
                   t.onlineTournaments.tabPlayerList
                 )

@@ -16,6 +16,7 @@ export interface TeamOption {
   _id: string;
   displayName: string;
   simpleName: string;
+  color?: string | null;
   leagueId: string;
   pictures: PicturePair | null;
   roster: {

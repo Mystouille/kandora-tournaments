@@ -48,7 +48,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     const [teams, gameDateRange, leagueGamePlayers, brackets] =
       await Promise.all([
         TeamModel.find({ leagueId: leagueObjId })
-          .select("_id simpleName displayName leagueId roster pictures")
+          .select("_id simpleName displayName leagueId roster pictures color")
           .lean<Team[]>(),
         GameModel.aggregate([
           { $match: { league: leagueObjId } },
@@ -306,6 +306,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         _id: t._id.toString(),
         displayName: t.displayName,
         simpleName: t.simpleName,
+        color: t.color ?? null,
         leagueId: t.leagueId.toString(),
         pictures: (t as any).pictures ?? null,
         roster: {

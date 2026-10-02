@@ -16,6 +16,7 @@ import { useAppTheme } from "../contexts/ThemeContext";
 import { basePath } from "../utils/basePath";
 import { useHighlight } from "../contexts/HighlightContext";
 import { PlayerAvatar } from "./PlayerAvatar";
+import { teamColorGradient, teamColorLabelStyle } from "../utils/teamColors";
 
 const { Text, Title } = Typography;
 
@@ -69,6 +70,7 @@ interface StatRankingCardProps {
 export interface RankingEntry {
   id: string;
   label: string;
+  teamColor?: string | null;
   avatarUrl?: string | null;
   /** Present only for player entries; null when no per-league picture is set. */
   leaguePicture?: import("../types/pictures").PicturePair | null;
@@ -376,7 +378,8 @@ export default function StatRankingCard({
                     gap: 12,
                     padding: "4px 8px",
                     borderRadius: 8,
-                    background: isHighlighted
+                    backgroundImage: teamColorGradient(item.teamColor),
+                    backgroundColor: isHighlighted
                       ? isDark
                         ? "rgba(22, 119, 255, 0.15)"
                         : "rgba(22, 119, 255, 0.08)"
@@ -447,10 +450,23 @@ export default function StatRankingCard({
                       flexDirection: "column",
                     }}
                   >
-                    <Text strong ellipsis style={{ fontSize: 14 }}>
+                    <Text
+                      strong
+                      ellipsis
+                      style={{
+                        fontSize: 14,
+                        ...teamColorLabelStyle(item.teamColor),
+                      }}
+                    >
                       {item.label}
                     </Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
+                    <Text
+                      type="secondary"
+                      style={{
+                        fontSize: 11,
+                        ...teamColorLabelStyle(item.teamColor),
+                      }}
+                    >
                       {t.statistics.gamesPlayed.replace(
                         "{count}",
                         String(item.gameCount)

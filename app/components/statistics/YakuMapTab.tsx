@@ -4,6 +4,11 @@ import { Empty, InputNumber, Spin, Switch, Tooltip, Typography } from "antd";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useAppTheme } from "../../contexts/ThemeContext";
 import { basePath } from "../../utils/basePath";
+import {
+  teamColorGradient,
+  teamColorLabelStyle,
+  type TeamColorMap,
+} from "../../utils/teamColors";
 
 import {
   CELL_SIZE,
@@ -35,6 +40,7 @@ interface YakuMapTabProps {
   autoRefresh: boolean;
   minGames: number;
   onMinGamesChange: (v: number) => void;
+  teamColors?: TeamColorMap;
 }
 
 export default function YakuMapTab({
@@ -46,6 +52,7 @@ export default function YakuMapTab({
   autoRefresh,
   minGames,
   onMinGamesChange,
+  teamColors,
 }: YakuMapTabProps) {
   const { t, locale } = useLocale();
   const { isDark } = useAppTheme();
@@ -413,7 +420,11 @@ export default function YakuMapTab({
                       position: "sticky",
                       left: 0,
                       zIndex: 2,
-                      background: isDark ? "#141414" : "#fff",
+                      backgroundColor: isDark ? "#141414" : "#fff",
+                      backgroundImage:
+                        entityType === "team"
+                          ? teamColorGradient(teamColors?.get(col.id))
+                          : undefined,
                       padding: "0 8px",
                       height: CELL_SIZE,
                       maxHeight: CELL_SIZE,
@@ -429,7 +440,9 @@ export default function YakuMapTab({
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       cursor: "pointer",
-                      color: undefined,
+                      ...teamColorLabelStyle(
+                        entityType === "team" ? teamColors?.get(col.id) : null
+                      ),
                     }}
                     title={col.name}
                     onClick={() => toggleFocusRow(col.id)}

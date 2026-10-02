@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 import { UserModel } from "../../../core/models/shared/User";
 import { TeamModel } from "../../../core/models/tournament/Team";
 import {
+  getImportedTeamColor,
+  snapshotTeamColors,
+} from "../../../utils/teamColors";
+import {
   LeagueModel,
   Platform,
   type League,
@@ -643,6 +647,12 @@ export async function action({ request }: { request: Request }) {
       }
 
       if (isTeamMode) {
+        const existingColors = snapshotTeamColors(
+          await TeamModel.find({ leagueId: league._id })
+            .select("simpleName color")
+            .lean()
+        );
+
         // Delete all existing teams for this league
         await TeamModel.deleteMany({ leagueId: league._id }).exec();
 
@@ -654,6 +664,7 @@ export async function action({ request }: { request: Request }) {
         // Create new Team documents in DB
         // Official substitutes (empty team name + substitute flag) go to league-level
         officialSubUserIds = [];
+        let teamColorIndex = 0;
 
         for (const team of teams) {
           // Detect official substitutes: empty team name and all members are subs
@@ -684,6 +695,11 @@ export async function action({ request }: { request: Request }) {
           await TeamModel.create({
             simpleName: team.name,
             displayName: team.name,
+            color: getImportedTeamColor(
+              existingColors,
+              team.name,
+              teamColorIndex
+            ),
             leagueId: league._id,
             roster: {
               captain: new mongoose.Types.ObjectId(allIds[0]),
@@ -695,6 +711,7 @@ export async function action({ request }: { request: Request }) {
               ),
             },
           });
+          teamColorIndex++;
         }
 
         // Save official substitutes to the league

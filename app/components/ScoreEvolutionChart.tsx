@@ -4,6 +4,7 @@ import { Spin, Typography } from "antd";
 import { useLocale } from "../contexts/LocaleContext";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { useHighlight } from "../contexts/HighlightContext";
+import { getDefaultTeamColor } from "../utils/teamColors";
 import {
   buildRankingData,
   isEliminatedOnDay,
@@ -132,30 +133,13 @@ export default function ScoreEvolutionChart({
     [series]
   );
 
-  // Build a color map from nivo's category10 scheme
-  const category10 = useMemo(
-    () => [
-      "#1f77b4",
-      "#ff7f0e",
-      "#2ca02c",
-      "#d62728",
-      "#9467bd",
-      "#8c564b",
-      "#e377c2",
-      "#7f7f7f",
-      "#bcbd22",
-      "#17becf",
-    ],
-    []
-  );
-
   const colorMap = useMemo(() => {
     const map = new Map<string, string>();
-    nivoData.forEach((s, i) => {
-      map.set(s.id as string, category10[i % category10.length]);
+    series.forEach((s, i) => {
+      map.set(s.label, s.color ?? getDefaultTeamColor(i));
     });
     return map;
-  }, [nivoData, category10]);
+  }, [series]);
 
   const rankingData = useMemo(() => buildRankingData(series), [series]);
 
@@ -560,7 +544,7 @@ export default function ScoreEvolutionChart({
             tickSize: 5,
             tickPadding: 5,
           }}
-          colors={{ scheme: "category10" }}
+          colors={nivoData.map((s) => colorMap.get(s.id) ?? "#888")}
           pointSize={0}
           enablePointLabel={false}
           layers={[

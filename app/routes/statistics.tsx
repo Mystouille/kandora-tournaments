@@ -65,6 +65,7 @@ export default function Statistics({
   const {
     selectedLeagueData,
     teams,
+    teamColors,
     users,
     eliminatedTeams,
     loading,
@@ -304,7 +305,18 @@ export default function Statistics({
     },
   });
 
-  const rankingsData = rankingsQueryData ?? null;
+  const rankingsData = useMemo(
+    () =>
+      rankingsQueryData?.map((entry) => ({
+        ...entry,
+        teamColor:
+          (filterMode === "teams"
+            ? teamColors.byTeamId
+            : teamColors.byPlayerId
+          ).get(entry.id) ?? null,
+      })) ?? null,
+    [rankingsQueryData, filterMode, teamColors]
+  );
   const rankingsError = rankingsQueryError
     ? t.statistics.errorLoadingChart
     : null;
@@ -633,6 +645,7 @@ export default function Statistics({
                         ),
                         children: (
                           <GraphsTab
+                            teamColors={teamColors.graphs}
                             leagueIds={leagueIds}
                             entityType={chartEntityType}
                             entityIds={chartEntityIds}
@@ -654,6 +667,7 @@ export default function Statistics({
                   ),
                   children: (
                     <PlayerStandingTab
+                      teamColors={teamColors}
                       leagueIds={leagueIds}
                       entityType={chartEntityType}
                       entityIds={chartEntityIds}
@@ -710,6 +724,7 @@ export default function Statistics({
                   ),
                   children: (
                     <GamesTab
+                      playerColors={teamColors.byPlayerId}
                       leagueIds={leagueIds}
                       leagueSlug={leagueSlug}
                       entityType={chartEntityType}
@@ -732,6 +747,7 @@ export default function Statistics({
                   ),
                   children: (
                     <YakuMapTab
+                      teamColors={teamColors.byTeamId}
                       leagueIds={leagueIds}
                       entityType={chartEntityType}
                       entityIds={chartEntityIds}

@@ -7,6 +7,11 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useAppTheme } from "../../contexts/ThemeContext";
 import { basePath } from "../../utils/basePath";
 import { PlayerAvatar } from "../PlayerAvatar";
+import {
+  teamColorGradient,
+  teamColorLabelStyle,
+  type TeamColorLookup,
+} from "../../utils/teamColors";
 
 const { Text } = Typography;
 
@@ -18,6 +23,7 @@ interface StandingEntry {
   majsoulName: string | null;
   teamId: string | null;
   teamName: string | null;
+  teamColor?: string | null;
   totalScore: number;
   rawPoints: number;
   bonusPoints: number;
@@ -43,6 +49,7 @@ interface PlayerStandingTabProps {
   endDate: string | null;
   pinPlayerOptions: PinOption[];
   eliminatedEntityIds?: string[];
+  teamColors?: TeamColorLookup;
 }
 
 /** Assign ranks where tied entries share the best (lowest) rank */
@@ -68,6 +75,7 @@ export default function PlayerStandingTab({
   endDate,
   pinPlayerOptions,
   eliminatedEntityIds,
+  teamColors,
 }: PlayerStandingTabProps) {
   const { t } = useLocale();
   const { isDark } = useAppTheme();
@@ -135,7 +143,23 @@ export default function PlayerStandingTab({
     enabled: leagueIds.length > 0,
   });
 
-  const standings = data?.standings ?? [];
+  const standings = useMemo(
+    () =>
+      (data?.standings ?? []).map((entry) => {
+        const teamColor =
+          entityType === "team"
+            ? (teamColors?.byTeamId.get(entry.id) ?? null)
+            : entry.teamId && teamColors?.byTeamId.has(entry.teamId)
+              ? (teamColors.byTeamId.get(entry.teamId) ?? null)
+              : (teamColors?.byPlayerId.get(entry.id) ?? null);
+        return {
+          ...entry,
+          teamColor,
+          members: entry.members?.map((member) => ({ ...member, teamColor })),
+        };
+      }),
+    [data?.standings, entityType, teamColors]
+  );
   const rankingLabel = data?.rankingLabel ?? null;
   const isTeamMode = entityType === "team";
 
@@ -247,7 +271,7 @@ export default function PlayerStandingTab({
 
   const highlightStyle = useMemo(
     () =>
-      `<style>.standing-row-highlighted td{background:${isDark ? "rgba(22,119,255,0.15)" : "rgba(22,119,255,0.08)"} !important;}.standing-row-eliminated td{color:#999 !important;opacity:0.6;}</style>`,
+      `<style>.standing-row-highlighted td{background-color:${isDark ? "rgba(22,119,255,0.15)" : "rgba(22,119,255,0.08)"} !important;}.standing-row-eliminated td{color:#999 !important;opacity:0.6;}</style>`,
     [isDark]
   );
 
@@ -299,6 +323,9 @@ export default function PlayerStandingTab({
           : t.statistics.standingPlayer,
         dataIndex: "label",
         key: "label",
+        onCell: (record) => ({
+          style: { backgroundImage: teamColorGradient(record.teamColor) },
+        }),
         width: 180,
         ellipsis: true,
         render: (_: any, record: StandingEntry) => (
@@ -316,19 +343,26 @@ export default function PlayerStandingTab({
                   size={28}
                   src={record.avatarUrl}
                   icon={!record.avatarUrl ? <UserOutlined /> : undefined}
-                  style={{ flexShrink: 0 }}
+                  style={{
+                    flexShrink: 0,
+                    ...teamColorLabelStyle(record.teamColor),
+                  }}
                 />
               ) : (
                 <PlayerAvatar
                   size={28}
                   src={record.avatarUrl}
                   leaguePicture={record.leaguePicture}
-                  style={{ flexShrink: 0 }}
+                  style={{
+                    flexShrink: 0,
+                    ...teamColorLabelStyle(record.teamColor),
+                  }}
                 />
               ))}
             <Text
               strong
               style={{
+                ...teamColorLabelStyle(record.teamColor),
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -337,7 +371,13 @@ export default function PlayerStandingTab({
               {record.label}
             </Text>
             {record.majsoulName && (
-              <span style={{ fontSize: "0.8em", opacity: 0.5 }}>
+              <span
+                style={{
+                  ...teamColorLabelStyle(record.teamColor),
+                  fontSize: "0.8em",
+                  opacity: 0.5,
+                }}
+              >
                 ({record.majsoulName})
               </span>
             )}
@@ -488,7 +528,7 @@ export default function PlayerStandingTab({
           ),
       },
     ],
-    [t, rankMap, isDark]
+    [t, rankMap, isDark, isTeamMode]
   );
 
   // For team mode, build columns for the expanded member rows (same columns without rank)

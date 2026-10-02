@@ -6,21 +6,9 @@ import { useLocale } from "../contexts/LocaleContext";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { useHighlight } from "../contexts/HighlightContext";
 import { isEliminatedOnDay, type Series } from "./scoreEvolutionData";
+import { getDefaultTeamColor } from "../utils/teamColors";
 
 const { Text } = Typography;
-
-const CATEGORY10 = [
-  "#1f77b4",
-  "#ff7f0e",
-  "#2ca02c",
-  "#d62728",
-  "#9467bd",
-  "#8c564b",
-  "#e377c2",
-  "#7f7f7f",
-  "#bcbd22",
-  "#17becf",
-];
 
 interface ScoreBreakdownChartProps {
   series: Series[];
@@ -73,13 +61,24 @@ export default function ScoreBreakdownChart({
     [series]
   );
 
-  // Resolve color for a series by index and its status on the selected day.
+  const seriesColors = useMemo(
+    () =>
+      new Map(
+        series.map((s, index) => [
+          s.label,
+          s.color ?? getDefaultTeamColor(index),
+        ])
+      ),
+    [series]
+  );
+
+  // Elimination gray takes precedence over the team's configured color.
   const resolveColor = useCallback(
     (label: string, index: number, day: string) =>
       isEliminatedOnDay(eliminationDatesByLabel.get(label), day)
         ? "#999"
-        : CATEGORY10[index % CATEGORY10.length],
-    [eliminationDatesByLabel]
+        : (seriesColors.get(label) ?? getDefaultTeamColor(index)),
+    [eliminationDatesByLabel, seriesColors]
   );
 
   // Collect all unique sorted days

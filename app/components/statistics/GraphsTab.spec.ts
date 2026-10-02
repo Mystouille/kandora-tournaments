@@ -92,4 +92,46 @@ describe("GraphsTab phase selection", () => {
     expect(mocks.breakdown.mock.calls[0][0].series).toEqual(series);
     expect(mocks.evolution.mock.calls[0][0].series).toEqual(series);
   });
+
+  it("decorates filtered team series by stable team ID for both charts", () => {
+    const series: Series[] = [
+      {
+        id: "second-team",
+        label: "Renamed Team",
+        eliminatedAt: "2026-09-01",
+        data: [{ x: "2026-08-31", y: 42 }],
+      },
+    ];
+    mocks.useQuery.mockReturnValue({
+      data: series,
+      isLoading: false,
+      error: null,
+    });
+    renderGraph({
+      entityIds: ["second-team"],
+      teamColors: new Map([
+        ["first-team", "#112233"],
+        ["second-team", "#aabbcc"],
+      ]),
+    });
+    const expected = [{ ...series[0], color: "#aabbcc" }];
+    expect(mocks.breakdown.mock.calls[0][0].series).toEqual(expected);
+    expect(mocks.evolution.mock.calls[0][0].series).toEqual(expected);
+    expect(series[0]).not.toHaveProperty("color");
+  });
+
+  it("leaves player series unchanged even when team colors are supplied", () => {
+    const series: Series[] = [{ id: "player", label: "Player", data: [] }];
+    mocks.useQuery.mockReturnValue({
+      data: series,
+      isLoading: false,
+      error: null,
+    });
+    renderGraph({
+      entityType: "player",
+      teamColors: new Map([["player", "#aabbcc"]]),
+    });
+    expect(mocks.breakdown.mock.calls[0][0].series).toEqual(series);
+    expect(mocks.evolution.mock.calls[0][0].series).toEqual(series);
+  });
 });
