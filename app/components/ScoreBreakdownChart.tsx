@@ -161,6 +161,15 @@ export default function ScoreBreakdownChart({
     [sortedDays, buildSliceForDay]
   );
 
+  // A line-chart selection must also move the slider and replay cursor.
+  useEffect(() => {
+    if (activeDay === undefined) {
+      return;
+    }
+    const index = activeDay ? sortedDays.indexOf(activeDay) : -1;
+    setPlaybackIndex(index >= 0 ? index : null);
+  }, [activeDay, sortedDays]);
+
   // Stop playback when data changes
   useEffect(() => {
     setIsPlaying(false);

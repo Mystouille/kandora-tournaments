@@ -11,7 +11,20 @@ const repositoryRoot = resolve(root, "..", "..", "..", "..");
 
 export default defineConfig({
   root,
+  esbuild: { jsx: "automatic" },
   resolve: { alias: { "~": resolve(repositoryRoot, "app") } },
+  optimizeDeps: {
+    entries: [
+      resolve(root, "index.html"),
+      resolve(
+        repositoryRoot,
+        "tests",
+        "e2e",
+        "statistics",
+        "graphsHarness.tsx"
+      ),
+    ],
+  },
   server: {
     host: "127.0.0.1",
     port: 5198,
