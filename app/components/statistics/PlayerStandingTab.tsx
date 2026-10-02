@@ -12,6 +12,7 @@ import {
   teamColorLabelStyle,
   type TeamColorLookup,
 } from "../../utils/teamColors";
+import type { PhaseFilter } from "./types";
 
 const { Text } = Typography;
 
@@ -45,6 +46,7 @@ interface PlayerStandingTabProps {
   leagueIds: string[];
   entityType: "player" | "team";
   entityIds: string[];
+  phaseFilter: PhaseFilter;
   startDate: string | null;
   endDate: string | null;
   pinPlayerOptions: PinOption[];
@@ -71,6 +73,7 @@ export default function PlayerStandingTab({
   leagueIds,
   entityType,
   entityIds,
+  phaseFilter,
   startDate,
   endDate,
   pinPlayerOptions,
@@ -107,6 +110,7 @@ export default function PlayerStandingTab({
       params.set("leagueIds", leagueIds.join(","));
     }
     params.set("entityType", entityType);
+    params.set("phaseFilter", phaseFilter);
     if (entityIds.length > 0) {
       params.set("entityIds", entityIds.join(","));
     }
@@ -121,6 +125,7 @@ export default function PlayerStandingTab({
     leagueIds.join(","),
     entityType,
     entityIds.join(","),
+    phaseFilter,
     startDate,
     endDate,
   ]);

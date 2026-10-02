@@ -58,6 +58,23 @@ function computeQualifiedRegularPhaseIds(
   teams: Team[],
   rankingGames: RankingGame[]
 ): Set<string> {
+  const result = computeRegularPhaseStandings(
+    league,
+    leagueType,
+    phase,
+    teams,
+    rankingGames
+  );
+  return new Set(result.standings.map((standing) => standing.teamId));
+}
+
+function computeRegularPhaseStandings(
+  league: League,
+  leagueType: LeagueTypeConfig,
+  phase: OrderedPhase,
+  teams: Team[],
+  rankingGames: RankingGame[]
+) {
   const participants = leagueType.isTeamMode
     ? teams
     : [
@@ -68,7 +85,7 @@ function computeQualifiedRegularPhaseIds(
         _id: userId,
         roster: { members: [userId], substitutes: [] },
       }));
-  const result = computeMultiPhaseStandings(
+  return computeMultiPhaseStandings(
     leagueType,
     rankingGames,
     league.rulesConfig.gameRules,
@@ -76,7 +93,6 @@ function computeQualifiedRegularPhaseIds(
     league.phaseCutoffTimes,
     phase.index
   );
-  return new Set(result.standings.map((standing) => standing.teamId));
 }
 
 async function loadFinalQualifiedPhaseIds(
@@ -96,29 +112,45 @@ async function loadFinalQualifiedPhaseIds(
   );
 }
 
-async function loadQualifiedPhaseIds(
+async function loadPhaseQualification(
   league: League,
   leagueType: LeagueTypeConfig,
   phase: OrderedPhase,
   teams: Team[]
-): Promise<Set<string>> {
+): Promise<{
+  participantIds: Set<string>;
+  retainedScores: Map<string, number>;
+}> {
   if (phase.kind === "final") {
-    return (
-      (await loadFinalQualifiedPhaseIds(league, leagueType)) ??
-      new Set<string>()
-    );
+    return {
+      participantIds:
+        (await loadFinalQualifiedPhaseIds(league, leagueType)) ??
+        new Set<string>(),
+      retainedScores: new Map(),
+    };
   }
 
   // Qualification must use complete league results, not the graph's date or
   // participant filters, and includes qualifiers with no games in this phase.
   const rankingGames = await loadRankingGames(league);
-  return computeQualifiedRegularPhaseIds(
+  const result = computeRegularPhaseStandings(
     league,
     leagueType,
     phase,
     teams,
     rankingGames
   );
+  return {
+    participantIds: new Set(
+      result.standings.map((standing) => standing.teamId)
+    ),
+    retainedScores: new Map(
+      result.standings.map((standing) => [
+        standing.teamId,
+        standing.retainedScore,
+      ])
+    ),
+  };
 }
 
 async function loadTeamEliminationDates(
@@ -251,6 +283,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     let selectedPhase: OrderedPhase | undefined;
     let qualifiedTeamIds: Set<string> | null = null;
     let qualifiedPlayerIds: Set<string> | null = null;
+    let phaseScoreOffsets = new Map<string, number>();
     if (phaseIndex !== null) {
       const league = leaguesDocs.find((l) => l._id.toString() === leagueIds[0]);
       if (!league) {
@@ -268,12 +301,14 @@ export async function loader({ request }: Route.LoaderArgs) {
         const teams = await Team.find({ leagueId: league._id })
           .select("_id roster finalsRoster")
           .lean<Team[]>();
-        const qualifiedIds = await loadQualifiedPhaseIds(
+        const qualification = await loadPhaseQualification(
           league,
           leagueType,
           selectedPhase,
           teams
         );
+        const qualifiedIds = qualification.participantIds;
+        phaseScoreOffsets = qualification.retainedScores;
         if (leagueType.isTeamMode) {
           qualifiedTeamIds = qualifiedIds;
           qualifiedPlayerIds = new Set(
@@ -488,6 +523,16 @@ export async function loader({ request }: Route.LoaderArgs) {
         allDays.add(e.day);
       }
     }
+    const selectedSeriesHasOffset = useTeamMode
+      ? resolvedTeamsData.some((team) =>
+          phaseScoreOffsets.has(team._id.toString())
+        )
+      : resolvedPlayerIds.some((playerId) =>
+          phaseScoreOffsets.has(playerId)
+        );
+    if (selectedSeriesHasOffset && startDate) {
+      allDays.add(startDate.slice(0, 10));
+    }
     if (allDays.size > 0 && teamEliminationDates.size > 0) {
       const actualDays = [...allDays].sort();
       const latestActualDay = actualDays[actualDays.length - 1];
@@ -510,13 +555,15 @@ export async function loader({ request }: Route.LoaderArgs) {
       // One series per team: sum of all members' cumulative scores
       const series = resolvedTeamsData.map((team) => {
         const memberIds = getTeamMemberIds(team, selectedPhase);
+        const scoreOffset =
+          phaseScoreOffsets.get(team._id.toString()) ?? 0;
 
         // For each day, compute cumulative score of all members combined
         const memberCumulatives = new Map<string, number>();
         const dataPoints: { x: string; y: number }[] = [];
 
         for (const day of sortedDays) {
-          let teamDayTotal = 0;
+          let teamDayTotal = scoreOffset;
           for (const memberId of memberIds) {
             const dayEntry = playerDailyMap
               .get(memberId)
@@ -568,7 +615,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           dayScoreMap.set(e.day, e.score);
         }
 
-        let cumulative = 0;
+        let cumulative = phaseScoreOffsets.get(pid) ?? 0;
         const data: { x: string; y: number }[] = [];
         for (const day of sortedDays) {
           const dayScore = dayScoreMap.get(day);

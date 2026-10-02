@@ -18,11 +18,15 @@ import {
   computePlayerDeltas,
   getStartingScore,
 } from "../../services/leagueUtils";
-import { resolveLeagueTypeConfig } from "~/services/league-configs";
+import {
+  resolveLeagueTypeConfig,
+  resolveOrderedPhases,
+} from "~/services/league-configs";
 import {
   buildUserToTeamMap,
   computeNonTeamRankingData,
 } from "~/services/league-strategies/regularRankingStrategies";
+import { computeMultiPhaseStandings } from "~/services/league-strategies/multiPhaseStrategies";
 
 import { getLeagueApiCache } from "~/services/leagueApiCache.server";
 
@@ -64,6 +68,7 @@ interface PlayerStanding {
  *   leagueIds   – comma-separated league ObjectId strings (required)
  *   entityType  – "player" or "team"
  *   entityIds   – comma-separated ObjectId strings (optional)
+ *   phaseFilter – "both" (default) or "phaseN" (0-based, single league only)
  *   startDate   – ISO date string (optional)
  *   endDate     – ISO date string (optional)
  *
@@ -85,11 +90,26 @@ export async function loader({ request }: Route.LoaderArgs) {
       (url.searchParams.get("entityType") as "player" | "team") ?? "team";
     const entityIds =
       url.searchParams.get("entityIds")?.split(",").filter(Boolean) ?? [];
+    const phaseFilter = url.searchParams.get("phaseFilter") ?? "both";
     const startDate = url.searchParams.get("startDate");
     const endDate = url.searchParams.get("endDate");
 
     if (leagueIds.length === 0) {
       return Response.json({ error: "leagueIds is required" }, { status: 400 });
+    }
+    if (phaseFilter !== "both" && !/^phase(0|[1-9]\d*)$/.test(phaseFilter)) {
+      return Response.json({ error: "Invalid phaseFilter" }, { status: 400 });
+    }
+    const phaseIndex =
+      phaseFilter === "both" ? null : Number(phaseFilter.slice(5));
+    if (
+      phaseIndex !== null &&
+      (!Number.isSafeInteger(phaseIndex) || leagueIds.length !== 1)
+    ) {
+      return Response.json(
+        { error: "A phase filter requires one league and a valid phase index" },
+        { status: 400 }
+      );
     }
 
     await connectToDatabase();
@@ -111,8 +131,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     const leagues = await LeagueModel.find({
       _id: { $in: leagueIds.map((id) => new mongoose.Types.ObjectId(id)) },
     })
-      .select("officialSubstitutes rulesConfig")
-      .lean<Pick<League, "_id" | "officialSubstitutes" | "rulesConfig">[]>();
+      .select(
+        "officialSubstitutes rulesConfig phaseCutoffTimes leagueTypeConfig"
+      )
+      .populate("leagueTypeConfig")
+      .lean<League[]>();
     const officialSubIdSet = new Set<string>();
     const leagueRulesetMap = new Map<string, Ruleset>();
     for (const lg of leagues) {
@@ -122,6 +145,21 @@ export async function loader({ request }: Route.LoaderArgs) {
       leagueRulesetMap.set(
         lg._id.toString(),
         lg.rulesConfig?.gameRules as Ruleset
+      );
+    }
+
+    const phaseLeague = phaseIndex === null ? null : leagues[0];
+    const phaseLeagueType = resolveLeagueTypeConfig(
+      phaseLeague?.leagueTypeConfig
+    );
+    const selectedPhase =
+      phaseIndex === null
+        ? null
+        : resolveOrderedPhases(phaseLeagueType)[phaseIndex];
+    if (phaseIndex !== null && (!phaseLeague || !selectedPhase)) {
+      return Response.json(
+        { error: "The selected phase is not configured for this league" },
+        { status: 400 }
       );
     }
 
@@ -206,6 +244,82 @@ export async function loader({ request }: Route.LoaderArgs) {
       );
     }
 
+    let selectedPhaseParticipantIds: Set<string> | null = null;
+    const phaseScoreOffsets = new Map<string, number>();
+    if (
+      phaseIndex !== null &&
+      phaseIndex > 0 &&
+      selectedPhase?.kind === "regular" &&
+      phaseLeague &&
+      phaseLeagueType?.regularPhases
+    ) {
+      const phaseTeams = await Team.find({ leagueId: phaseLeague._id })
+        .select("_id roster")
+        .lean<Team[]>();
+      const phaseGames = await Game.find({
+        league: phaseLeague._id,
+        isValid: true,
+      })
+        .select("startTime phaseId results")
+        .lean<Game[]>();
+      const phaseRankingGames = phaseGames.map((game) => ({
+        startTime: game.startTime,
+        phaseId: game.phaseId,
+        results: (game.results ?? []).map((result) => ({
+          userId: result.userId.toString(),
+          score: result.score,
+        })),
+      }));
+      const phaseParticipants = phaseLeagueType.isTeamMode
+        ? phaseTeams
+        : [
+            ...new Set(
+              phaseRankingGames.flatMap((game) =>
+                game.results.map((result) => result.userId)
+              )
+            ),
+          ].map((userId) => ({
+            _id: userId,
+            roster: { members: [userId], substitutes: [] },
+          }));
+      const phaseResult = computeMultiPhaseStandings(
+        phaseLeagueType,
+        phaseRankingGames,
+        phaseLeague.rulesConfig.gameRules,
+        phaseParticipants,
+        phaseLeague.phaseCutoffTimes,
+        phaseIndex
+      );
+      const participantIds = new Set(
+        phaseResult.standings.map((standing) => standing.teamId)
+      );
+      selectedPhaseParticipantIds = participantIds;
+      for (const standing of phaseResult.standings) {
+        phaseScoreOffsets.set(standing.teamId, standing.retainedScore);
+      }
+
+      if (phaseLeagueType.isTeamMode) {
+        effectiveTeamIds = effectiveTeamIds.filter((teamId) =>
+          participantIds.has(teamId)
+        );
+        const qualifiedPlayerIds = new Set(
+          phaseTeams
+            .filter((team) => participantIds.has(team._id.toString()))
+            .flatMap((team) => [
+              ...(team.roster.members ?? []).map((id) => id.toString()),
+              ...(team.roster.substitutes ?? []).map((id) => id.toString()),
+            ])
+        );
+        resolvedPlayerIds = resolvedPlayerIds.filter((playerId) =>
+          qualifiedPlayerIds.has(playerId)
+        );
+      } else {
+        resolvedPlayerIds = resolvedPlayerIds.filter((playerId) =>
+          participantIds.has(playerId)
+        );
+      }
+    }
+
     // ---------- Find matching games ----------
     const gameMatchFilter: any = {
       league: {
@@ -233,7 +347,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       .select("_id gameId league results")
       .lean<Game[]>();
 
-    if (matchingGames.length === 0) {
+    if (
+      matchingGames.length === 0 &&
+      selectedPhaseParticipantIds === null
+    ) {
       const result = { standings: [] };
       setCache(cacheKey, result);
       return Response.json(result);
@@ -378,10 +495,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     let useFactionMode = false;
 
     if (leagueIds.length === 1) {
-      const league = await LeagueModel.findById(leagueIds[0])
-        .select("rulesConfig leagueTypeConfig")
-        .populate("leagueTypeConfig")
-        .lean<League | null>();
+      const league = leagues[0] ?? null;
 
       if (league) {
         const leagueType = resolveLeagueTypeConfig(league.leagueTypeConfig);
@@ -434,7 +548,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     const buildPlayerStanding = (pid: string): PlayerStanding => {
       const stats = playerStats.get(pid);
       const user = userMap.get(pid);
-      const totalScore = stats?.totalScore ?? 0;
+      const totalScore =
+        (stats?.totalScore ?? 0) + (phaseScoreOffsets.get(pid) ?? 0);
       const rawPoints = stats?.rawPoints ?? 0;
       const bonusPoints = Math.round((totalScore - rawPoints) * 10) / 10;
       const gameCount = stats?.gameCount ?? 0;
@@ -496,9 +611,12 @@ export async function loader({ request }: Route.LoaderArgs) {
         // Aggregate team totals
         // In faction mode, use the best-ranked player's values instead of summing
         const bestMember = members.length > 0 ? members[0] : null;
+        const phaseScoreOffset =
+          phaseScoreOffsets.get(team._id.toString()) ?? 0;
         const totalScore = useFactionMode
           ? (bestMember?.totalScore ?? 0)
-          : members.reduce(
+          : phaseScoreOffset +
+            members.reduce(
               (sum: number, m: PlayerStanding) => sum + m.totalScore,
               0
             );
@@ -565,7 +683,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       // Player mode
       const standings = resolvedPlayerIds
         .map(buildPlayerStanding)
-        .filter((s) => s.gameCount > 0)
+        .filter((s) => s.gameCount > 0 || phaseScoreOffsets.has(s.id))
         .sort((a, b) => b.totalScore - a.totalScore);
 
       const result = { standings, rankingLabel };

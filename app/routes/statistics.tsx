@@ -671,6 +671,7 @@ export default function Statistics({
                       leagueIds={leagueIds}
                       entityType={chartEntityType}
                       entityIds={chartEntityIds}
+                      phaseFilter={phaseFilter}
                       startDate={rankingStartDate}
                       endDate={rankingEndDate}
                       pinPlayerOptions={pinPlayerOptions}

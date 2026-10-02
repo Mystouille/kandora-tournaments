@@ -295,7 +295,7 @@ describe("score evolution API", () => {
       mocks.findBracket.mockReturnValue(selectedLean(null));
     });
 
-    it("shows only qualified teams, including one with no phase-2 games", async () => {
+    it("carries retained scores into qualified phase-2 teams", async () => {
       const response = await loadPhaseGraph();
 
       expect(response.status).toBe(200);
@@ -304,12 +304,18 @@ describe("score evolution API", () => {
           {
             id: teamIds[0].toString(),
             label: "Team 1",
-            data: [{ x: "2026-09-15", y: 60 }],
+            data: [
+              { x: "2026-09-01", y: 30 },
+              { x: "2026-09-15", y: 90 },
+            ],
           },
           {
             id: teamIds[1].toString(),
             label: "Team 2",
-            data: [{ x: "2026-09-15", y: 0 }],
+            data: [
+              { x: "2026-09-01", y: 5 },
+              { x: "2026-09-15", y: 5 },
+            ],
           },
         ],
       });
