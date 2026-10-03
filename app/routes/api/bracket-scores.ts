@@ -25,7 +25,7 @@ import {
   GAMES_PER_STAGE,
   type BracketContext,
 } from "../../services/bracketUtils";
-import { computePlayerDeltas } from "../../services/leagueUtils";
+import { computePlayerDeltas, isGameScored } from "../../services/leagueUtils";
 import {
   buildFinalsGameMatch,
   buildRegularGameMatch,
@@ -575,6 +575,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         }[];
         games: {
           gameId: string | null;
+          summaryGameId: string | null;
           startTime: string;
           replayUrl: string | null;
           players: {
@@ -922,6 +923,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
       phase.games.push({
         gameId: game.gameId ?? null,
+        summaryGameId: isGameScored(game.results) ? game._id.toString() : null,
         startTime: game.startTime.toISOString(),
         replayUrl,
         players: gamePlayers.sort((a, b) => a.place - b.place),

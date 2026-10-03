@@ -215,10 +215,18 @@ export function computePhaseScoreTimeline({
       return;
     }
     if (isTeamMode) {
+      const scoring = leagueType.regularPhase.scoring;
       const { sortedTeams } = computeTeamBasedRankingData(
         regularGames,
         rules,
-        teamMaps[0]
+        teamMaps[0],
+        scoring.type === "team-delta-cap"
+          ? {
+              enableCap: true,
+              capPercent: scoring.capPercent,
+              minGamesForCap: scoring.minGamesForCap,
+            }
+          : { enableCap: false }
       );
       rankedRegularTeams = new Map(
         sortedTeams.map((team) => [team.teamId, team.totalScore])

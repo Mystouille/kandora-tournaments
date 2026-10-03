@@ -1,0 +1,518 @@
+.game-summary-page {
+  width: 100%;
+  min-width: 0;
+  padding: 20px 0;
+}
+
+.gs-toolbar,
+.gs-actions,
+.gs-screen-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gs-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.gs-actions {
+  margin-left: auto;
+}
+
+.gs-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gs-pan-hint {
+  display: none;
+  color: #8a9791;
+  font-size: 12px;
+}
+
+.gs-viewport {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: #08120f;
+}
+
+.gs-preview {
+  width: 1920px;
+}
+
+.gs-canvas,
+.gs-canvas * {
+  box-sizing: border-box;
+}
+
+.gs-canvas {
+  width: 1920px;
+  height: 1080px;
+  padding: 50px 64px 32px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 100% 0%, #134835 0%, transparent 52%),
+    radial-gradient(ellipse at 0% 100%, #14312c 0%, transparent 60%), #08120f;
+  color: #f5f7f6;
+  font-family: Arial, Helvetica, sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.gs-canvas-tall {
+  height: auto;
+  min-height: 1080px;
+}
+
+.gs-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 45px;
+  padding: 0 0 30px;
+  border-bottom: 2px solid #5ee2ad6e;
+}
+
+.gs-kicker {
+  color: #9db7aa;
+  font-size: 20px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.gs-kicker span {
+  color: #81e7b8;
+  font-weight: 700;
+}
+
+.gs-header h1 {
+  margin: 8px 0 10px;
+  max-width: 1190px;
+  font-size: 51px;
+  font-weight: 700;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.gs-subheading {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  color: #d3e3da;
+  font-size: 28px;
+}
+
+.gs-phase {
+  padding: 4px 14px;
+  border: 1px solid #6bac8e66;
+  border-radius: 5px;
+  font-size: 20px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.gs-date {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 30px;
+}
+
+.gs-date span {
+  color: #a6beb1;
+  font-size: 25px;
+}
+
+.gs-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 0 auto;
+  padding: 24px 0;
+  min-height: 0;
+}
+
+.gs-canvas:not(.gs-canvas-tall) .gs-content {
+  flex: 1 1 auto;
+}
+
+.gs-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  flex: 0 0 auto;
+  border-top: 1px solid #a1ccb726;
+  padding-top: 18px;
+  color: #a5bbb0;
+  font-size: 22px;
+}
+
+.gs-game-id {
+  font-size: 18px;
+  max-width: 650px;
+  overflow-wrap: anywhere;
+}
+
+.gs-excluded {
+  color: #ffd08a;
+}
+
+.gs-stats-table,
+.gs-standings-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 12px;
+}
+
+.gs-canvas th {
+  color: #aebfb7;
+  font-size: 24px;
+  font-weight: 500;
+  padding: 0 12px 12px;
+  text-align: center;
+}
+
+.gs-canvas th:first-child,
+.gs-standings-table th:nth-child(2) {
+  text-align: left;
+}
+
+.gs-canvas td {
+  position: relative;
+  text-align: center;
+  background: #ffffff06;
+}
+
+.gs-stats-table td {
+  height: 148px;
+  padding: 0;
+}
+
+.gs-identity {
+  height: 148px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-left: 5px solid;
+  overflow: hidden;
+  isolation: isolate;
+  text-align: left;
+}
+
+.gs-team-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.24;
+  mix-blend-mode: luminosity;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 20%,
+    #0009 45%,
+    transparent 68%
+  );
+  mask-image: linear-gradient(90deg, #000 20%, #0009 45%, transparent 68%);
+}
+
+.gs-team-watermark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 55% 50%;
+  transform: scale(1.18);
+  filter: grayscale(1) contrast(1.12);
+}
+
+.gs-identity-copy {
+  position: relative;
+  z-index: 1;
+  width: calc(100% - 160px);
+  padding: 16px 12px 16px 25px;
+  text-shadow: 0 2px 8px #00000080;
+}
+
+.gs-identity-copy strong {
+  display: block;
+  font-size: 36px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.gs-identity-copy > span {
+  display: block;
+  margin-top: 12px;
+  font-size: 22px;
+  color: #f5f7f6ce;
+  overflow-wrap: anywhere;
+}
+
+.gs-portrait {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  top: 0;
+  width: 175px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gs-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+}
+
+.gs-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 100px;
+  border: 1px solid #ffffff38;
+  border-radius: 50%;
+  color: #ffffffb3;
+  background: #ffffff0d;
+  font-size: 38px;
+  letter-spacing: 2px;
+}
+
+.gs-place {
+  font-size: 65px;
+  font-weight: 700;
+  color: #a5b5ae;
+}
+
+.gs-place[data-place="1"] {
+  color: #edcb7d;
+}
+
+.gs-final-points strong {
+  display: block;
+  font-size: 66px;
+  font-weight: 500;
+  line-height: 1.05;
+}
+
+.gs-final-points > span {
+  display: block;
+  font-size: 30px;
+  margin-top: 8px;
+}
+
+.gs-stat-value {
+  font-size: 66px;
+  font-weight: 400;
+}
+
+.gs-positive {
+  color: #7cdfb0;
+}
+
+.gs-negative {
+  color: #ff9289;
+}
+
+.gs-inline-notice {
+  margin: 12px 0 0;
+  text-align: center;
+  color: #c3d0c9;
+  font-size: 24px;
+}
+
+.gs-unavailable {
+  min-height: 650px;
+  padding: 90px 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #b7ccc1;
+  text-align: center;
+  font-size: 36px;
+}
+
+.gs-unavailable > .anticon {
+  font-size: 65px;
+  color: #72c29a;
+}
+
+.gs-points-screen {
+  display: grid;
+  grid-template-columns: 1290px 1fr;
+  gap: 32px;
+  align-items: center;
+}
+
+.gs-chart {
+  width: 1290px;
+  height: 716px;
+}
+
+.gs-chart-legend {
+  display: grid;
+  gap: 16px;
+}
+
+.gs-legend-player .gs-identity {
+  height: 112px;
+}
+
+.gs-legend-player .gs-identity-copy {
+  width: calc(100% - 110px);
+  padding-left: 20px;
+}
+
+.gs-legend-player .gs-identity-copy strong {
+  font-size: 29px;
+}
+
+.gs-legend-player .gs-identity-copy > span {
+  font-size: 20px;
+  margin-top: 9px;
+}
+
+.gs-legend-player .gs-portrait {
+  width: 115px;
+}
+
+.gs-legend-player .gs-initials {
+  width: 74px;
+  height: 74px;
+  font-size: 27px;
+}
+
+.gs-legend-score {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 18px;
+  padding: 5px 14px;
+  background: #ffffff06;
+  font-size: 30px;
+}
+
+.gs-line-swatch {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+}
+
+.gs-standings-table {
+  border-spacing: 0 9px;
+}
+
+.gs-standings-table td {
+  height: 92px;
+  padding: 0 15px;
+}
+
+.gs-standings-table td:nth-child(2) {
+  padding: 0;
+}
+
+.gs-identity-compact {
+  height: 92px;
+}
+
+.gs-identity-compact .gs-identity-copy {
+  width: calc(100% - 95px);
+}
+
+.gs-identity-compact .gs-identity-copy strong {
+  font-size: 34px;
+}
+
+.gs-identity-compact .gs-identity-copy > span {
+  font-size: 19px;
+  margin-top: 4px;
+}
+
+.gs-identity-compact .gs-portrait {
+  width: 95px;
+}
+
+.gs-identity-compact .gs-initials {
+  width: 66px;
+  height: 66px;
+  font-size: 24px;
+}
+
+.gs-standings-table .gs-standing-rank {
+  font-size: 42px;
+  color: #ffffff;
+  background-color: #653b16;
+}
+
+.gs-standings-table .gs-standing-rank[data-rank-highlight] {
+  background-color: #a81414;
+}
+
+.gs-standings-table .gs-eliminated .gs-standing-rank {
+  color: #bac1c5;
+  background-color: #4b5357;
+}
+
+.gs-standing-total {
+  font-size: 55px;
+}
+
+.gs-point-trend {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 14px;
+  font-size: 26px;
+  vertical-align: middle;
+}
+
+.gs-standing-difference {
+  font-size: 37px;
+}
+
+.gs-standing-games {
+  font-size: 34px;
+}
+
+.gs-played td {
+  background-color: #ffffff0d;
+}
+
+.gs-eliminated {
+  opacity: 0.48;
+  filter: grayscale(1);
+}
+
+.gs-eliminated .gs-identity-copy {
+  padding-bottom: 31px;
+}
+
+.gs-eliminated-label {
+  position: absolute;
+  left: 30px;
+  bottom: 9px;
+  font-size: 18px;
+  color: #d0d7d2;
+}
+
+@media (max-width: 760px) {
+  .gs-pan-hint {
+    display: block;
+  }
+}

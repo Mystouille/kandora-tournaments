@@ -1,6 +1,50 @@
 import type { CoreTranslations } from "~/core/i18n/types";
 
 export interface Translations extends CoreTranslations {
+  gameSummary: {
+    title: string;
+    report: string;
+    stats: string;
+    points: string;
+    standings: string;
+    share: string;
+    exporting: string;
+    exportFailed: string;
+    exportSuccess: string;
+    back: string;
+    player: string;
+    team: string;
+    place: string;
+    score: string;
+    riichis: string;
+    wins: string;
+    dealIns: string;
+    total: string;
+    difference: string;
+    currentlyQualified: string;
+    currentLeader: string;
+    gained: string;
+    lost: string;
+    games: string;
+    eliminated: string;
+    hands: string;
+    draws: string;
+    start: string;
+    final: string;
+    tablePoints: string;
+    hand: string;
+    excluded: string;
+    portraitUnavailable: string;
+    panHint: string;
+    loadFailed: string;
+    notFound: string;
+    notReady: string;
+    missingRecord: string;
+    incompleteRecord: string;
+    inconsistentScores: string;
+    unknownChronology: string;
+    missingQualification: string;
+  };
   common: {
     cancel: string;
     or: string;

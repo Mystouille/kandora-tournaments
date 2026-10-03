@@ -354,7 +354,7 @@ that applies to every tab, and a set of **tabs** below it.
 | **Listing**                              | The standings table — cumulative scores/placements for the current filter.                                                                                           |
 | **Rankings**                             | Leaderboard cards for the main metrics (e.g. win rate, deal-in rate, average win value, riichi/calls). Cards can be reordered and hidden; your layout is remembered. |
 | **More Rankings**                        | Additional, more detailed leaderboard cards (dora, ura-dora, han, fu, tenpai turn, ryuukyoku, tsumo rate, …).                                                        |
-| **Games**                                | A list of individual games matching the filter, each with a **Replay** button and **Copy logs for Naga** (to paste into the NAGA AI analyser).                       |
+| **Games**                                | A list of individual games matching the filter, with replay, copy-log, and **Game summary** actions for completed games. |
 | **Yaku Map**                             | A grid of how often each yaku is scored, respecting the **Min. games** threshold.                                                                                    |
 
 Most tables and cards are sortable, and the **pinned** entity stays highlighted so
@@ -366,6 +366,8 @@ Earlier graph points retain their original scores; the boundary appears even
 if no game was played that day. Eliminated participants remain visible at
 their last qualifying score. Team carry-over is rounded on the team total,
 so it can differ slightly from the sum of individually rounded member scores.
+Finals carry-over uses the configured regular-phase scoring, including any
+team cap or consecutive-game window.
 Game counts, placements, and other played-game statistics are not scaled.
 Date filters still limit the games contributing to scores; qualification is
 calculated from the complete league history, not the selected players or dates.
@@ -380,6 +382,67 @@ Team graphs use the configured color, or an automatic graph-palette fallback
 when a team has no color. Automatic team graph colors are assigned from the
 complete roster, so filtering does not reassign them. Player graph colors and
 the player-based Yaku Map's existing color scheme are unchanged.
+
+### 9.3 Completed-game summaries
+
+Click the **text-lines icon** next to a completed game's replay eye to open its
+summary. The same action is available for finished games in bracket details.
+Use **Back to results** to return to the previous page with its filters intact.
+
+Each screen's top-right header shows the game date and its start/end times.
+An unknown end time is shown as a dash. These times are included in image exports.
+
+The three buttons at the top right select:
+
+| Screen | Content |
+| --- | --- |
+| **Statistics** | Final table points and league-adjusted game points, plus each player's riichis, wins, and deal-ins. |
+| **Points evolution** | Initial table points, then one settled score per completed hand, including repeats. The last hand uses the final result, including riichi-stick settlement, without an extra graph point. |
+| **League standings** | Whole-league totals immediately after this game, including configured carry-overs. Team leagues show teams; individual leagues show players. |
+
+Player/team and place columns have no visible headings; their accessible
+column names are retained for screen readers.
+
+When a team logo is available, all three screens blend a cropped, desaturated
+watermark into the player/team banner's color, fading it toward the right.
+Names and foreground portraits/logos remain clear and unchanged. The watermark
+is also included in PNG exports; missing logos leave the colored banner intact.
+
+The **Point difference** column shows the gap to the team or player immediately
+above each entry, not the points gained in this game; first place shows `-`.
+In the **Total points** cell, a green up chevron or red down chevron shows the
+change caused by this game under the league's scoring rules. Hover over it for
+the signed amount. Unchanged totals and eliminated entries have no chevron.
+
+Active ranks are white on a brown background. Before the final phase, ranks
+currently qualifying for the next phase are red, respecting the configured
+qualification rules and minimum-game requirements. In the final phase only
+the current leader's rank is red. These colors apply only to the rank cell.
+
+Games are shown as **played/total scheduled in the selected game's phase**,
+for example `12/14`; the played count stops at this game. Earlier and later
+phases are excluded from both counts, while points remain whole-league totals
+with carry-overs. Without a known phase schedule, only the phase's played count
+is shown.
+Participants eliminated in previous phases remain visible with greyed-out
+rank numbers and names; their total points, point difference, and games cells
+all show `-`.
+
+Standings are reconstructed from saved games
+and current rules: later games are excluded, but later corrections are reflected.
+If completion times or qualification records are missing, the page explains
+why historical standings cannot be reconstructed reliably.
+
+**Share** downloads the selected screen as a PNG, without the buttons,
+navigation, or other page controls. Statistics and charts use a widescreen
+16:9 image. Standings export the entire table, including rows below the
+viewport; very large tables are scaled down to fit browser image limits.
+On a narrow display, scroll sideways to see the whole presentation panel.
+
+Manual games and games without detailed records still have a summary. Available
+scores and standings remain visible; unavailable counters or charts are marked
+explicitly rather than shown as zero. Missing photos use initials. Games whose
+results have not been scored yet do not have a summary action.
 
 In Bracket, qualification is indicated by a thicker green outline, not a green
 background. **Show details** uses solid team colors for its team column headers,

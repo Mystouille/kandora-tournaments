@@ -24,6 +24,7 @@ import { useAppTheme } from "../../contexts/ThemeContext";
 import type { TeamOption } from "./types";
 import { CopyLogIdButton } from "./CopyLogIdButton";
 import { WatchReplayButton } from "./WatchReplayButton";
+import { GameSummaryButton } from "./GameSummaryButton";
 import {
   teamColorForeground,
   teamColorGradient,
@@ -63,6 +64,7 @@ export interface BracketGamePlayer {
 
 export interface BracketGame {
   gameId: string | null;
+  summaryGameId?: string | null;
   startTime: string;
   replayUrl: string | null;
   players: BracketGamePlayer[];
@@ -851,6 +853,9 @@ function BracketCard({
                                 {game?.gameId ? (
                                   <WatchReplayButton gameId={game.gameId} />
                                 ) : null}
+                                {game?.summaryGameId && (
+                                  <GameSummaryButton gameId={game.summaryGameId} />
+                                )}
                               </td>
                             </tr>
                           </Fragment>

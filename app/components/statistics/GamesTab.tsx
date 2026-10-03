@@ -17,6 +17,7 @@ import { basePath } from "../../utils/basePath";
 import type { TeamOption } from "./types";
 import { CopyLogIdButton } from "./CopyLogIdButton";
 import { WatchReplayButton } from "./WatchReplayButton";
+import { GameSummaryButton } from "./GameSummaryButton";
 import { WatchLiveButton } from "./WatchLiveButton";
 import { TeamLogo } from "../TeamLogo";
 import { PlayerAvatar } from "../PlayerAvatar";
@@ -44,6 +45,7 @@ interface PlayerEntry {
 
 interface GameEntry {
   gameId: string;
+  summaryGameId?: string | null;
   platform: string | null;
   startTime: string;
   endTime: string | null;
@@ -442,6 +444,7 @@ function GameCard({
         >
           <CopyLogIdButton gameId={game.gameId} />
           {game.gameId ? <WatchReplayButton gameId={game.gameId} /> : null}
+          {game.summaryGameId && <GameSummaryButton gameId={game.summaryGameId} />}
         </div>
       </div>
 

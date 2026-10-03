@@ -370,6 +370,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
         return {
           gameId: gameId ?? game._id.toString(),
+          summaryGameId: isGameScored(game.results) ? game._id.toString() : null,
           platform: game.platform ?? null,
           startTime: game.startTime,
           endTime: game.endTime ?? null,

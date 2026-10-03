@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import routes from "./routes";
 
 describe("route config", () => {
+  it("registers the database-backed league game summary page", () => {
+    expect(routes.find((entry) => entry.path === "/games/:gameId/summary")).toMatchObject({
+      file: "routes/league-game-summary.tsx",
+    });
+  });
   it("registers the standalone game sign-in route", () => {
     const signInRoute = routes.find((entry) => entry.path === "/sign-in");
 

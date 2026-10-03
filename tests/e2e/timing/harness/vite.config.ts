@@ -46,6 +46,13 @@ export default defineConfig({
         "statistics",
         "teamColorsHarness.tsx"
       ),
+      resolve(
+        repositoryRoot,
+        "tests",
+        "e2e",
+        "statistics",
+        "gameSummaryHarness.tsx"
+      ),
     ].map(normalizePath),
   },
   server: {

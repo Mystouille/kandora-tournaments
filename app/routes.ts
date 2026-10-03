@@ -135,6 +135,7 @@ export default [
   route("/api/score-evolution", "routes/api/score-evolution.ts"),
   route("/api/game-records", "routes/api/game-records.ts"),
   route("/api/games", "routes/api/games.ts"),
+  route("/games/:gameId/summary", "routes/league-game-summary.tsx"),
   route("/api/ongoing-games", "routes/api/ongoing-games.ts"),
   route("/api/league-schedule", "routes/api/league-schedule.ts"),
   route("/api/statistics-filters", "routes/api/statistics-filters.ts"),
