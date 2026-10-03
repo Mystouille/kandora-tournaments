@@ -1,10 +1,62 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { useLocale } from "~/contexts/LocaleContext";
 import type {
   SummaryIdentity,
   SummaryUnavailableReason,
 } from "~/types/leagueGameSummary";
+import { DEFAULT_TEAM_PICTURE_CENTER_Y } from "~/types/pictures";
+import { applyTeamWatermarkFocus } from "~/utils/teamPictureFocus";
+
+function TeamWatermark({
+  src,
+  centerY,
+  onError,
+}: {
+  src: string;
+  centerY: number;
+  onError: () => void;
+}) {
+  const imageRef = useRef<HTMLImageElement>(null);
+  useLayoutEffect(() => {
+    const image = imageRef.current;
+    if (!image) {
+      return;
+    }
+    const update = () => {
+      if (
+        image.complete &&
+        image.naturalWidth > 0 &&
+        image.naturalHeight > 0 &&
+        image.clientWidth > 0 &&
+        image.clientHeight > 0
+      ) {
+        applyTeamWatermarkFocus(image, centerY);
+      }
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(image);
+    update();
+    return () => observer.disconnect();
+  }, [src, centerY]);
+
+  return (
+    <div className="gs-team-watermark" aria-hidden="true">
+      <img
+        ref={imageRef}
+        src={src}
+        alt=""
+        crossOrigin="anonymous"
+        draggable={false}
+        data-summary-center-y={centerY}
+        onLoad={(event) =>
+          applyTeamWatermarkFocus(event.currentTarget, centerY)
+        }
+        onError={onError}
+      />
+    </div>
+  );
+}
 
 export function summaryNumber(
   value: number,
@@ -48,21 +100,18 @@ export function SummaryIdentityBanner({
       }}
     >
       {teamLogoUrl && (
-        <div className="gs-team-watermark" aria-hidden="true">
-          <img
-            src={teamLogoUrl}
-            alt=""
-            crossOrigin="anonymous"
-            draggable={false}
-            onError={() => {
-              console.warn(
-                "[game summary] Team watermark could not be loaded",
-                teamLogoUrl
-              );
-              setFailedLogo(teamLogoUrl);
-            }}
-          />
-        </div>
+        <TeamWatermark
+          key={teamLogoUrl}
+          src={teamLogoUrl}
+          centerY={identity.teamLogoCenterY ?? DEFAULT_TEAM_PICTURE_CENTER_Y}
+          onError={() => {
+            console.warn(
+              "[game summary] Team watermark could not be loaded",
+              teamLogoUrl
+            );
+            setFailedLogo(teamLogoUrl);
+          }}
+        />
       )}
       <div className="gs-identity-copy">
         <strong>{identity.name}</strong>

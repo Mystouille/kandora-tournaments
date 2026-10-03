@@ -5,6 +5,7 @@ import { LocaleProvider } from "../../../app/contexts/LocaleContext";
 import { ThemeProvider } from "../../../app/contexts/ThemeContext";
 import { GameSummaryPage } from "../../../app/components/game-summary/GameSummaryPage";
 import GamesTab from "../../../app/components/statistics/GamesTab";
+import EditTeamPicturesPage from "../../../app/routes/admin.online-tournaments.$id.edit-team-pictures";
 import { normalizeLocalReturnPath } from "../../../app/utils/gameReturnPath";
 import { gameSummaryFixture } from "./gameSummaryFixture";
 
@@ -35,6 +36,19 @@ function Summary() {
     if (summary.standings.status === "available") {
       summary.standings.data.forEach((row) => {
         row.teamLogoUrl = teamLogoUrl;
+      });
+    }
+  }
+  if (scenario === "focus") {
+    const centerY = params.get("focus") === "0.75" ? 0.75 : 0.25;
+    summary.players.forEach((player) => {
+      player.teamLogoUrl = "/summary-assets/focus-bands.svg";
+      player.teamLogoCenterY = centerY;
+    });
+    if (summary.standings.status === "available") {
+      summary.standings.data.forEach((row) => {
+        row.teamLogoUrl = "/summary-assets/focus-bands.svg";
+        row.teamLogoCenterY = centerY;
       });
     }
   }
@@ -116,6 +130,10 @@ createRoot(root).render(
       <ThemeProvider initialTheme="dark">
         <BrowserRouter>
           <Routes>
+            <Route
+              path="/admin/online-tournaments/:id/edit-team-pictures"
+              element={<EditTeamPicturesPage />}
+            />
             <Route
               path="/summary-fixture/games"
               element={

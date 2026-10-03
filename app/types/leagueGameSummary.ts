@@ -17,6 +17,7 @@ export interface SummaryIdentity {
   teamName: string | null;
   imageUrl: string | null;
   teamLogoUrl: string | null;
+  teamLogoCenterY: number;
   color: string;
 }
 

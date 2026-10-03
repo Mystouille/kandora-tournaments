@@ -291,6 +291,18 @@ For both: upload a **PNG, JPEG, or WebP** (up to ~1.2 MB), crop it to a square i
 the built-in cropper, and save — or remove an existing picture. Player pictures
 otherwise fall back to the platform avatar.
 
+On **Edit Team Pictures**, **Center picture** opens the full logo with a
+movable horizontal guide. Click or drag the guide, or use the vertical-center
+slider, to choose the line used by game-summary watermarks. The dialog previews
+the statistics, graph-legend and standings crops. **Reset to middle** restores
+50%; **Cancel** discards the draft. Square thumbnails and player portraits
+are not changed.
+
+The normalized center is saved with the team's picture references as
+`pictures.summaryCenterY` (0 at the top, 1 at the bottom). Older pictures default
+to 0.5. Replacing the full image resets the center; changing only its square
+thumbnail preserves it. Center-only saves do not rewrite the image files.
+
 ### 6.6 Riichi City — Save tables
 
 For Riichi City bracket tournaments, the **Save tables to Riichi City** button on

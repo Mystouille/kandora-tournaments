@@ -23,6 +23,7 @@ import type {
   LeagueGameSummary,
   SummaryIdentity,
 } from "~/types/leagueGameSummary";
+import { DEFAULT_TEAM_PICTURE_CENTER_Y } from "~/types/pictures";
 import { connectToDatabase } from "~/utils/dbConnection.server";
 import { normalizeLegacyReplayEvent } from "~/utils/replayLogCompatibility";
 import { slugify } from "~/utils/slugify";
@@ -342,6 +343,8 @@ export async function loadLeagueGameSummary(
         null,
       teamLogoUrl:
         team?.pictures?.fullPicture ?? team?.pictures?.croppedPicture ?? null,
+      teamLogoCenterY:
+        team?.pictures?.summaryCenterY ?? DEFAULT_TEAM_PICTURE_CENTER_Y,
       color:
         (team && teamColors.get(String(team._id))) ??
         getDefaultTeamColor(sortedUserIds.indexOf(id)),
@@ -447,6 +450,8 @@ export async function loadLeagueGameSummary(
         imageUrl: team.pictures?.croppedPicture ?? null,
         teamLogoUrl:
           team.pictures?.fullPicture ?? team.pictures?.croppedPicture ?? null,
+        teamLogoCenterY:
+          team.pictures?.summaryCenterY ?? DEFAULT_TEAM_PICTURE_CENTER_Y,
         color: teamColors.get(String(team._id))!,
       }))
     : sortedUserIds

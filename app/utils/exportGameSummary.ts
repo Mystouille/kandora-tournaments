@@ -1,4 +1,5 @@
 import { toBlob } from "html-to-image";
+import { applyTeamWatermarkFocus } from "./teamPictureFocus";
 
 export function gameSummaryExportScale(width: number, height: number): number {
   if (
@@ -69,6 +70,11 @@ async function renderSummaryImage(canvas: HTMLElement): Promise<Blob> {
   document.body.appendChild(container);
   try {
     await Promise.all(clonedImages.map((image) => image.decode()));
+    for (const image of clonedImages) {
+      if (image.dataset.summaryCenterY !== undefined) {
+        applyTeamWatermarkFocus(image, Number(image.dataset.summaryCenterY));
+      }
+    }
     // Preview zoom rounds table spacing; measure the unscaled layout to keep every row and footer.
     const height = clone.offsetHeight;
     if (clone.scrollHeight > height + 1 || clone.scrollWidth > width + 1) {

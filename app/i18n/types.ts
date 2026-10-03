@@ -648,6 +648,17 @@ export interface Translations extends CoreTranslations {
       teamPicturesRemove: string;
       teamPicturesNone: string;
       teamPicturesMaxSize: string;
+      teamPicturesCenter: string;
+      teamPicturesCenterHelp: string;
+      teamPicturesCenterPosition: string;
+      teamPicturesCenterSave: string;
+      teamPicturesCenterReset: string;
+      teamPicturesCenterSaved: string;
+      teamPicturesCenterChanged: string;
+      teamPicturesCenterLoadError: string;
+      teamPicturesCenterPreviews: string;
+      teamPicturesCenterTop: string;
+      teamPicturesCenterBottom: string;
       editPlayerPictures: string;
       saveRcTables: string;
       saveRcTablesConfirmTitle: string;

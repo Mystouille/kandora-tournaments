@@ -149,6 +149,7 @@ describe("league game summary loading", () => {
             pictures: {
               fullPicture: "/api/uploads/team-full.webp",
               croppedPicture: "/api/uploads/team-cropped.webp",
+              summaryCenterY: 0.25,
             },
           },
         ])
@@ -160,6 +161,9 @@ describe("league game summary loading", () => {
         )
       ).toBe(true);
       expect(summary.players[0].imageUrl).toBe("/api/uploads/portrait.webp");
+      expect(
+        summary.players.every((player) => player.teamLogoCenterY === 0.25)
+      ).toBe(true);
       if (summary.standings.status !== "available") {
         throw new Error("The logo fixture must have standings");
       }
@@ -167,6 +171,9 @@ describe("league game summary loading", () => {
         summary.standings.data.every(
           (row) => row.teamLogoUrl === "/api/uploads/team-full.webp"
         )
+      ).toBe(true);
+      expect(
+        summary.standings.data.every((row) => row.teamLogoCenterY === 0.25)
       ).toBe(true);
       expect(summary.standings.data[0].imageUrl).toBe(
         isTeamMode
@@ -383,6 +390,9 @@ describe("league game summary loading", () => {
     });
     expect(summary.standings.status).toBe("available");
     expect(summary.players[0].imageUrl).toBe("/api/uploads/portrait.webp");
+    expect(
+      summary.players.every((player) => player.teamLogoCenterY === 0.5)
+    ).toBe(true);
     expect(summary.players.every((player) => player.teamLogoUrl === null)).toBe(
       true
     );

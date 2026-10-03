@@ -17,6 +17,7 @@ const participants = teams.map((team) => ({
   teamName: null,
   imageUrl: null,
   teamLogoUrl: null,
+  teamLogoCenterY: 0.5,
   color: "#123456",
 }));
 const phaseConfig: LeagueTypeConfig = {

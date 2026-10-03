@@ -69,25 +69,28 @@ export function GameStandingsScreen({
                 )}
               </td>
               <td className="gs-standing-total" data-summary-total="">
-                {row.eliminated || row.totalScore === null
-                  ? "-"
-                  : summaryNumber(row.totalScore, locale, 1)}
-                {!row.eliminated &&
-                  row.totalScore !== null &&
-                  row.pointsChange !== null &&
-                  row.pointsChange !== 0 && (
-                    <span
-                      className={`gs-point-trend ${row.pointsChange > 0 ? "gs-positive" : "gs-negative"}`}
-                      data-point-trend={row.pointsChange > 0 ? "up" : "down"}
-                      title={`${row.pointsChange > 0 ? labels.gained : labels.lost}: ${summaryNumber(row.pointsChange, locale, 1, true)}`}
-                    >
-                      {row.pointsChange > 0 ? (
-                        <UpOutlined aria-label={labels.gained} />
-                      ) : (
-                        <DownOutlined aria-label={labels.lost} />
-                      )}
+                {row.eliminated || row.totalScore === null ? (
+                  "-"
+                ) : (
+                  <div className="gs-standing-points">
+                    <span className="gs-standing-value">
+                      {summaryNumber(row.totalScore, locale, 1)}
                     </span>
-                  )}
+                    {row.pointsChange !== null && row.pointsChange !== 0 && (
+                      <span
+                        className={`gs-point-trend ${row.pointsChange > 0 ? "gs-positive" : "gs-negative"}`}
+                        data-point-trend={row.pointsChange > 0 ? "up" : "down"}
+                        title={`${row.pointsChange > 0 ? labels.gained : labels.lost}: ${summaryNumber(row.pointsChange, locale, 1, true)}`}
+                      >
+                        {row.pointsChange > 0 ? (
+                          <UpOutlined aria-label={labels.gained} />
+                        ) : (
+                          <DownOutlined aria-label={labels.lost} />
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
               </td>
               <td className="gs-standing-difference" data-summary-difference="">
                 {row.eliminated || row.pointsDifference === null

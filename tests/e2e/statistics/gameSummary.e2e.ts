@@ -21,6 +21,11 @@ const teamLogo = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="40
   <path d="M200 110 290 200 200 290 110 200Z" fill="#ffffff"/>
   <path d="M180 140h25v50l40-50h30l-48 60 48 60h-30l-40-50v50h-25z" fill="#101010"/>
 </svg>`;
+const focusLogo = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
+  <rect width="400" height="400" fill="#080808"/>
+  <rect y="98" width="400" height="4" fill="#ffffff"/>
+  <rect y="298" width="400" height="4" fill="#ffffff"/>
+</svg>`;
 
 test.setTimeout(60_000);
 test.use({
@@ -67,7 +72,9 @@ test.beforeEach(async ({ page }) => {
       headers: { "Access-Control-Allow-Origin": "*" },
       body: route.request().url().endsWith("/team-watermark.svg")
         ? teamLogo
-        : portrait,
+        : route.request().url().endsWith("/focus-bands.svg")
+          ? focusLogo
+          : portrait,
     })
   );
   await page.route(
@@ -160,6 +167,7 @@ test("blends cropped, team-tinted logo watermarks with a real alpha fade in all 
       "grayscale(1) contrast(1.12)"
     );
     await expect(watermark.locator("img")).toHaveAttribute("alt", "");
+    await expect(watermark.locator("img")).toBeVisible();
     await expect(banner).toHaveCSS("isolation", "isolate");
     await expect(banner).toHaveCSS("overflow", "hidden");
     const geometry = await watermark.locator("img").evaluate((image) => {
@@ -176,7 +184,8 @@ test("blends cropped, team-tinted logo watermarks with a real alpha fade in all 
     const bounds = await logicalBounds(page, ".gs-identity");
     const decorated = await download(page, testInfo, `${screen}-watermark`);
     const hidden = await page.addStyleTag({
-      content: ".gs-team-watermark { visibility: hidden !important; }",
+      content:
+        ".gs-team-watermark, .gs-team-watermark img { visibility: hidden !important; }",
     });
     const plain = await download(page, testInfo, `${screen}-without-watermark`);
     await hidden.evaluate((element) => {
@@ -261,6 +270,54 @@ test("keeps portraits and PNG export working when decorative team logos fail to 
     height: 1080,
   });
 });
+
+for (const focus of [0.25, 0.75]) {
+  test(`centers saved source line ${focus} in all three exported watermark crops`, async ({
+    page,
+  }, testInfo) => {
+    await page.goto(`${summaryPath}?fixture=focus&focus=${focus}`);
+    for (const [screen, label] of [
+      ["stats", "Statistics"],
+      ["points", "Points evolution"],
+      ["standings", "League standings"],
+    ]) {
+      await page.getByRole("button", { name: label, exact: true }).click();
+      const watermark = page.locator(".gs-team-watermark img").first();
+      await expect(watermark).toBeVisible();
+      await expect(watermark).toHaveAttribute(
+        "data-summary-center-y",
+        String(focus)
+      );
+      const bounds = await logicalBounds(page, ".gs-identity");
+      const file = await download(page, testInfo, `${screen}-focus-${focus}`);
+      const height = Math.floor(bounds.height);
+      const pixels = await sharp(file)
+        .extract({
+          left: Math.round(bounds.left + 12),
+          top: Math.round(bounds.top),
+          width: 4,
+          height,
+        })
+        .ensureAlpha()
+        .raw()
+        .toBuffer();
+      const brightness = Array.from({ length: height }, (_, y) => {
+        let value = 0;
+        for (let x = 0; x < 4; x++) {
+          const index = (y * 4 + x) * 4;
+          value += pixels[index] + pixels[index + 1] + pixels[index + 2];
+        }
+        return value;
+      });
+      const threshold = Math.max(...brightness) * 0.9;
+      const stripe = brightness.flatMap((value, y) =>
+        value >= threshold ? [y] : []
+      );
+      const center = stripe.reduce((sum, y) => sum + y, 0) / stripe.length;
+      expect(Math.abs(center - height / 2)).toBeLessThan(2);
+    }
+  });
+}
 
 test("opens from a completed card, switches screens, and restores the filtered page", async ({
   page,
@@ -548,6 +605,29 @@ test("exports green/red chevrons beside totals while preserving point gaps", asy
   await expect(down).toHaveCSS("color", "rgb(255, 146, 137)");
   await expect(down).toHaveAttribute("title", "Points lost: -10.2");
   await expect(down.getByRole("img", { name: "Points lost" })).toBeVisible();
+  await expect(up).toHaveCSS("font-size", "32px");
+  await expect(up.locator("svg")).toHaveCSS("stroke-width", "36px");
+  const aligned = await page
+    .locator(".gs-point-trend")
+    .evaluateAll((indicators) =>
+      indicators.map((indicator) => {
+        const cell = indicator.closest("td");
+        if (!cell) {
+          throw new Error("A points indicator must belong to its total cell");
+        }
+        const icon = indicator.getBoundingClientRect();
+        const bounds = cell.getBoundingClientRect();
+        return {
+          centerX: icon.x + icon.width / 2,
+          centerY: icon.y + icon.height / 2,
+          cellCenterY: bounds.y + bounds.height / 2,
+        };
+      })
+    );
+  expect(Math.abs(aligned[0].centerX - aligned[1].centerX)).toBeLessThan(1);
+  for (const indicator of aligned) {
+    expect(Math.abs(indicator.centerY - indicator.cellCenterY)).toBeLessThan(1);
+  }
   await expect(
     page.locator('[data-standing-id="team-2"] [data-summary-difference]')
   ).toHaveText("79.5");
