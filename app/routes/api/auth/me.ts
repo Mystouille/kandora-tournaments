@@ -51,7 +51,6 @@ export async function loader({ request }: { request: Request }) {
       authenticated: true,
       user: {
         ...user.toJSON(),
-        avatarUrl: jwtPayload.avatarUrl ?? null,
         canAccessTournamentAdmin:
           tournamentAdminAccess.isGlobalAdmin ||
           tournamentAdminAccess.tournaments.length > 0,
@@ -66,7 +65,7 @@ export async function loader({ request }: { request: Request }) {
         sub: jwtPayload.sub,
         username: jwtPayload.username,
         loginMethod: jwtPayload.loginMethod,
-        avatarUrl: jwtPayload.avatarUrl,
+        avatarUrl: user.avatarUrl ?? undefined,
       });
       return Response.json(responseBody, {
         headers: { "Set-Cookie": createAuthCookie(newToken) },
