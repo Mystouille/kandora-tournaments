@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, ConfigProvider, Tooltip, message, theme } from "antd";
+import {
+  Button,
+  ConfigProvider,
+  Tooltip,
+  message as antMessage,
+  theme,
+} from "antd";
 import {
   ClearOutlined,
   EditOutlined,
@@ -12,7 +18,10 @@ import { useLocale } from "~/contexts/LocaleContext";
 import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
 import { RichTextEditor } from "~/components/editor/RichTextEditor";
-import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConfig";
+import {
+  REPLAY_REVIEW_RICH_TEXT_CONFIG,
+  type RichTextConfig,
+} from "~/components/editor/richTextConfig";
 
 /**
  * In-progress edits the user has typed/drawn for the current event
@@ -26,6 +35,8 @@ export interface ReviewDraft {
 }
 
 interface ReplayReviewCartridgeProps {
+  uiScale?: number;
+  richTextConfig?: RichTextConfig;
   /** Whether the current signed-in user may contribute to this review. */
   canEdit: boolean;
   drawingAvailable?: boolean;
@@ -83,6 +94,8 @@ interface ReplayReviewCartridgeProps {
  * and leaves the actual network calls to `replay.tsx`.
  */
 export function ReplayReviewCartridge({
+  uiScale = 1,
+  richTextConfig = REPLAY_REVIEW_RICH_TEXT_CONFIG,
   canEdit,
   drawingAvailable = true,
   savedText,
@@ -99,6 +112,7 @@ export function ReplayReviewCartridge({
   annotationBottom,
   onTextEditorHeightChange,
 }: ReplayReviewCartridgeProps) {
+  const [message, messageHolder] = antMessage.useMessage();
   const { t } = useLocale();
   const tr = t.review.cartridge;
   const [submitting, setSubmitting] = useState(false);
@@ -226,26 +240,28 @@ export function ReplayReviewCartridge({
 
   return (
     <>
+      {messageHolder}
       {inText && (
         <FixedTileSetProvider tileSet={TileSetName.Tenhou}>
           <div
             ref={textEditorRef}
-            className={`absolute left-2 z-50 flex flex-col items-stretch gap-3 rounded p-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 ${
+            className={`web-table-review-editor absolute left-2 z-50 flex flex-col items-stretch gap-3 rounded p-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 ${
               textEditorHidden
                 ? "pointer-events-none opacity-0"
                 : "pointer-events-auto opacity-100"
             }`}
             style={{
               bottom: annotationBottom,
-              width: 820,
-              maxWidth: "calc(100vw - 16px)",
+              width: 820 * uiScale,
+              maxWidth: "calc(100% - 2 * var(--web-ui-inset, 8px))",
             }}
           >
             <div className="rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 overflow-hidden">
               <RichTextEditor
                 content={draft.text}
                 onChange={(html) => onDraftChange({ ...draft, text: html })}
-                config={REPLAY_REVIEW_RICH_TEXT_CONFIG}
+                config={richTextConfig}
+                uiScale={uiScale}
                 placeholder={tr.textPlaceholder}
                 // Replay page wrapper sits at z-[9999]; bump the
                 // toolbar pickers above it so they don't get

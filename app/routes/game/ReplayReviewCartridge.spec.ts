@@ -32,8 +32,20 @@ vi.mock("~/contexts/LocaleContext", () => ({
 }));
 
 vi.mock("~/components/editor/RichTextEditor", () => ({
-  RichTextEditor: ({ placeholder }: { placeholder?: string }) =>
-    createElement("div", { "data-editor-placeholder": placeholder }),
+  RichTextEditor: ({
+    placeholder,
+    uiScale,
+    config,
+  }: {
+    placeholder?: string;
+    uiScale?: number;
+    config?: { sizeFactor: number };
+  }) =>
+    createElement("div", {
+      "data-editor-placeholder": placeholder,
+      "data-editor-ui-scale": uiScale,
+      "data-editor-size-factor": config?.sizeFactor,
+    }),
 }));
 
 import { ReplayReviewCartridge } from "./ReplayReviewCartridge";
@@ -124,5 +136,43 @@ describe("ReplayReviewCartridge", () => {
     expect(html).toContain('aria-pressed="false"');
     expect(html).toContain("left-2");
     expect(html).not.toContain("left-14");
+  });
+
+  it("sizes the editor and its popup controls without changing the draft", () => {
+    const draft = {
+      mode: "text" as const,
+      text: "Existing draft",
+      strokes: [],
+    };
+    const html = renderToStaticMarkup(
+      createElement(ReplayReviewCartridge, {
+        uiScale: 0.75,
+        richTextConfig: {
+          sizeFactor: 1.1,
+          handTileHeight: 36,
+          handMargin: "12px 0",
+        },
+        canEdit: true,
+        savedText: "",
+        savedHasDrawing: false,
+        savedStrokes: [],
+        draft,
+        onDraftChange: vi.fn(),
+        onSubmitText: vi.fn(),
+        onSubmitDrawing: vi.fn(),
+        onRemoveDrawing: vi.fn(),
+        publishing: false,
+        seatMismatch: false,
+        reviewSeatName: "",
+        annotationBottom: "80px",
+        onTextEditorHeightChange: vi.fn(),
+      })
+    );
+
+    expect(html).toContain("width:615px");
+    expect(html).toContain("bottom:80px");
+    expect(html).toContain('data-editor-ui-scale="0.75"');
+    expect(html).toContain('data-editor-size-factor="1.1"');
+    expect(draft.text).toBe("Existing draft");
   });
 });

@@ -17,7 +17,7 @@ import {
   Tooltip,
   Divider,
   Upload,
-  message,
+  message as antMessage,
 } from "antd";
 import {
   BoldOutlined,
@@ -57,6 +57,7 @@ interface RichTextEditorProps {
    * occlude the modals).
    */
   modalZIndex?: number;
+  uiScale?: number;
   config?: RichTextConfig;
   placeholder?: string;
 }
@@ -65,9 +66,11 @@ export function RichTextEditor({
   content,
   onChange,
   modalZIndex,
+  uiScale = 1,
   config = DEFAULT_RICH_TEXT_CONFIG,
   placeholder,
 }: RichTextEditorProps) {
+  const [message, messageHolder] = antMessage.useMessage();
   const { t } = useLocale();
   const te = t.news.admin.editor;
   const [tileModalOpen, setTileModalOpen] = useState(false);
@@ -293,6 +296,7 @@ export function RichTextEditor({
 
   return (
     <div className="rich-text-editor">
+      {messageHolder}
       <div
         style={{
           borderBottom: "1px solid #d9d9d9",
@@ -463,7 +467,7 @@ export function RichTextEditor({
             tileInputRef.current?.focus();
           }
         }}
-        width={320}
+        width={320 * uiScale}
         zIndex={modalZIndex}
         focusTriggerAfterClose={false}
       >
@@ -490,7 +494,7 @@ export function RichTextEditor({
             handInputRef.current?.focus();
           }
         }}
-        width={400}
+        width={400 * uiScale}
         zIndex={modalZIndex}
         focusTriggerAfterClose={false}
       >
@@ -526,7 +530,7 @@ export function RichTextEditor({
           disabled: !imageUrlInput.trim() || imageUploading,
           loading: imageUploading,
         }}
-        width={400}
+        width={400 * uiScale}
         zIndex={modalZIndex}
       >
         <div style={{ marginBottom: 12 }}>
@@ -559,7 +563,7 @@ export function RichTextEditor({
         open={linkModalOpen}
         onOk={insertLink}
         onCancel={() => setLinkModalOpen(false)}
-        width={400}
+        width={400 * uiScale}
         zIndex={modalZIndex}
       >
         <Input
@@ -586,7 +590,7 @@ export function RichTextEditor({
         okButtonProps={{
           disabled: !videoUrlInput.trim() || videoUploading,
         }}
-        width={420}
+        width={420 * uiScale}
         zIndex={modalZIndex}
       >
         <div style={{ marginBottom: 12 }}>

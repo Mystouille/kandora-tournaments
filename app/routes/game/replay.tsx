@@ -68,6 +68,7 @@ import {
   WebTableTopControls,
   WEB_TABLE_TOP_CONTROL_CLASS,
 } from "~/game/client/WebTableTopControls";
+import { useWebTableUiScale, webTableUiStyle } from "~/game/client/webTableUiScale";
 import type { Route } from "./+types/replay";
 import {
   ReplayOverlayPanel,
@@ -87,7 +88,7 @@ import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
 import { ArticleContent } from "~/components/ArticleContent";
 import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConfig";
-import { Button, Modal, Tooltip, message } from "antd";
+import { Button, ConfigProvider, Modal, Tooltip, message as antMessage } from "antd";
 import { DeleteOutlined, QuestionOutlined } from "@ant-design/icons";
 import { playSoundForEvent } from "~/game/client/sound";
 import { useScreenWakeLock } from "~/game/client/screenWakeLock";
@@ -310,7 +311,10 @@ export function meta({ data }: Route.MetaArgs) {
   ];
 }
 
-export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
+export default function ReplayRoute({
+  loaderData,
+}: Pick<Route.ComponentProps, "loaderData">) {
+  const [message, messageHolder] = antMessage.useMessage();
   const {
     log,
     waitsByIndex,
@@ -336,6 +340,16 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log.sourceGameId]);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const uiScale = useWebTableUiScale(containerRef);
+  const reviewTextConfig = useMemo(
+    () => ({
+      ...REPLAY_REVIEW_RICH_TEXT_CONFIG,
+      sizeFactor: REPLAY_REVIEW_RICH_TEXT_CONFIG.sizeFactor * uiScale,
+      handTileHeight: REPLAY_REVIEW_RICH_TEXT_CONFIG.handTileHeight * uiScale,
+      handMargin: `${16 * uiScale}px 0`,
+    }),
+    [uiScale]
+  );
   const rendererRef = useRef<TableRenderer | null>(null);
   // Mirrors the latest `MatchView` rendered so the renderer's
   // resize callback (mount-time-only closure) always has fresh
@@ -1877,7 +1891,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
       ? `calc(${annotationBottomCss} + ${Math.ceil(textEditorHeight) + 8}px)`
       : annotationBottomCss;
 
-  return (
+  const replayContent = (
     <div
       className="fixed inset-0 z-[9999] bg-black"
       style={{
@@ -1889,22 +1903,128 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
     >
       <div
         ref={containerRef}
-        className="relative w-full h-full bg-black overflow-hidden"
-        style={{ touchAction: "none" }}
+        className="web-table-ui relative w-full h-full bg-black overflow-hidden"
+        style={{ touchAction: "none", ...webTableUiStyle(uiScale) }}
       >
         {/* Top-left: replay metadata label. */}
-        <div
-          className="pointer-events-none absolute top-2 left-2 z-30 max-w-[calc(100%-12rem)] truncate rounded bg-black/40 px-2 py-1 font-mono text-xs text-emerald-100/80"
-          title={
-            log.mode?.type === "duplicate"
-              ? `Duplicate seed: ${log.mode.seed}`
-              : undefined
-          }
-        >
-          replay · {log.source} · {log.sourceGameId} · {currentRound}
-          {log.mode?.type === "duplicate"
-            ? ` · duplicate · ${log.mode.seed}`
-            : ""}
+        <div className="web-table-ui-header">
+          <div
+            className="web-table-ui-status flex-1 truncate rounded bg-black/40 px-2 py-1 font-mono text-xs text-emerald-100/80"
+            title={
+              log.mode?.type === "duplicate"
+                ? `Duplicate seed: ${log.mode.seed}`
+                : `replay · ${log.source} · ${log.sourceGameId} · ${currentRound}`
+            }
+          >
+            replay · {log.source} · {log.sourceGameId} · {currentRound}
+            {log.mode?.type === "duplicate"
+              ? ` · duplicate · ${log.mode.seed}`
+              : ""}
+          </div>
+          {/* Top-right: share / publish, settings, and quit.
+            When the editor has unpublished local edits the same
+            slot turns into a "Publish" button that pushes them
+            to the server before copying the share link. */}
+          <WebTableTopControls
+            compactLayout={overlays.compactLayout}
+            onCompactLayoutChange={(compactLayout) => {
+              handleOverlayChange({ ...overlays, compactLayout });
+            }}
+            onQuit={handleClose}
+            quitLabel="Close replay"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const copyToClipboard = (
+                  url: string,
+                  done: () => void
+                ): void => {
+                  if (navigator.clipboard?.writeText) {
+                    void navigator.clipboard.writeText(url).then(done, done);
+                  } else {
+                    const ta = document.createElement("textarea");
+                    ta.value = url;
+                    ta.setAttribute("readonly", "");
+                    ta.style.position = "absolute";
+                    ta.style.left = "-9999px";
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try {
+                      document.execCommand("copy");
+                    } catch {
+                      /* best-effort */
+                    }
+                    document.body.removeChild(ta);
+                    done();
+                  }
+                };
+                const flashCopied = (): void => {
+                  setCopied(true);
+                  window.setTimeout(() => {
+                    setCopied(false);
+                  }, 1500);
+                };
+                // Publish path: stage exists. Push edits, then copy
+                // the freshly-built share URL.
+                if (canContributeToReview && pendingCount > 0) {
+                  void publish().then((url) => {
+                    if (!url) {
+                      if (!publishConflictRef.current) {
+                        message.error(t.review.cartridge.publishFailed);
+                      }
+                      return;
+                    }
+                    message.success(t.review.cartridge.publishedToast);
+                    copyToClipboard(url, flashCopied);
+                  });
+                  return;
+                }
+                // Share path: build a fresh deeplink from current state.
+                let roundOrdinal = 0;
+                for (let i = 0; i < rounds.length; i++) {
+                  if (rounds[i] <= index) {
+                    roundOrdinal = i + 1;
+                  }
+                }
+                // Preserve the active review so the deeplink keeps
+                // surfacing the author's annotations. Without this
+                // the share button strips them and the recipient
+                // sees a clean replay even though the URL bar still
+                // shows `?review=…`.
+                const url =
+                  typeof window !== "undefined"
+                    ? buildReplayViewerShareUrl(window.location.href, {
+                        seat: focusSeat,
+                        round: roundOrdinal > 0 ? roundOrdinal : undefined,
+                        event: index,
+                        review: review?.shortId,
+                      })
+                    : "";
+                copyToClipboard(url, flashCopied);
+              }}
+              disabled={publishing}
+              aria-label={
+                canContributeToReview && pendingCount > 0
+                  ? t.review.cartridge.publishTooltip
+                  : t.review.cartridge.copyShareLink
+              }
+              title={
+                canContributeToReview && pendingCount > 0
+                  ? t.review.cartridge.publishTooltip
+                  : copied
+                    ? t.review.cartridge.shareCopied
+                    : t.review.cartridge.copyShareLink
+              }
+              className={`${WEB_TABLE_TOP_CONTROL_CLASS} web-table-top-action min-w-[5.5rem] gap-1 px-4 disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              {canContributeToReview && pendingCount > 0
+                ? `${t.review.cartridge.publish} (${pendingCount})`
+                : copied
+                  ? t.review.cartridge.shareCopied
+                  : t.review.cartridge.share}
+            </button>
+          </WebTableTopControls>
         </div>
         {/* Bottom-right: tile-art attribution. */}
         <div className="absolute bottom-2 right-2 z-30 font-mono text-[10px] text-emerald-100/70 px-2 py-1 rounded bg-black/40">
@@ -1919,109 +2039,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           </a>
           , C-Egg
         </div>
-        {/* Top-right: share / publish, settings, and quit.
-            When the editor has unpublished local edits the same
-            slot turns into a "Publish" button that pushes them
-            to the server before copying the share link. */}
-        <WebTableTopControls
-          compactLayout={overlays.compactLayout}
-          onCompactLayoutChange={(compactLayout) => {
-            handleOverlayChange({ ...overlays, compactLayout });
-          }}
-          onQuit={handleClose}
-          quitLabel="Close replay"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              const copyToClipboard = (url: string, done: () => void): void => {
-                if (navigator.clipboard?.writeText) {
-                  void navigator.clipboard.writeText(url).then(done, done);
-                } else {
-                  const ta = document.createElement("textarea");
-                  ta.value = url;
-                  ta.setAttribute("readonly", "");
-                  ta.style.position = "absolute";
-                  ta.style.left = "-9999px";
-                  document.body.appendChild(ta);
-                  ta.select();
-                  try {
-                    document.execCommand("copy");
-                  } catch {
-                    /* best-effort */
-                  }
-                  document.body.removeChild(ta);
-                  done();
-                }
-              };
-              const flashCopied = (): void => {
-                setCopied(true);
-                window.setTimeout(() => {
-                  setCopied(false);
-                }, 1500);
-              };
-              // Publish path: stage exists. Push edits, then copy
-              // the freshly-built share URL.
-              if (canContributeToReview && pendingCount > 0) {
-                void publish().then((url) => {
-                  if (!url) {
-                    if (!publishConflictRef.current) {
-                      message.error(t.review.cartridge.publishFailed);
-                    }
-                    return;
-                  }
-                  message.success(t.review.cartridge.publishedToast);
-                  copyToClipboard(url, flashCopied);
-                });
-                return;
-              }
-              // Share path: build a fresh deeplink from current state.
-              let roundOrdinal = 0;
-              for (let i = 0; i < rounds.length; i++) {
-                if (rounds[i] <= index) {
-                  roundOrdinal = i + 1;
-                }
-              }
-              // Preserve the active review so the deeplink keeps
-              // surfacing the author's annotations. Without this
-              // the share button strips them and the recipient
-              // sees a clean replay even though the URL bar still
-              // shows `?review=…`.
-              const url =
-                typeof window !== "undefined"
-                  ? buildReplayViewerShareUrl(window.location.href, {
-                      seat: focusSeat,
-                      round: roundOrdinal > 0 ? roundOrdinal : undefined,
-                      event: index,
-                      review: review?.shortId,
-                    })
-                  : "";
-              copyToClipboard(url, flashCopied);
-            }}
-            disabled={publishing}
-            aria-label={
-              canContributeToReview && pendingCount > 0
-                ? t.review.cartridge.publishTooltip
-                : t.review.cartridge.copyShareLink
-            }
-            title={
-              canContributeToReview && pendingCount > 0
-                ? t.review.cartridge.publishTooltip
-                : copied
-                  ? t.review.cartridge.shareCopied
-                  : t.review.cartridge.copyShareLink
-            }
-            className={`${WEB_TABLE_TOP_CONTROL_CLASS} min-w-[5.5rem] gap-1 px-4 disabled:cursor-not-allowed disabled:opacity-60`}
-          >
-            {canContributeToReview && pendingCount > 0
-              ? `${t.review.cartridge.publish} (${pendingCount})`
-              : copied
-                ? t.review.cartridge.shareCopied
-                : t.review.cartridge.share}
-          </button>
-        </WebTableTopControls>
         {/* Right-side: seat / round selectors + nav buttons. */}
-        <div className="absolute top-1/2 right-2 -translate-y-1/2 z-30 flex flex-col items-stretch gap-3 text-emerald-100 text-base">
+        <div className="web-table-ui-navigation absolute top-1/2 right-2 -translate-y-1/2 z-30 flex flex-col items-stretch gap-3 text-emerald-100 text-base">
           {/* Row 1: seat selection, then round selection. */}
           <div className="flex items-center gap-2">
             <select
@@ -2299,7 +2318,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                     e.stopPropagation();
                     setSavedTextVisible(false);
                   }}
-                  className="absolute left-2 z-[46] flex flex-col gap-2 max-w-[min(820px,calc(100vw-16px))] overflow-y-auto cursor-pointer select-none"
+                  className="web-table-review-comments absolute left-2 z-[46] flex flex-col gap-2 max-w-[min(820px,calc(100vw-16px))] overflow-y-auto cursor-pointer select-none"
                   style={{ bottom: commentListBottomCss, maxHeight: "60vh" }}
                 >
                   {textEdits.map((e) => {
@@ -2373,7 +2392,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
                           <FixedTileSetProvider tileSet={TileSetName.Tenhou}>
                             <ArticleContent
                               html={e.text}
-                              config={REPLAY_REVIEW_RICH_TEXT_CONFIG}
+                              config={reviewTextConfig}
                             />
                           </FixedTileSetProvider>
                         </div>
@@ -2424,6 +2443,8 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
             </Tooltip>
           )}
         <ReplayReviewCartridge
+          uiScale={uiScale}
+          richTextConfig={reviewTextConfig}
           canEdit={canContributeToReview}
           drawingAvailable={
             drawingFrame !== null &&
@@ -2457,6 +2478,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           onTextEditorHeightChange={setTextEditorHeight}
         />
         <Modal
+          width={520 * uiScale}
           open={recoveryPrompt !== null}
           title={t.review.recovery.title}
           onOk={restoreLocalReviewDraft}
@@ -2526,6 +2548,7 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
           ) : null}
         </Modal>
         <Modal
+          width={520 * uiScale}
           open={blocker.state === "blocked"}
           title={t.review.leaveGuard.title}
           onOk={() => blocker.proceed?.()}
@@ -2545,5 +2568,28 @@ export default function ReplayRoute({ loaderData }: Route.ComponentProps) {
         </Modal>
       </div>
     </div>
+  );
+
+  return (
+    <ConfigProvider
+      theme={{
+        token: {
+          fontSize: Math.max(12, 14 * uiScale),
+          fontSizeSM: Math.max(12, 12 * uiScale),
+          controlHeight: Math.max(24, 32 * uiScale),
+          controlHeightSM: 24,
+          padding: 16 * uiScale,
+          paddingSM: 12 * uiScale,
+          paddingXS: 8 * uiScale,
+        },
+      }}
+      modal={{
+        classNames: { root: "web-table-ui" },
+        styles: { root: webTableUiStyle(uiScale) },
+      }}
+    >
+      {messageHolder}
+      {replayContent}
+    </ConfigProvider>
   );
 }
