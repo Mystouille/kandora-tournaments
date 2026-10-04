@@ -8,6 +8,7 @@ import {
 } from "../../../app/game/protocol/messages";
 import {
   fixtureEvents,
+  fixtureMatchId,
   fixtureRoom,
   fixtureSnapshot,
   fixtureViewers,
@@ -19,6 +20,7 @@ const harnessUrl = `/@fs/${fileURLToPath(
 const browserErrors = new WeakMap<Page, string[]>();
 const browserWarnings = new WeakMap<Page, string[]>();
 const publishedText = new WeakMap<Page, string>();
+const liveMessages = new WeakMap<Page, (message: ServerMessage) => void>();
 const existingEditorWarnings = new Set([
   "Warning: [antd: Divider] `type` is deprecated. Please use `orientation` instead.",
   "Warning: [antd: Modal] `focusTriggerAfterClose` is deprecated. Please use `focusable.focusTriggerAfterClose` instead.",
@@ -126,6 +128,9 @@ test.beforeEach(async ({ page }) => {
         return;
       }
       const spectating = message.spectate === true;
+      if (spectating) {
+        liveMessages.set(page, send);
+      }
       send(fixtureRoom(spectating));
       send({
         type: "snapshot",
@@ -185,6 +190,14 @@ async function open(page: Page, mode: string) {
           }))
       )
       .toEqual({ scale: "1", width: 1280, height: 900 });
+    await expect(page.locator(".web-table-ui-status")).toHaveCount(0);
+    await expect(page.locator(".web-table-ui-diagnostics")).toHaveCount(0);
+    await expect(page.locator(".web-table-ui-header")).not.toContainText(
+      fixtureMatchId
+    );
+    await expect(page.locator(".web-table-ui-header")).not.toContainText(
+      "conn:"
+    );
   }
   if (mode === "match" || mode === "spectate") {
     await expect(
@@ -199,27 +212,22 @@ async function scaledDimensions(page: Page) {
     const settings = document.querySelector<HTMLElement>(
       'button[aria-label="Settings"]'
     );
-    const metadata = document.querySelector<HTMLElement>(
-      ".web-table-ui-status"
-    );
     const actions = document.querySelector<HTMLElement>(
       ".web-table-top-controls"
     );
-    if (!root || !settings || !metadata || !actions) {
+    if (!root || !settings || !actions) {
       throw new Error("Responsive control groups are missing.");
     }
     return {
       scale: Number(root.style.getPropertyValue("--web-table-ui-scale")),
       settings: settings.getBoundingClientRect().height,
-      statusFont: parseFloat(getComputedStyle(metadata).fontSize),
-      statusRight: metadata.getBoundingClientRect().right,
-      actionsLeft: actions.getBoundingClientRect().left,
+      actionsRight: actions.getBoundingClientRect().right,
     };
   });
 }
 
 for (const mode of ["match", "spectate", "replay"]) {
-  test(`${mode}: sizes controls and status across window sizes without resetting menus`, async ({
+  test(`${mode}: sizes controls across window sizes without resetting menus`, async ({
     page,
   }, testInfo) => {
     await open(page, mode);
@@ -246,8 +254,7 @@ for (const mode of ["match", "spectate", "replay"]) {
         .toBe(`${height}px`);
       const actual = await scaledDimensions(page);
       expect(actual.settings).toBeCloseTo(44 * scale, 0);
-      expect(actual.statusFont).toBeGreaterThanOrEqual(10);
-      expect(actual.statusRight).toBeLessThanOrEqual(actual.actionsLeft);
+      expect(actual.actionsRight).toBeCloseTo(width - 8 * scale, 0);
       await expect(
         page.getByRole("button", { name: openMenuLabel, exact: true })
       ).toBeVisible();
@@ -384,14 +391,11 @@ test("live controls stay clickable and UI-only sizing does not change the board"
   await expect(
     page.getByRole("button", { name: "Auto win (on)", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".web-table-ui-diagnostics")).toContainText(
-    "conn: open"
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("switch", { name: "Show controls" })).toHaveCount(
+    0
   );
-  expect(
-    await page
-      .locator(".web-table-ui-diagnostics")
-      .evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
-  ).toBeGreaterThanOrEqual(10);
+  await page.keyboard.press("Escape");
   const canvas = page.locator(".web-table-ui canvas:not([aria-label])");
   const before = await canvas.boundingBox();
   const element = await canvas.elementHandle();
@@ -403,6 +407,90 @@ test("live controls stay clickable and UI-only sizing does not change the board"
     await canvas.evaluate((current, original) => current === original, element)
   ).toBe(true);
 });
+
+for (const mode of ["spectate", "replay"]) {
+  test(`${mode}: hides only right-side controls and preserves viewer state`, async ({
+    page,
+  }) => {
+    await open(page, mode);
+    const navigation = page.locator(".web-table-ui-navigation");
+    const counter = navigation.locator(":scope > span");
+    const canvas = page.locator(".web-table-ui canvas:not([aria-label])");
+    const originalCanvas = await canvas.elementHandle();
+    await expect(navigation).toBeVisible();
+    await page.getByLabel("Focus seat").selectOption("2");
+    const previousCounter = await counter.innerText();
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const toggle = page.getByRole("switch", {
+      name: "Show controls",
+      exact: true,
+    });
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(navigation).toHaveCSS("display", "none");
+    await expect(page.getByLabel("Focus seat")).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "Settings", exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Open overlay panel" })
+    ).toBeVisible();
+    if (mode === "spectate") {
+      await expect(
+        page.getByRole("button", { name: "Hide viewer list" })
+      ).toBeVisible();
+    } else {
+      await expect(
+        page.getByRole("button", { name: "Copy share link" })
+      ).toBeVisible();
+    }
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 800, height: 600 });
+    await expect(navigation).toBeHidden();
+
+    if (mode === "spectate") {
+      const send = liveMessages.get(page);
+      if (!send) {
+        throw new Error("Spectator fixture connection is missing.");
+      }
+      send({
+        type: "event",
+        seq: fixtureEvents.length + 2,
+        events: [
+          { type: "draw", seat: 0, tile: "9p", wallRemaining: 65 },
+          {
+            type: "discard",
+            seat: 0,
+            tile: "9p",
+            tsumogiri: true,
+            discardSource: "draw",
+          },
+        ],
+        legalActions: [],
+      });
+      await expect(counter).toHaveText(
+        `${fixtureEvents.length + 2} / ${fixtureEvents.length + 2}`
+      );
+    } else {
+      await expect(counter).toHaveText(previousCounter);
+    }
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await toggle.press("Space");
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(navigation).toBeVisible();
+    await expect(page.getByLabel("Focus seat")).toHaveValue("2");
+    expect(
+      await canvas.evaluate(
+        (current, original) => current === original,
+        originalCanvas
+      )
+    ).toBe(true);
+  });
+}
 
 test("replay text drafts and local editor popups survive resizing", async ({
   page,

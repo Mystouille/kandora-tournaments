@@ -417,6 +417,7 @@ export default function ReplayRoute({
 
   const [index, setIndex] = useState<number>(initial.index);
   const indexRef = useRef(initial.index);
+  const [showControls, setShowControls] = useState(true);
   const [overlays, setOverlays] = useState<ReplayOverlayState>(() => ({
     ...defaultReplayOverlayState,
     compactLayout: readWebTableLayoutMode() === "compact",
@@ -1870,14 +1871,6 @@ export default function ReplayRoute({
     };
   }, [stepBy]);
 
-  // For the round picker label.
-  const currentRound = (() => {
-    if (index < 0) {
-      return "—";
-    }
-    return `${currentView.roundWind}${currentView.roundNumber}`;
-  })();
-
   // Vertical anchor for the review annotation controls.
   // Once the renderer reports the focused hand-strip bounds we pin
   // the bubble's bottom edge ~8px above the player's tiles so it
@@ -1906,26 +1899,14 @@ export default function ReplayRoute({
         className="web-table-ui relative w-full h-full bg-black overflow-hidden"
         style={{ touchAction: "none", ...webTableUiStyle(uiScale) }}
       >
-        {/* Top-left: replay metadata label. */}
         <div className="web-table-ui-header">
-          <div
-            className="web-table-ui-status flex-1 truncate rounded bg-black/40 px-2 py-1 font-mono text-xs text-emerald-100/80"
-            title={
-              log.mode?.type === "duplicate"
-                ? `Duplicate seed: ${log.mode.seed}`
-                : `replay · ${log.source} · ${log.sourceGameId} · ${currentRound}`
-            }
-          >
-            replay · {log.source} · {log.sourceGameId} · {currentRound}
-            {log.mode?.type === "duplicate"
-              ? ` · duplicate · ${log.mode.seed}`
-              : ""}
-          </div>
           {/* Top-right: share / publish, settings, and quit.
             When the editor has unpublished local edits the same
             slot turns into a "Publish" button that pushes them
             to the server before copying the share link. */}
           <WebTableTopControls
+            showControls={showControls}
+            onShowControlsChange={setShowControls}
             compactLayout={overlays.compactLayout}
             onCompactLayoutChange={(compactLayout) => {
               handleOverlayChange({ ...overlays, compactLayout });
@@ -2040,7 +2021,10 @@ export default function ReplayRoute({
           , C-Egg
         </div>
         {/* Right-side: seat / round selectors + nav buttons. */}
-        <div className="web-table-ui-navigation absolute top-1/2 right-2 -translate-y-1/2 z-30 flex flex-col items-stretch gap-3 text-emerald-100 text-base">
+        <div
+          hidden={!showControls}
+          className="web-table-ui-navigation absolute top-1/2 right-2 -translate-y-1/2 z-30 flex flex-col items-stretch gap-3 text-emerald-100 text-base"
+        >
           {/* Row 1: seat selection, then round selection. */}
           <div className="flex items-center gap-2">
             <select
