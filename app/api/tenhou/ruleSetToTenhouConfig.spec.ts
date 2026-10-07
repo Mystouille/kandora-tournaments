@@ -51,6 +51,24 @@ describe("ruleSetToTenhouConfig", () => {
     }
   );
 
+  it("disables nagashi mangan for JPML A", () => {
+    const rules = getTournamentGameRules("jpml-hanchan");
+    const converted = ruleSetToTenhouConfig(rules, current);
+    const flags = Number.parseInt(converted.CSRULE.split(",")[0], 16);
+    expect(flags & 0x00000001).toBe(0x00000001);
+  });
+
+  it.each([
+    ["four-winds", 0x00000100],
+    ["four-riichi", 0x00000400],
+    ["nine-terminals", 0x00000800],
+  ] as const)("disables JPML A %s abortive draws", (_name, mask) => {
+    const rules = getTournamentGameRules("jpml-hanchan");
+    const converted = ruleSetToTenhouConfig(rules, current);
+    const flags = Number.parseInt(converted.CSRULE.split(",")[0], 16);
+    expect(flags & mask).toBe(mask);
+  });
+
   it("uses the HAR bit positions and keeps flags unrelated to gameplay", () => {
     const converted = convert({
       roundWindCount: 1,
