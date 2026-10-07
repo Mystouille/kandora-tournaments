@@ -1,4 +1,6 @@
 import { Ruleset } from "../core/models/tournament/League";
+import { getTournamentRulesForScoring } from "./tournamentRules";
+import { calculateMatchPoints } from "~/game/rules/matchScoring";
 
 /**
  * Whether a game's results represent a fully scored (hydrated) game rather than
@@ -58,6 +60,10 @@ export function computePlayerDeltas<T extends { score: number }>(
   players: T[],
   ruleSet: Ruleset
 ): number[] {
+  const gameRules = getTournamentRulesForScoring(ruleSet);
+  if (gameRules) {
+    return calculateMatchPoints(players.map((player) => player.score), gameRules);
+  }
   // Create indexed array to track original positions
   const indexed = players.map((p, i) => ({ index: i, score: p.score }));
 
@@ -112,12 +118,9 @@ export function computePlayerDeltas<T extends { score: number }>(
 
 function getPlaceModifiers(ruleSet: Ruleset): number[] {
   switch (ruleSet) {
-    case Ruleset.EMA:
     case Ruleset.WRC:
     case Ruleset.INDONESIAN:
       return [15, 5, -5, -15];
-    case Ruleset.MLEAGUE:
-      return [45, 5, -15, -35];
     default:
       return [0, 0, 0, 0];
   }
@@ -149,13 +152,14 @@ function getFloatingUmaModifiers(
 }
 
 export function getStartingScore(ruleSet: Ruleset): number {
+  const gameRules = getTournamentRulesForScoring(ruleSet);
+  if (gameRules) {
+    return gameRules.startingScore;
+  }
   switch (ruleSet) {
-    case Ruleset.EMA:
     case Ruleset.WRC:
     case Ruleset.INDONESIAN:
       return 30000;
-    case Ruleset.MLEAGUE:
-      return 25000;
     default:
       return 25000;
   }

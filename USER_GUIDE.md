@@ -77,6 +77,10 @@ three sections.
      and auto-fills the tournament **name** when the platform provides it.
    - **Mahjong Soul only:** after validation, pick a **Season** (optional —
      defaults to season 1).
+   - **Tenhou:** use the full administration C-number, not the public lobby
+     number. Validation must be able to load the editable configuration.
+     Password-protected administration is not supported; the password marker
+     returned by Tenhou is not a usable password.
    - **IRL:** no validation; there is no online tournament to check against.
 3. A **duplicate guard** prevents creating a second tournament for the same
    platform tournament (and season, for Mahjong Soul). You'll see the name of
@@ -90,7 +94,7 @@ The rest of the form stays locked until validation succeeds (except for IRL).
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Tournament name**                         | Pre-filled from the platform; editable. Must be unique.                                                                                                |
 | **Start date & time** / **End date & time** | Required. Define the active window.                                                                                                                    |
-| **Game rules**                              | `EMA`, `WRC`, `ONLINE`, `MLEAGUE`, or `INDONESIAN`.                                                                                                    |
+| **Game rules**                              | Shared game-app preset: **EMA**, **JPML A**, or **M-League**, including starting points, return points and UMA.                                           |
 | **Tournament format**                       | Optional structured format (phases + finals bracket). See [§4](#4-tournament-format-phases--brackets).                                                 |
 | **Phase cutoff dates**                      | Appear automatically based on the format: a format with N regular phases shows **N−1** cutoffs; a single regular phase plus finals shows **1** cutoff. |
 | **Team mode / Individual mode**             | Switch between team and individual play. If the chosen format already defines this, the format wins.                                                   |
@@ -113,12 +117,95 @@ Turn on **Publish on Discord** to have the bot post about this tournament:
 Click **Create Tournament** to finish. You'll be taken to the new tournament,
 where you can import a roster.
 
+### 3.4 Shared rules and Tenhou configuration
+
+Gameplay **and match scoring** come directly from the game app's JSON presets:
+
+| Game preset | Starting points | Return points | UMA (1st, 2nd, 3rd, 4th) |
+| ----------- | --------------: | ------------: | -----------------------: |
+| [EMA](app/game/rules/presets/ema.json) | 30,000 | 30,000 | +15, +5, -5, -15 |
+| [M-League](app/game/rules/presets/m-league.json) | 25,000 | 30,000 | +30, +10, -10, -30 |
+| [JPML A](app/game/rules/presets/jpml-hanchan.json) | 30,000 | 30,000 | Floating; see below |
+
+UMA is in thousands of points. M-League additionally awards the 20,000-point
+oka to first place. These presets keep decimal results and split placement
+bonuses on ties. JPML A uses its published floating UMA:
+
+| Players below 30,000 | 1st | 2nd | 3rd | 4th |
+| -------------------- | --: | --: | --: | --: |
+| 0 | 0 | 0 | 0 | 0 |
+| 1 | +8 | +3 | +1 | -12 |
+| 2 | +8 | +4 | -4 | -8 |
+| 3 | +12 | -1 | -3 | -8 |
+| 4 | 0 | 0 | 0 | 0 |
+
+There is no separate tournament or Tenhou copy of starting/return points or
+UMA. The shared
+[`calculateMatchPoints`](app/game/rules/matchScoring.ts) helper also computes
+tournament standings. The format config remains about phases, advancement,
+score aggregation/carry-over and bracket structure, not game settlement.
+
+Only EMA, JPML A and M-League presets are offered for new tournaments.
+Existing WRC, ONLINE and INDONESIAN tournaments retain their previous scoring
+behavior and remain readable. `rulesConfig.gameRulePresetId` stores the preset;
+the older `rulesConfig.gameRules` identifier is derived from it for existing
+standings, game-record and reporting APIs. It is not independently selectable.
+
+For **Tenhou**, creation loads and validates every linked lobby, then applies
+the combined gameplay and scoring configuration to the main lobby and all
+phase lobbies. Each update must return `OK`, and a fresh read must confirm the
+settings before the tournament is saved and its schedulers are started.
+If an update fails, the error is shown rather than reporting successful
+creation. Updates across multiple remote lobbies are not atomic: an error
+reports how many updates were sent, and already-updated lobbies are not
+automatically rolled back.
+
+The converter preserves lobby title/dates, rank/rating restrictions, timers,
+tsumogiri display, allowed users/chat members, join-button visibility, access
+options and unrelated custom fields. Adding players later also preserves
+custom rules. Scheduled games use the lobby's configured rule code rather
+than a hardcoded default.
+
+The game engine always has four seats, so conversion replaces a three-player
+lobby with a four-player game. The selectable presets have no sudden-death
+extension (`minimumScoreToWin: null`). A non-null minimum score enables at most
+one additional wind, with the same behavior in the native engine and Tenhou.
+There is no four-kan abort in the native engine.
+Kan-ura requires both kan dora and ura dora;
+disabling kan dora also disables immediate reveal and the four-kan abort,
+avoiding Tenhou's rejected combinations.
+
+Conversion rejects unsupported rule combinations instead of approximating
+them: four round winds, nonstandard round lengths/red-five counts, relaxed
+kuikae, disabling double riichi, renhou-as-yakuman, deferred ankan dora,
+nonstandard bankruptcy thresholds, score caps, Buu/chip mechanics and
+unconditional dealer-win/dealer-tenpai endings. The latter differ from
+Tenhou's **first-place-only** ending rules. Presets use the game app's current
+values; the converter does not replace them with another interpretation of
+the published competition rules.
+
+The pure conversion entry point is
+[`ruleSetToTenhouConfig`](app/api/tenhou/ruleSetToTenhouConfig.ts), taking a
+game `RuleSet` and the current lobby configuration.
+It produces `R2` and `CSRULE` fields. `CSRULE` uses two hexadecimal flag words
+and positional values: points at 4-7, riichi/honba at 10-11, noten payments at
+16-18, five UMA rows at 21-35, and timers at 36-44. Indices are zero-based.
+The first-place UMA is derived from the other places by Tenhou.
+The protocol is covered by credential-free tests based on the captured POST
+changes and [Tenhou's public administration controls](https://tenhou.net/cs/edit/).
+
+Mahjong Soul and Riichi City currently **store the selected preset only**; their
+lobbies still need manual configuration. Future adapters can consume the same
+complete game ruleset.
+
 ---
 
 ## 4. Tournament format (phases & brackets)
 
-The **tournament format** (a reusable "league type config") controls scoring and
-structure. It's optional:
+The **tournament format** (a reusable "league type config") controls phase
+structure, advancement, and how match points are aggregated within phases.
+UMA, return points and other game rules belong to the game preset, not this
+format. It's optional:
 
 - **Off** → a simple league: cumulative scoring, no phases, no bracket.
 - **On** → either pick an **existing saved format** or **create a new one**

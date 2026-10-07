@@ -7,6 +7,12 @@ import { validateLeagueTypeConfig } from "../../../services/league-configs/valid
 import { resolveOrderedPhases } from "../../../services/league-configs";
 import type { LeagueTypeConfig } from "../../../services/league-configs/types";
 import { LeagueService } from "../../../services/LeagueService.server";
+import { TenhouService } from "../../../api/tenhou/TenhouService.server";
+import { TenhouRuleConversionError } from "../../../api/tenhou/ruleSetToTenhouConfig";
+import {
+  TournamentRulesConfigSchema,
+  getTournamentGameRules,
+} from "../../../services/tournamentRules";
 
 async function requireAdmin(request: Request): Promise<Response | null> {
   const jwtPayload = await getAuthenticatedUser(request);
@@ -48,15 +54,31 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
-  if (!body.rulesConfig?.gameRules) {
+  const rulesConfig = TournamentRulesConfigSchema.safeParse(body.rulesConfig);
+  if (!rulesConfig.success) {
     return Response.json(
-      { error: "Missing required field: rulesConfig.gameRules" },
+      {
+        error: "Select a supported game preset: EMA, JPML A or M-League",
+        details: rulesConfig.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
+      },
       { status: 400 }
     );
   }
 
   try {
     await connectToDatabase();
+    const sameName = await LeagueModel.findOne({ name: body.name })
+      .select("name")
+      .lean();
+    if (sameName) {
+      return Response.json(
+        { error: "A league with this name already exists" },
+        { status: 409 }
+      );
+    }
 
     // Resolve leagueTypeConfig ref: accept an existing ID or create a new config
     let leagueTypeConfigId: string | null = null;
@@ -171,9 +193,51 @@ export async function action({ request }: { request: Request }) {
     }
 
     // ── Duplicate tournament guard ──
-    const internalId = body.platformConfig.internalTournamentId || undefined;
     const pName = body.platformConfig.platformName;
-    if (internalId) {
+    const rawInternalId =
+      body.platformConfig.internalTournamentId ||
+      (pName === "TENHOU" ? body.platformConfig.tournamentId : undefined);
+    const internalId =
+      pName === "TENHOU" ? String(rawInternalId || "").trim() : rawInternalId;
+    if (pName === "TENHOU") {
+      for (const entry of phaseTournaments) {
+        entry.tournamentId = entry.tournamentId.trim();
+        entry.internalTournamentId = (
+          entry.internalTournamentId || entry.tournamentId
+        ).trim();
+      }
+    }
+    const tenhouLobbyIds =
+      pName === "TENHOU"
+        ? [
+            ...new Set<string>([
+              String(internalId || ""),
+              ...phaseTournaments.map(
+                (entry) => entry.internalTournamentId || entry.tournamentId
+              ),
+            ]),
+          ]
+        : [];
+    if (pName === "TENHOU") {
+      const existing = await LeagueModel.findOne({
+        "platformConfig.platformName": pName,
+        $or: [
+          { "platformConfig.tournamentId": { $in: tenhouLobbyIds } },
+          { "platformConfig.internalTournamentId": { $in: tenhouLobbyIds } },
+          { "platformConfig.phaseTournaments.tournamentId": { $in: tenhouLobbyIds } },
+          { "platformConfig.phaseTournaments.internalTournamentId": { $in: tenhouLobbyIds } },
+        ],
+      })
+        .select("name")
+        .lean();
+      if (existing) {
+        return Response.json(
+          { error: "duplicateTournament", existingName: existing.name },
+          { status: 409 }
+        );
+      }
+    }
+    if (internalId && pName !== "TENHOU") {
       const dupFilter: Record<string, unknown> = {
         "platformConfig.platformName": pName,
         "platformConfig.internalTournamentId": String(internalId),
@@ -203,7 +267,7 @@ export async function action({ request }: { request: Request }) {
     const phaseInternalIds = phaseTournaments
       .map((entry) => entry.internalTournamentId)
       .filter((value): value is string => !!value);
-    if (phaseInternalIds.length > 0) {
+    if (phaseInternalIds.length > 0 && pName !== "TENHOU") {
       const dupExisting = await LeagueModel.findOne({
         "platformConfig.platformName": pName,
         $or: [
@@ -227,7 +291,7 @@ export async function action({ request }: { request: Request }) {
       }
     }
 
-    const league = await LeagueModel.create({
+    const league = new LeagueModel({
       name: body.name,
       startTime: new Date(body.startTime),
       endTime: new Date(body.endTime),
@@ -237,13 +301,13 @@ export async function action({ request }: { request: Request }) {
       ),
       isIgnored: false,
       isDisplayed: true,
-      rulesConfig: {
-        gameRules: body.rulesConfig.gameRules,
-        isTeamMode: body.rulesConfig.isTeamMode ?? false,
-      },
+      rulesConfig: rulesConfig.data,
       platformConfig: {
         platformName: body.platformConfig.platformName,
-        tournamentId: body.platformConfig.tournamentId || undefined,
+        tournamentId:
+          pName === "TENHOU"
+            ? String(body.platformConfig.tournamentId || internalId).trim()
+            : body.platformConfig.tournamentId || undefined,
         internalTournamentId: internalId,
         seasonId: body.platformConfig.seasonId
           ? String(body.platformConfig.seasonId)
@@ -264,6 +328,28 @@ export async function action({ request }: { request: Request }) {
         : undefined,
       leagueTypeConfig: leagueTypeConfigId,
     });
+
+    await league.validate();
+    if (pName === "TENHOU") {
+      try {
+        await TenhouService.instance.configureTournamentLobbies(
+          tenhouLobbyIds,
+          getTournamentGameRules(rulesConfig.data.gameRulePresetId)
+        );
+      } catch (error) {
+        console.error("Tenhou tournament configuration failed:", error);
+        return Response.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Tenhou tournament configuration failed",
+          },
+          { status: error instanceof TenhouRuleConversionError ? 400 : 502 }
+        );
+      }
+    }
+    await league.save();
 
     // Re-evaluate league schedulers so the new league is picked up immediately
     LeagueService.instance.InitLeague().catch((err) => {

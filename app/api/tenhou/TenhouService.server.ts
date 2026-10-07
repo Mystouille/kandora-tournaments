@@ -1,3 +1,13 @@
+import { z } from "zod";
+import type { RuleSet } from "~/game/rules/ruleSet";
+import {
+  assertTenhouRulesApplied,
+  getTenhouRuleCode,
+  ruleSetToTenhouConfig,
+  TenhouRuleConversionError,
+  type TenhouRuleConfig,
+} from "./ruleSetToTenhouConfig";
+
 /**
  * Parsed result of `cmd_load.cgi` — the full tournament configuration.
  * String values are already URL-decoded.
@@ -10,6 +20,109 @@ export interface TenhouTournamentConfig {
   CHATMEMBER: string;
   ENABLEJOINSAMEIP: number;
   EDITAUTH: string;
+  CSRULE?: string;
+  JOINFEE?: string;
+  /** Presence indicates an administration password, not the password itself. */
+  PW?: unknown;
+  DUPLICATABLESEED?: string;
+  PREMIUMONLY?: number;
+  CHATPREMIUMONLY?: number;
+  DISABLEGUESTMATCH?: number;
+  DISABLEGUESTID?: number;
+  DISABLEENDANNOUNCE?: number;
+}
+
+const configFlag = z
+  .union([z.literal(0), z.literal(1), z.literal("0"), z.literal("1")])
+  .transform(Number);
+const configString = z.union([z.string(), z.number()]).transform(String);
+const tournamentConfigSchema = z
+  .object({
+    TITLE: z.string(),
+    RULE: z
+      .string()
+      .regex(/^\d{12},\d{12},[\da-f]{4},\d+,\d+,\d+,\d+$/i),
+    RANKING: configString.default(""),
+    MEMBER: z.string(),
+    CHATMEMBER: z.string(),
+    ENABLEJOINSAMEIP: configFlag.default(1),
+    EDITAUTH: z.string().min(1),
+    CSRULE: z.string().optional(),
+    JOINFEE: configString.optional(),
+    PW: z.unknown().optional(),
+    DUPLICATABLESEED: z.string().optional(),
+    PREMIUMONLY: configFlag.optional(),
+    CHATPREMIUMONLY: configFlag.optional(),
+    DISABLEGUESTMATCH: configFlag.optional(),
+    DISABLEGUESTID: configFlag.optional(),
+    DISABLEENDANNOUNCE: configFlag.optional(),
+  })
+  .passthrough();
+
+function validateTournamentConfig(value: unknown): TenhouTournamentConfig {
+  const parsed = tournamentConfigSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid Tenhou configuration fields: ${parsed.error.issues
+        .map((issue) => issue.path.join("."))
+        .join(", ")}`
+    );
+  }
+  return parsed.data;
+}
+
+export function assertTenhouConfigEditable(
+  config: TenhouTournamentConfig
+): void {
+  if (config.PW !== undefined && config.PW !== null) {
+    throw new Error("Password-protected Tenhou lobby administration is not supported");
+  }
+}
+
+function assertLobbySettingsPreserved(
+  expected: TenhouTournamentConfig,
+  actual: TenhouTournamentConfig
+): void {
+  const changed: string[] = [];
+  const actualRule = actual.RULE.split(",");
+  actualRule[2] = expected.RULE.split(",")[2];
+  if (actualRule.join(",") !== expected.RULE) {
+    changed.push("schedule/rating restrictions");
+  }
+  for (const field of ["MEMBER", "CHATMEMBER"] as const) {
+    const names = (value: string) => value.split(",").sort().join(",");
+    if (names(expected[field]) !== names(actual[field])) {
+      changed.push(field);
+    }
+  }
+  for (const field of ["TITLE", "RANKING", "JOINFEE"] as const) {
+    if ((expected[field] ?? "") !== (actual[field] ?? "")) {
+      changed.push(field);
+    }
+    assertTenhouConfigEditable(actual);
+  }
+  if (
+    (expected.DUPLICATABLESEED ?? "default") !==
+    (actual.DUPLICATABLESEED ?? "default")
+  ) {
+    changed.push("DUPLICATABLESEED");
+  }
+  for (const field of [
+    "ENABLEJOINSAMEIP",
+    "PREMIUMONLY",
+    "CHATPREMIUMONLY",
+    "DISABLEGUESTMATCH",
+    "DISABLEGUESTID",
+    "DISABLEENDANNOUNCE",
+  ] as const) {
+    const fallback = field === "ENABLEJOINSAMEIP" ? 1 : 0;
+    if ((expected[field] ?? fallback) !== (actual[field] ?? fallback)) {
+      changed.push(field);
+    }
+  }
+  if (changed.length > 0) {
+    throw new Error(`Tenhou did not preserve lobby settings: ${changed.join(", ")}`);
+  }
 }
 
 /** One ongoing (watchable) game from `cmd_get_wg.cgi`. */
@@ -265,18 +378,20 @@ export class TenhouService {
    *
    * @param lobbyId      The internal tournament ID, e.g. "C4853890996412598"
    * @param playerNames  Array of player usernames (exactly 4 for a standard game).
-   * @param ruleCode     Game rule code, e.g. "0001" (default: "0001").
+   * @param ruleCode     Optional override; otherwise use the current lobby rules.
    * @returns `ok: true` if the game was started, `ok: false` with missing player names otherwise.
    */
   async startLobbyGame(
     lobbyId: string,
     playerNames: string[],
-    ruleCode = "0001"
+    ruleCode?: string
   ): Promise<{ ok: boolean; missingPlayers: string[] }> {
+    const resolvedRuleCode =
+      ruleCode ?? getTenhouRuleCode(await this.fetchTournamentConfig(lobbyId));
     const memberList = playerNames
       .map((n) => encodeURIComponent(n))
       .join("%0A");
-    const body = `L=${lobbyId}&R2=${ruleCode}&M=${memberList}&RND=default&WG=1&PW=`;
+    const body = `L=${lobbyId}&R2=${resolvedRuleCode}&M=${memberList}&RND=default&WG=1&PW=`;
 
     const res = await fetch("https://tenhou.net/cs/edit/cmd_start.cgi", {
       method: "POST",
@@ -327,7 +442,7 @@ export class TenhouService {
 
     if (!res.ok) {
       throw new Error(
-        `Tenhou cmd_load.cgi returned ${res.status} for ${lobbyId}`
+        `Tenhou cmd_load.cgi returned ${res.status}`
       );
     }
 
@@ -336,22 +451,84 @@ export class TenhouService {
     // Strip JSONP wrapper: cs({...}); → {...}
     const match = raw.match(/^cs\((\{.*\})\);?$/s);
     if (!match) {
-      throw new Error(`Unexpected cmd_load.cgi response format for ${lobbyId}`);
+      throw new Error("Unexpected Tenhou cmd_load.cgi response format");
     }
 
-    const parsed = JSON.parse(match[1]) as Record<string, unknown>;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(match[1]);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) {
+        throw error;
+      }
+      throw new Error("Invalid JSON in Tenhou cmd_load.cgi response");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid Tenhou configuration object");
+    }
 
     // Decode percent-encoded string values
     const config: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(parsed)) {
       if (typeof value === "string") {
-        config[key] = decodeURIComponent(value);
+        try {
+          config[key] = decodeURIComponent(value);
+        } catch (error) {
+          if (!(error instanceof URIError)) {
+            throw error;
+          }
+          throw new Error(`Invalid encoding in Tenhou configuration field ${key}`);
+        }
       } else {
         config[key] = value;
       }
     }
 
-    return config as unknown as TenhouTournamentConfig;
+    return validateTournamentConfig(config);
+  }
+
+  async configureTournamentLobbies(
+    lobbyIds: readonly string[],
+    rules: RuleSet
+  ): Promise<void> {
+    const ids = [...new Set(lobbyIds.map((id) => id.trim()))];
+    if (ids.length === 0 || ids.some((id) => !/^C\d{16}$/.test(id))) {
+      throw new TenhouRuleConversionError([
+        "every Tenhou lobby requires its full C-number administration ID",
+      ]);
+    }
+    // Validate every target before changing any lobby.
+    const targets = await Promise.all(
+      ids.map(async (lobbyId) => {
+        const config = await this.fetchTournamentConfig(lobbyId);
+        assertTenhouConfigEditable(config);
+        return {
+          lobbyId,
+          config,
+          rules: ruleSetToTenhouConfig(rules, config),
+        };
+      })
+    );
+    let updated = 0;
+    try {
+      for (const target of targets) {
+        await this.updateTournamentConfig(
+          target.lobbyId,
+          target.config,
+          target.rules
+        );
+        updated++;
+        const actual = await this.fetchTournamentConfig(target.lobbyId);
+        assertTenhouRulesApplied(target.rules, actual);
+        assertLobbySettingsPreserved(target.config, actual);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unexpected Tenhou update failure";
+      throw new Error(
+        `Tenhou configuration failed after ${updated} of ${targets.length} lobby updates: ${message}`
+      );
+    }
   }
 
   /**
@@ -369,19 +546,32 @@ export class TenhouService {
     config: TenhouTournamentConfig,
     members: string[]
   ): Promise<void> {
+    await this.updateTournamentConfig(lobbyId, {
+      ...config,
+      MEMBER: members.join(","),
+    });
+  }
+
+  private async updateTournamentConfig(
+    lobbyId: string,
+    current: TenhouTournamentConfig,
+    rules?: TenhouRuleConfig
+  ): Promise<void> {
+    const config = validateTournamentConfig(current);
+    assertTenhouConfigEditable(config);
     // Parse RULE: "202604082100,202605252300,0001,0,0,0,0"
     const ruleParts = config.RULE.split(",");
     const r0 = ruleParts[0]?.slice(0, 8) ?? ""; // date start: 20260408
     const r0t = ruleParts[0]?.slice(8) ?? ""; // time start: 2100
     const r1 = ruleParts[1]?.slice(0, 8) ?? ""; // date end:   20260525
     const r1t = ruleParts[1]?.slice(8) ?? ""; // time end:   2300
-    const r2 = ruleParts[2] ?? "0001"; // rule code
+    const r2 = rules?.R2 ?? getTenhouRuleCode(config);
     const dan0 = ruleParts[3] ?? "0";
     const dan1 = ruleParts[4] ?? "0";
     const rate0 = ruleParts[5] ?? "0";
     const rate1 = ruleParts[6] ?? "0";
 
-    const memberList = members.join("\n");
+    const memberList = config.MEMBER.split(",").join("\n");
 
     const params = new URLSearchParams();
     params.set("L", lobbyId);
@@ -396,26 +586,26 @@ export class TenhouService {
     params.set("DAN1", dan1);
     params.set("RATE0", rate0);
     params.set("RATE1", rate1);
-    params.set("CSRULE", "");
-    params.set("JOINFEE", "");
+    params.set("CSRULE", rules?.CSRULE ?? config.CSRULE ?? "");
+    params.set("JOINFEE", config.JOINFEE ?? "");
     params.set("RANKING", config.RANKING);
     params.set("M", memberList);
-    params.set("CM", config.CHATMEMBER);
+    params.set("CM", config.CHATMEMBER.split(",").join("\n"));
     params.set("PW", "");
-    params.set("DUPLICATABLESEED", "default");
-    params.set("PREMIUMONLY", "0");
-    params.set("CHATPREMIUMONLY", "0");
+    params.set("DUPLICATABLESEED", config.DUPLICATABLESEED ?? "default");
+    params.set("PREMIUMONLY", String(config.PREMIUMONLY ?? 0));
+    params.set("CHATPREMIUMONLY", String(config.CHATPREMIUMONLY ?? 0));
     params.set("ENABLEJOINSAMEIP", String(config.ENABLEJOINSAMEIP ?? 1));
-    params.set("DISABLEGUESTMATCH", "0");
-    params.set("DISABLEGUESTID", "0");
-    params.set("DISABLEENDANNOUNCE", "0");
+    params.set("DISABLEGUESTMATCH", String(config.DISABLEGUESTMATCH ?? 0));
+    params.set("DISABLEGUESTID", String(config.DISABLEGUESTID ?? 0));
+    params.set("DISABLEENDANNOUNCE", String(config.DISABLEENDANNOUNCE ?? 0));
 
     const body = params.toString();
 
     const res = await fetch(TenhouService.UPDATE_URL, {
       method: "POST",
       headers: {
-        "Content-Type": "text/plain",
+        "Content-Type": "text/plain;charset=UTF-8",
         "User-Agent": TenhouService.USER_AGENT,
         Referer: `https://tenhou.net/cs/edit/?${lobbyId}`,
       },
@@ -424,8 +614,11 @@ export class TenhouService {
 
     if (!res.ok) {
       throw new Error(
-        `Tenhou cmd_update.cgi returned ${res.status} for ${lobbyId}`
+        `Tenhou cmd_update.cgi returned ${res.status}`
       );
+    }
+    if ((await res.text()).trim() !== "OK") {
+      throw new Error("Tenhou cmd_update.cgi did not acknowledge the update");
     }
   }
 }

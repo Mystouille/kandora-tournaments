@@ -669,6 +669,10 @@ export const en: Translations = {
       nameLabel: "Tournament name",
       nameRequired: "Tournament name is required",
       dateRequired: "Date is required",
+      gamePresetHelp:
+        "Shared game-app preset, including gameplay, starting/return points and UMA. Tournament format controls phases only. Automatic platform configuration is currently available for Tenhou only.",
+      tenhouRulesNotice:
+        "Creation applies these rules to the main Tenhou lobby and all phase lobbies. Timers, allowed users and join-button visibility are preserved. Creation stops if a setting cannot be applied.",
       hasSchedule: "Use a schedule",
       hasScheduleHelp:
         "Create a phase schedule with dates, start times, and assigned players or teams.",

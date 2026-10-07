@@ -72,7 +72,7 @@ interface MatchListDocument {
 interface TournamentGameListDocument {
   gameId?: string;
   platform: "majsoul" | "tenhou" | "riichiCity" | "IRL";
-  rules: "EMA" | "WRC" | "ONLINE" | "MLEAGUE" | "INDONESIAN";
+  rules: "EMA" | "WRC" | "ONLINE" | "MLEAGUE" | "JPML" | "INDONESIAN";
   league?: mongoose.Types.ObjectId | null;
   replayLogRef?: mongoose.Types.ObjectId | null;
   startTime: Date;
@@ -105,6 +105,7 @@ const TOURNAMENT_RULESETS: Record<string, MyReplayRuleset> = {
   WRC: { id: "wrc", label: "WRC" },
   ONLINE: { id: "online", label: "Online" },
   MLEAGUE: { id: "m-league", label: "M-League" },
+  JPML: { id: "jpml-hanchan", label: "JPML A" },
   INDONESIAN: { id: "indonesian", label: "Indonesian" },
 };
 

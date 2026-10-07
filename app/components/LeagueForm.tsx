@@ -23,7 +23,10 @@ import {
 } from "@ant-design/icons";
 import { useLocale } from "../contexts/LocaleContext";
 import { basePath } from "../utils/basePath";
-import { Platform, Ruleset } from "../types/league-enums";
+import { Platform } from "../types/league-enums";
+import {
+  tournamentGamePresets,
+} from "../services/tournamentRules";
 import {
   LeagueTypeConfigForm,
   type LeagueTypeConfigFormResult,
@@ -63,9 +66,9 @@ const platformOptions = [
   { label: "Tenhou", value: Platform.TENHOU },
 ];
 
-const rulesetOptions = Object.values(Ruleset).map((r) => ({
-  label: r,
-  value: r,
+const gamePresetOptions = tournamentGamePresets.map((preset) => ({
+  label: preset.displayName,
+  value: preset.id,
 }));
 
 export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
@@ -316,7 +319,11 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
         }
 
         // Check for duplicate tournament (Riichi City: immediate, Majsoul: after season pick)
-        if (platform !== Platform.MAJSOUL && data.internalTournamentId) {
+        if (
+          platform !== Platform.MAJSOUL &&
+          platform !== Platform.TENHOU &&
+          data.internalTournamentId
+        ) {
           checkDuplicate(platform, data.internalTournamentId);
         }
 
@@ -462,7 +469,7 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
         hasSchedule,
         phaseCutoffTimes,
         rulesConfig: {
-          gameRules: values.gameRules,
+          gameRulePresetId: values.gameRulePresetId,
           isTeamMode:
             leagueTypeConfig?.isTeamMode ?? values.isTeamMode ?? false,
         },
@@ -777,11 +784,21 @@ export function LeagueForm({ onSuccess, botFriendIds }: LeagueFormProps) {
 
         <Form.Item
           label={t.onlineTournaments.gameRules}
-          name="gameRules"
+          name="gameRulePresetId"
+          tooltip={t.onlineTournaments.admin.gamePresetHelp}
           rules={[{ required: true }]}
         >
-          <Select options={rulesetOptions} />
+          <Select options={gamePresetOptions} />
         </Form.Item>
+
+        {platform === Platform.TENHOU && (
+          <Alert
+            type="info"
+            showIcon
+            message={t.onlineTournaments.admin.tenhouRulesNotice}
+            style={{ marginBottom: 16 }}
+          />
+        )}
 
         <LeagueTypeConfigForm
           value={leagueTypeConfig}

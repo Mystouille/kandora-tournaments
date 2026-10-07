@@ -560,6 +560,8 @@ export interface Translations extends CoreTranslations {
       nameLabel: string;
       nameRequired: string;
       dateRequired: string;
+      gamePresetHelp: string;
+      tenhouRulesNotice: string;
       hasSchedule: string;
       hasScheduleHelp: string;
       discordLocale: string;

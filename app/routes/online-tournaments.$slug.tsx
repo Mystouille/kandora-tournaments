@@ -23,6 +23,7 @@ import {
 import { useLocale } from "../contexts/LocaleContext";
 import { basePath } from "../utils/basePath";
 import { getTournamentText } from "../utils/tournament";
+import { tournamentGamePresets } from "../services/tournamentRules";
 import { ArticleContent } from "../components/ArticleContent";
 import { TeamLogo } from "../components/TeamLogo";
 import { PlayerAvatar } from "../components/PlayerAvatar";
@@ -74,6 +75,7 @@ interface LeagueDetail {
   hasSchedule: boolean;
   rulesConfig: {
     gameRules: string;
+    gameRulePresetId?: string;
     isTeamMode: boolean;
   };
   leagueTypeConfigName: string | null;
@@ -350,7 +352,13 @@ export default function LeagueDetailPage() {
           </Descriptions.Item>
         )}
         <Descriptions.Item label={t.onlineTournaments.gameRules}>
-          <Tag>{league.rulesConfig?.gameRules ?? "—"}</Tag>
+          <Tag>
+            {league.rulesConfig?.gameRulePresetId
+              ? tournamentGamePresets.find(
+                  (preset) => preset.id === league.rulesConfig.gameRulePresetId
+                )?.displayName ?? league.rulesConfig.gameRulePresetId
+              : league.rulesConfig?.gameRules ?? "—"}
+          </Tag>
         </Descriptions.Item>
         <Descriptions.Item label={t.onlineTournaments.mode}>
           {withTeams

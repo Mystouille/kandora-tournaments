@@ -4,7 +4,10 @@ import { getAuthenticatedUser } from "../../../utils/jwt.server";
 import { Platform } from "../../../core/models/tournament/League";
 import { RiichiCityLeagueConnector } from "../../../services/connectors/RiichiCityLeagueConnector.server";
 import { MahjongSoulConnector } from "~/api/majsoul/data/MajsoulConnector";
-import { TenhouService } from "../../../api/tenhou/TenhouService.server";
+import {
+  TenhouService,
+  assertTenhouConfigEditable,
+} from "../../../api/tenhou/TenhouService.server";
 
 async function requireAdmin(request: Request): Promise<Response | null> {
   const jwtPayload = await getAuthenticatedUser(request);
@@ -123,26 +126,28 @@ export async function loader({ request }: { request: Request }) {
     }
 
     if (platform === Platform.TENHOU) {
-      // Probe the lobby to verify the tournament ID is reachable
-      try {
-        await TenhouService.instance.fetchLobbyPlayers(tournamentId);
-      } catch {
+      if (!/^C\d{16}$/.test(tournamentId)) {
         return Response.json({
           valid: false,
-          error: "Could not reach Tenhou lobby. Check the tournament ID.",
+          error: "Enter the full Tenhou lobby administration C-number, not its public lobby number.",
         });
       }
-      // Best-effort: pull the lobby title (cmd_load.cgi) to auto-fill the
-      // tournament name. A failure here must not fail validation.
-      let tournamentName: string | undefined;
       try {
         const config =
           await TenhouService.instance.fetchTournamentConfig(tournamentId);
-        tournamentName = config.TITLE?.trim() || undefined;
-      } catch {
-        // title is optional — ignore fetch / parse failures
+        assertTenhouConfigEditable(config);
+        return Response.json({
+          valid: true,
+          internalTournamentId: tournamentId,
+          tournamentName: config.TITLE.trim() || undefined,
+        });
+      } catch (error) {
+        console.error("Tenhou lobby administration validation failed:", error);
+        return Response.json({
+          valid: false,
+          error: "Could not access editable Tenhou lobby configuration. Check the full C-number; password-protected administration is not supported.",
+        });
       }
-      return Response.json({ valid: true, tournamentName });
     }
 
     if (platform === Platform.IRL) {

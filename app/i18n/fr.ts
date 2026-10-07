@@ -680,6 +680,10 @@ export const fr: Translations = {
       nameLabel: "Nom du tournoi",
       nameRequired: "Le nom du tournoi est requis",
       dateRequired: "La date est requise",
+      gamePresetHelp:
+        "Préréglage partagé avec l'application de jeu : règles, points initiaux, points de retour et UMA. Le format du tournoi définit uniquement les phases. La configuration automatique de la plateforme est disponible uniquement pour Tenhou.",
+      tenhouRulesNotice:
+        "La création applique ces règles au salon Tenhou principal et à tous les salons des phases. Les chronomètres, les joueurs autorisés et la visibilité du bouton de participation sont conservés. La création est interrompue si un paramètre ne peut pas être appliqué.",
       hasSchedule: "Utiliser un calendrier",
       hasScheduleHelp:
         "Créez un calendrier par phase avec les dates, les heures de début et les joueurs ou équipes assignés.",
