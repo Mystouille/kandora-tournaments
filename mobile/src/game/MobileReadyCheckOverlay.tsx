@@ -1,3 +1,4 @@
+import { type SeatValues } from "~/game/protocol/seat";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type {
   ActionWindowView,
@@ -13,7 +14,7 @@ import type { Seat } from "~/game/protocol/messages";
 
 export interface MobileReadyCheck {
   deadline: number;
-  acked: [boolean, boolean, boolean, boolean];
+  acked: SeatValues<boolean>;
   window?: ActionWindowView | null;
 }
 

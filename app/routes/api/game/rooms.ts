@@ -1,5 +1,5 @@
 import { isGameEnabled } from "~/game/feature-gate";
-import { listPresetIds } from "~/game/rules/presets";
+import { GameSetupSchema } from "~/game/rules/gameSetup";
 import { SpectatorDelayFormValueSchema } from "~/game/protocol/spectatorDelay";
 import { getGameServerHttpUrl } from "~/services/gameServer.server";
 import { signGameToken, verifyGameToken } from "~/utils/jwt.server";
@@ -21,6 +21,21 @@ function errorResponse(
     { error },
     { status, headers: mobile ? MOBILE_CORS_HEADERS : undefined }
   );
+}
+
+function validateCreationFields(body: Record<string, unknown>) {
+  return GameSetupSchema.safeParse({
+    preset:
+      body.preset === undefined
+        ? body.playerCount === 3
+          ? "m-league"
+          : "buu-east"
+        : body.preset,
+    playerCount: body.playerCount,
+    sanmaType: body.sanmaType,
+    mode: body.mode,
+    spectatorDelayMs: body.spectatorDelayMs,
+  });
 }
 
 async function forwardToGameServer(
@@ -92,11 +107,7 @@ export async function action({
     }
     const token = form.get("token");
     const preset = form.get("preset");
-    if (
-      typeof token !== "string" ||
-      typeof preset !== "string" ||
-      !listPresetIds().includes(preset)
-    ) {
+    if (typeof token !== "string" || typeof preset !== "string") {
       return errorResponse("invalid_body", 400, true);
     }
     if ((await verifyGameToken(token)) === null) {
@@ -109,13 +120,42 @@ export async function action({
     if (!spectatorDelay.success) {
       return errorResponse("invalid_spectator_delay", 400, true);
     }
+    let mode: unknown;
+    const modeValue = form.get("mode");
+    if (modeValue !== null) {
+      if (typeof modeValue !== "string") {
+        return errorResponse("invalid_mode", 400, true);
+      }
+      try {
+        mode = JSON.parse(modeValue);
+      } catch {
+        return errorResponse("invalid_mode", 400, true);
+      }
+    }
+    const playerCount = form.get("playerCount");
+    const sanmaType = form.get("sanmaType");
+    const setup = validateCreationFields({
+      preset,
+      ...(playerCount !== null ? { playerCount: Number(playerCount) } : {}),
+      ...(sanmaType !== null ? { sanmaType } : {}),
+      ...(modeValue !== null ? { mode } : {}),
+      spectatorDelayMs: spectatorDelay.data,
+    });
+    if (!setup.success) {
+      return errorResponse("invalid_body", 400, true);
+    }
     return forwardToGameServer(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          preset,
+          preset: setup.data.preset,
           token,
+          ...(playerCount !== null
+            ? { playerCount: setup.data.playerCount }
+            : {}),
+          ...(sanmaType !== null ? { sanmaType: setup.data.sanmaType } : {}),
+          ...(modeValue !== null ? { mode: setup.data.mode } : {}),
           ...(spectatorDelayValue !== null
             ? { spectatorDelayMs: spectatorDelay.data }
             : {}),
@@ -141,10 +181,25 @@ export async function action({
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return errorResponse("invalid_body", 400);
   }
+  const fields = body as Record<string, unknown>;
+  const setup = validateCreationFields(fields);
+  if (!setup.success) {
+    return errorResponse(
+      setup.error.issues.some((issue) => issue.path[0] === "spectatorDelayMs")
+        ? "invalid_spectator_delay"
+        : "invalid_body",
+      400
+    );
+  }
 
   return forwardToGameServer({
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...body, token }),
+    body: JSON.stringify({
+      ...fields,
+      ...(fields.playerCount === 3 ? { preset: setup.data.preset } : {}),
+      ...(fields.mode !== undefined ? { mode: setup.data.mode } : {}),
+      token,
+    }),
   });
 }

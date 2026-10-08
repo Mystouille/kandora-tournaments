@@ -102,7 +102,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         { ReplayLogModel },
         { connectToDatabase },
         { fetchOrphanReplayLog },
-        { replayLogToTenhou5Json },
+        { replayLogToTenhou5Json, UnsupportedSanmaExportError },
       ] = await Promise.all([
         import("~/core/models/game/ReplayLog"),
         import("~/utils/dbConnection.server"),
@@ -158,9 +158,30 @@ export async function loader({ request }: LoaderFunctionArgs) {
         });
         return new Response("Not found", { status: 404 });
       }
-      payload = replayLogToTenhou5Json(
-        replay as Parameters<typeof replayLogToTenhou5Json>[0]
-      );
+      try {
+        payload = replayLogToTenhou5Json(
+          replay as Parameters<typeof replayLogToTenhou5Json>[0]
+        );
+      } catch (error) {
+        if (!(error instanceof UnsupportedSanmaExportError)) {
+          throw error;
+        }
+        trackEvent({
+          type: "replay_download",
+          statusCode: 422,
+          sessionId,
+          meta: {
+            format: "tenhou5",
+            outcome: "unsupported-sanma",
+            source,
+            gameId,
+          },
+        });
+        return Response.json(
+          { error: error.code, message: error.message },
+          { status: 422 }
+        );
+      }
       trackEvent({
         type: "replay_download",
         statusCode: 200,

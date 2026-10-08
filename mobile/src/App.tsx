@@ -92,7 +92,9 @@ import type { ReplayLibraryRow } from "./replays/replayLibrary";
 import type { ReplayLog } from "~/game/replay/types";
 import type { ReplayLocationRequest } from "~/game/replay/replayLocation";
 import type { Seat } from "~/game/protocol/messages";
-import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
+import type { SeatValues } from "~/game/protocol/seat";
+import { seatValues } from "~/game/rules/seats";
+import type { GameSetup } from "~/game/rules/gameSetup";
 import type { ActionIntentContext } from "~/game/protocol/timing";
 import type { ActiveMatchSummary } from "~/game/protocol/activeMatch";
 import type { MyReplayLogDetails } from "./replays/myReplaysApi";
@@ -156,7 +158,7 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
-export const MOBILE_APP_VERSION = "0.0.4";
+export const MOBILE_APP_VERSION = "0.0.5";
 
 const DRAW_TO_DISCARD_DELAY_MS = 700;
 
@@ -171,6 +173,18 @@ interface MobileReplayViewerState {
   review: MyReplayLogDetails["review"];
   loading: boolean;
   error: string | null;
+}
+
+export function blocksAutomaticDiscard(
+  actions: readonly { type: string; kanKind?: string }[]
+): boolean {
+  return actions.some(
+    (action) =>
+      action.type === "ron" ||
+      action.type === "tsumo" ||
+      action.type === "nuki" ||
+      (action.type === "kan" && action.kanKind === "ankan")
+  );
 }
 
 export function App() {
@@ -245,7 +259,7 @@ export function App() {
   );
   const liveMenuFlagsRef = useRef(liveMenuFlags);
   liveMenuFlagsRef.current = liveMenuFlags;
-  const [spectateFocusSeat, setSpectateFocusSeat] = useState<Seat>(0);
+  const [requestedSpectateFocusSeat, setSpectateFocusSeat] = useState<Seat>(0);
   const [spectatePlayIndex, setSpectatePlayIndex] = useState(-1);
   const [spectateFollowingLive, setSpectateFollowingLive] = useState(true);
   const [spectateDisplayOptions, setSpectateDisplayOptions] =
@@ -339,22 +353,27 @@ export function App() {
     }
     return view;
   }, [displayedSpectateIndex, isLiveSpectating, spectateTimeline]);
-  const spectateSeatNames = useMemo<[string, string, string, string]>(() => {
-    const names: [string, string, string, string] = liveView.seatNames
-      ? [
-          liveView.seatNames[0],
-          liveView.seatNames[1],
-          liveView.seatNames[2],
-          liveView.seatNames[3],
-        ]
-      : ["", "", "", ""];
+  const spectatePlayerCount =
+    spectateReplayView?.playerCount ??
+    onlineState.roomState?.playerCount ??
+    liveView.playerCount ??
+    4;
+  const spectateFocusSeat =
+    requestedSpectateFocusSeat < spectatePlayerCount
+      ? requestedSpectateFocusSeat
+      : 0;
+  const spectateSeatNames = useMemo<SeatValues<string>>(() => {
+    const names = seatValues(
+      spectatePlayerCount,
+      (seat) => liveView.seatNames?.[seat] ?? ""
+    );
     for (const seat of onlineState.roomState?.seats ?? []) {
-      if (seat.occupant.kind !== "empty") {
+      if (seat.seat < spectatePlayerCount && seat.occupant.kind !== "empty") {
         names[seat.seat] = seat.occupant.displayName;
       }
     }
     return names;
-  }, [liveView.seatNames, onlineState.roomState]);
+  }, [liveView.seatNames, onlineState.roomState, spectatePlayerCount]);
   const spectateCurrentWaits = useMemo(
     () =>
       spectateReplayView !== null && spectateDisplayOptions.showWaits
@@ -591,12 +610,7 @@ export function App() {
     refreshIfNeeded();
     const timer = window.setInterval(refreshIfNeeded, 60_000);
     return () => window.clearInterval(timer);
-  }, [
-    authRefreshRevision,
-    authStatus,
-    mobileAuthSession,
-    webAppBaseUrl,
-  ]);
+  }, [authRefreshRevision, authStatus, mobileAuthSession, webAppBaseUrl]);
 
   useEffect(() => {
     const controller = new OnlineMatchController();
@@ -943,10 +957,7 @@ export function App() {
       resumeAfterBackgroundRef.current = null;
       promptForActiveMatchOnRefreshRef.current = true;
       const authSession = mobileAuthSessionRef.current;
-      if (
-        authSession !== null &&
-        shouldRefreshMobileAuthSession(authSession)
-      ) {
+      if (authSession !== null && shouldRefreshMobileAuthSession(authSession)) {
         setAuthRefreshRevision((revision) => revision + 1);
       } else {
         setActiveMatchRefreshRevision((revision) => revision + 1);
@@ -1230,9 +1241,6 @@ export function App() {
       lastAutoActedIdRef.current = actionId;
       liveActionDispatcherRef.current(actionId);
     };
-    const hasWin = actions.some(
-      (action) => action.type === "ron" || action.type === "tsumo"
-    );
     if (liveMenuFlags.autoWin) {
       const win = actions.find(
         (action) => action.type === "ron" || action.type === "tsumo"
@@ -1249,13 +1257,9 @@ export function App() {
     }
     const mySeat = liveView.mySeat;
     const inRiichi = liveView.riichiDeclared[mySeat];
-    const hasAnkan = actions.some(
-      (action) => action.type === "kan" && action.kanKind === "ankan"
-    );
     if (
       (!liveMenuFlags.autoDiscard && !inRiichi) ||
-      hasWin ||
-      hasAnkan ||
+      blocksAutomaticDiscard(actions) ||
       liveView.freshlyDrawnSeat !== mySeat
     ) {
       return;
@@ -1277,6 +1281,7 @@ export function App() {
       const current = useMatchStore.getState();
       if (
         current.mySeat !== mySeat ||
+        blocksAutomaticDiscard(current.legalActions) ||
         !current.legalActions.some((action) => action.id === discard.id)
       ) {
         return;
@@ -1398,7 +1403,7 @@ export function App() {
     return identity;
   };
 
-  const playSolo = async (): Promise<void> => {
+  const playSolo = async (setup?: GameSetup): Promise<void> => {
     const nearbyController = nearbyControllerRef.current;
     if (
       nearbyController !== null &&
@@ -1417,13 +1422,13 @@ export function App() {
     ) {
       await controller.restore();
     } else {
-      await controller.startSolo();
+      await controller.startSolo(setup);
     }
   };
 
-  const hostNearby = async (): Promise<void> => {
+  const hostNearby = async (setup: GameSetup): Promise<void> => {
     await localControllerRef.current?.pause();
-    await nearbyControllerRef.current?.host(currentNearbyIdentity());
+    await nearbyControllerRef.current?.host(currentNearbyIdentity(), setup);
   };
 
   const discoverNearby = async (): Promise<void> => {
@@ -1454,10 +1459,7 @@ export function App() {
     );
   };
 
-  const createOnlineGame = async (
-    preset: string,
-    spectatorDelayMs: SpectatorDelayMs
-  ): Promise<void> => {
+  const createOnlineGame = async (setup: GameSetup): Promise<void> => {
     if (
       webAppBaseUrl === null ||
       mobileAuthSession === null ||
@@ -1470,8 +1472,7 @@ export function App() {
     await onlineControllerRef.current.create(
       webAppBaseUrl,
       mobileAuthSession,
-      preset,
-      spectatorDelayMs
+      setup
     );
   };
 
@@ -2226,6 +2227,7 @@ export function App() {
                 handTop={focusedHandTop}
                 events={spectateTimeline?.events ?? []}
                 seatNames={spectateSeatNames}
+                playerCount={spectatePlayerCount}
                 index={displayedSpectateIndex}
                 focusSeat={spectateFocusSeat}
                 rounds={spectateRounds}
@@ -2355,8 +2357,10 @@ export function App() {
                   updateNearbyDisplayName(identity, displayName);
                 }
               }}
-              onPlaySolo={() => void playSolo().catch(() => undefined)}
-              onHost={() => void hostNearby().catch(() => undefined)}
+              onPlaySolo={(setup) =>
+                void playSolo(setup).catch(() => undefined)
+              }
+              onHost={(setup) => void hostNearby(setup).catch(() => undefined)}
               onDiscover={() => void discoverNearby().catch(() => undefined)}
               onResumeHost={() => {
                 void nearbyControllerRef.current
@@ -2427,10 +2431,8 @@ export function App() {
           webAppBaseUrl={webAppBaseUrl}
           activeMatchId={activeOnlineMatch?.matchId ?? null}
           onBack={() => setPage("home")}
-          onCreateGame={(preset, spectatorDelayMs) =>
-            void createOnlineGame(preset, spectatorDelayMs).catch(() =>
-              setPage("lobby")
-            )
+          onCreateGame={(setup) =>
+            void createOnlineGame(setup).catch(() => setPage("lobby"))
           }
           onJoinGame={(matchId) =>
             void joinOnlineGame(matchId).catch(() => setPage("lobby"))

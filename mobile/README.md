@@ -72,8 +72,9 @@ covering asynchronous live event journals, explicit-pause recovery checkpoints,
 tombstones, completed matches, and replay archives; browser development uses
 the existing in-memory repository. Normal turns never wait for SQLite.
 
-Nearby mode currently runs a complete on-device solo table: one local human and
-three shared-engine bots. `LocalMatchController` composes `MatchProcess` with
+Local practice runs a complete on-device table: one local human and
+three shared-engine bots by default, or two bots in sanma.
+`LocalMatchController` composes `MatchProcess` with
 SQLite and feeds its `ServerMessage` callback through the same Zustand dispatcher
 used by `GameWS`, so tile/action input and the production Pixi renderer do not
 fork between cloud and local play. App backgrounding attempts to flush the
@@ -90,6 +91,14 @@ the matching lobby row is highlighted as Reconnect. Declining suppresses the
 modal for that match until app restart or a new sign-in without removing the
 lobby action. Web exposes the same highlighted Reconnect action but no automatic
 modal.
+
+Online, local practice, and Nearby host setup now share a **3-player** toggle,
+an **Online / Kansai** selector, and Duplicate seed controls. Four-player
+defaults remain unchanged. Sanma fixes the base to M-League without head-bump
+ron; its full [rules and wall policies](../app/game/docs/sanma.md) are shared
+with the web game. Nearby has three places in sanma, so the host admits at most
+two guests. Older clients are explicitly rejected from sanma rooms before seat
+admission, while existing four-player compatibility is retained.
 
 The same list includes live Tenhou games monitored by ongoing, non-ignored
 tournaments, with the tournament name and seated players. Web and mobile share
@@ -119,9 +128,10 @@ without resetting the authoritative window or bank.
 The mobile table now includes a yes/no Buu continuation overlay, hydrated from
 authoritative snapshots on reconnect. Degraded or unsynchronized clock quality is
 visible; diagnostic observations never supply an acceptance timestamp.
-Version-7 checkpoints preserve fixed-prompt identity, partial acknowledgements/
+Version-8 checkpoints preserve fixed-prompt identity, partial acknowledgements/
 votes, remaining duration and exact bank balances using one restoration reference.
-Versions 1-6 migrate to the same authoritative window format when loaded.
+They also preserve pending North robbery and mandatory nuki replacements.
+Versions 1-7 migrate to the current authoritative format when loaded.
 Clock/receipt/countdown helpers are shared rather than duplicated in the shell.
 
 Device evidence must come from a build containing these changes. The installed

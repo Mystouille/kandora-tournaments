@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GameEvent, Seat } from "~/game/protocol/messages";
+import type { PlayerCount, SeatValues } from "~/game/protocol/seat";
+import { activeSeats } from "~/game/rules/seats";
+import { replaySeatNames, replayVariant } from "~/game/replay/variant";
 import {
   base64ToBytes,
   decodeDrawing,
@@ -144,7 +147,8 @@ interface MobileReplayNavigationMenuProps {
   expanded: boolean;
   handTop: number | null;
   events: GameEvent[];
-  seatNames: [string, string, string, string];
+  seatNames: SeatValues<string>;
+  playerCount?: PlayerCount;
   index: number;
   focusSeat: Seat;
   rounds: number[];
@@ -165,6 +169,7 @@ export function MobileReplayNavigationMenu({
   handTop,
   events,
   seatNames,
+  playerCount = seatNames.length,
   index,
   focusSeat,
   rounds,
@@ -201,7 +206,7 @@ export function MobileReplayNavigationMenu({
                   onFocusSeatChange(Number(event.target.value) as Seat)
                 }
               >
-                {([0, 1, 2, 3] as const).map((seat) => (
+                {activeSeats(playerCount).map((seat) => (
                   <option key={seat} value={seat}>
                     {seatNames[seat] || `Seat ${seat + 1}`}
                   </option>
@@ -550,7 +555,13 @@ export function MobileReplayViewer(props: MobileReplayViewerProps) {
       </main>
     );
   }
-  return <LoadedMobileReplayViewer {...props} log={props.log} />;
+  return (
+    <LoadedMobileReplayViewer
+      key={`${props.log.source}:${props.log.sourceGameId}`}
+      {...props}
+      log={props.log}
+    />
+  );
 }
 
 function LoadedMobileReplayViewer({
@@ -560,6 +571,8 @@ function LoadedMobileReplayViewer({
   initialLocation,
   onClose,
 }: MobileReplayViewerProps & { log: ReplayLog }) {
+  const variant = useMemo(() => replayVariant(log), [log]);
+  const names = useMemo(() => replaySeatNames(log), [log]);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<TableRenderer | null>(null);
   const latestViewRef = useRef<ReturnType<typeof replayViewToMatchView> | null>(
@@ -588,7 +601,9 @@ function LoadedMobileReplayViewer({
   const indexRef = useRef(index);
   indexRef.current = index;
   const swipeOriginIndexRef = useRef(index);
-  const [focusSeat, setFocusSeat] = useState<Seat>(initial.seat);
+  const [focusSeat, setFocusSeat] = useState<Seat>(
+    initial.seat < variant.playerCount ? initial.seat : 0
+  );
   const [displayOptions, setDisplayOptions] =
     useState<MobileReplayDisplayOptions>(DEFAULT_MOBILE_REPLAY_DISPLAY_OPTIONS);
   const [navigationOpen, setNavigationOpen] = useState(false);
@@ -608,17 +623,12 @@ function LoadedMobileReplayViewer({
         index,
         mySeat: focusSeat,
         matchId: log.sourceGameId,
-        seatNames: [
-          log.seats[0]?.displayName ?? "",
-          log.seats[1]?.displayName ?? "",
-          log.seats[2]?.displayName ?? "",
-          log.seats[3]?.displayName ?? "",
-        ],
+        seatNames: names,
         currentWaits: displayOptions.showWaits
           ? waitsForReplayView(replayView)
           : null,
       }),
-    [displayOptions.showWaits, focusSeat, index, log, replayView]
+    [displayOptions.showWaits, focusSeat, index, log, replayView, names]
   );
   latestViewRef.current = matchView;
 
@@ -827,12 +837,8 @@ function LoadedMobileReplayViewer({
           expanded={navigationOpen}
           handTop={handTop}
           events={log.events}
-          seatNames={[
-            log.seats[0]?.displayName ?? "",
-            log.seats[1]?.displayName ?? "",
-            log.seats[2]?.displayName ?? "",
-            log.seats[3]?.displayName ?? "",
-          ]}
+          seatNames={names}
+          playerCount={variant.playerCount}
           index={index}
           focusSeat={focusSeat}
           rounds={rounds}

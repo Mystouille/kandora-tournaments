@@ -37,6 +37,33 @@ describe("mobile online lobby room policy", () => {
   it("counts occupied human and bot seats", () => {
     expect(roomOccupancy(room("waiting"))).toBe("2/4");
   });
+
+  it("uses explicit three-player capacity and does not offer a fourth place", () => {
+    const sanma: MobileLobbyRoom = {
+      ...room("waiting"),
+      playerCount: 3,
+      sanmaType: "kansai",
+      seats: [
+        { name: "East", isBot: false },
+        { name: "South", isBot: true },
+        null,
+      ],
+    };
+    expect(roomOccupancy(sanma)).toBe("2/3");
+    expect(roomAction(sanma)).toBe("join");
+    sanma.seats[2] = { name: "West", isBot: false };
+    expect(roomOccupancy(sanma)).toBe("3/3");
+    expect(roomAction(sanma)).toBeNull();
+  });
+
+  it("keeps partial legacy listings four-player", () => {
+    expect(
+      roomOccupancy({
+        ...room("waiting"),
+        seats: [{ name: "East", isBot: false }],
+      })
+    ).toBe("1/4");
+  });
 });
 
 describe("mobile lobby monitored-game response", () => {
@@ -91,4 +118,23 @@ describe("mobile lobby monitored-game response", () => {
       })
     ).toThrow();
   });
+
+  it.each(["online", "kansai"] as const)(
+    "does not strip %s sanma or Duplicate room metadata",
+    (sanmaType) => {
+      const sanma = {
+        ...room("waiting"),
+        playerCount: 3,
+        sanmaType,
+        mode: { type: "duplicate", seed: "Board", generationVersion: 1 },
+        seats: [null, null, null],
+      };
+      const data = MobileLobbyResponseSchema.parse({
+        presets: [],
+        rooms: [sanma],
+      });
+      expect(data.rooms).toEqual([sanma]);
+      expect(roomOccupancy(data.rooms[0])).toBe("0/3");
+    }
+  );
 });

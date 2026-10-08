@@ -30,6 +30,30 @@ const log = {
 };
 
 describe("mobile replay viewer", () => {
+  it("offers only actual sanma perspectives in the replay and live navigation menu", () => {
+    const html = renderToStaticMarkup(
+      createElement(MobileReplayNavigationMenu, {
+        expanded: true,
+        handTop: null,
+        events: [],
+        seatNames: ["East", "South", "West"],
+        playerCount: 3,
+        index: -1,
+        focusSeat: 2,
+        rounds: [],
+        bounds: { min: -1, max: -1 },
+        onExpandedChange: vi.fn(),
+        onFocusSeatChange: vi.fn(),
+        onGoTo: vi.fn(),
+        onStep: vi.fn(),
+      })
+    );
+    expect(html).toContain("East");
+    expect(html).toContain("South");
+    expect(html).toContain("West");
+    expect(html).not.toContain('<option value="3"');
+    expect(html).not.toContain("Seat 4");
+  });
   it.each([false, true])(
     "reads anchored drawings and explicitly reports malformed new drawings (invalid=%s)",
     (invalid) => {

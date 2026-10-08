@@ -22,6 +22,8 @@ import {
   resolveReplayInitialLocation,
 } from "~/game/replay/replayLocation";
 import type { ReplayView } from "~/game/replay/player";
+import { replaySeatNames, replayVariant } from "~/game/replay/variant";
+import { activeSeats } from "~/game/rules/seats";
 import type { GameEvent, Seat } from "~/game/protocol/messages";
 import { resolveReplayViewerData } from "~/services/replayViewerData.server";
 import { annotateWaits } from "~/services/annotateWaits";
@@ -68,7 +70,10 @@ import {
   WebTableTopControls,
   WEB_TABLE_TOP_CONTROL_CLASS,
 } from "~/game/client/WebTableTopControls";
-import { useWebTableUiScale, webTableUiStyle } from "~/game/client/webTableUiScale";
+import {
+  useWebTableUiScale,
+  webTableUiStyle,
+} from "~/game/client/webTableUiScale";
 import type { Route } from "./+types/replay";
 import {
   ReplayOverlayPanel,
@@ -88,7 +93,13 @@ import { FixedTileSetProvider } from "~/contexts/TileSetContext";
 import { TileSetName } from "~/components/mahjong/handLayout";
 import { ArticleContent } from "~/components/ArticleContent";
 import { REPLAY_REVIEW_RICH_TEXT_CONFIG } from "~/components/editor/richTextConfig";
-import { Button, ConfigProvider, Modal, Tooltip, message as antMessage } from "antd";
+import {
+  Button,
+  ConfigProvider,
+  Modal,
+  Tooltip,
+  message as antMessage,
+} from "antd";
 import { DeleteOutlined, QuestionOutlined } from "@ant-design/icons";
 import { playSoundForEvent } from "~/game/client/sound";
 import { useScreenWakeLock } from "~/game/client/screenWakeLock";
@@ -323,6 +334,8 @@ export default function ReplayRoute({
     currentUserName,
     seatEnrichment,
   } = loaderData;
+  const variant = useMemo(() => replayVariant(log), [log]);
+  const names = useMemo(() => replaySeatNames(log), [log]);
   useScreenWakeLock();
   const { t, locale } = useLocale();
   const { track } = useTelemetry();
@@ -430,7 +443,9 @@ export default function ReplayRoute({
     }
     setOverlays(next);
   };
-  const [focusSeat, setFocusSeat] = useState<Seat>(initial.seat);
+  const [focusSeat, setFocusSeat] = useState<Seat>(
+    initial.seat < variant.playerCount ? initial.seat : 0
+  );
   const [copied, setCopied] = useState<boolean>(false);
   // Navigation explicitly arms one event target for sound. Numerical
   // adjacency is not sufficient: a round/slider/comment jump may land
@@ -1519,26 +1534,27 @@ export default function ReplayRoute({
   // Incremental fold: we keep prefix views in a ref so a "next"
   // click is O(1) instead of O(index). Whole-fold path on seek.
   const viewCacheRef = useRef<{
+    log: typeof log;
     builtTo: number;
     view: ReplayView;
   } | null>(null);
 
   const currentView = useMemo<ReplayView>(() => {
     const cache = viewCacheRef.current;
-    if (cache && cache.builtTo === index) {
+    if (cache && cache.log === log && cache.builtTo === index) {
       return cache.view;
     }
-    if (cache && index === cache.builtTo + 1) {
+    if (cache && cache.log === log && index === cache.builtTo + 1) {
       const next = applyReplayEvent(cache.view, log.events[index]);
-      viewCacheRef.current = { builtTo: index, view: next };
+      viewCacheRef.current = { log, builtTo: index, view: next };
       return next;
     }
     // Cache miss / backward jump / arbitrary seek — re-fold.
-    let v = initialView();
+    let v = initialView(replayVariant(log));
     for (let i = 0; i <= index && i < log.events.length; i++) {
       v = applyReplayEvent(v, log.events[i]);
     }
-    viewCacheRef.current = { builtTo: index, view: v };
+    viewCacheRef.current = { log, builtTo: index, view: v };
     return v;
   }, [log, index]);
 
@@ -1597,12 +1613,7 @@ export default function ReplayRoute({
             index,
             mySeat: focusSeat,
             matchId: log.sourceGameId,
-            seatNames: [
-              log.seats[0]?.displayName ?? "",
-              log.seats[1]?.displayName ?? "",
-              log.seats[2]?.displayName ?? "",
-              log.seats[3]?.displayName ?? "",
-            ],
+            seatNames: names,
             currentWaits: waitsByIndex[index] ?? null,
           });
           latestRenderRef.current = initialArgs;
@@ -1674,12 +1685,7 @@ export default function ReplayRoute({
         index,
         mySeat: focusSeat,
         matchId: log.sourceGameId,
-        seatNames: [
-          log.seats[0]?.displayName ?? "",
-          log.seats[1]?.displayName ?? "",
-          log.seats[2]?.displayName ?? "",
-          log.seats[3]?.displayName ?? "",
-        ],
+        seatNames: names,
         currentWaits: waitsByIndex[index] ?? null,
       });
       latestRenderRef.current = args;
@@ -1692,6 +1698,7 @@ export default function ReplayRoute({
     log.mode,
     log.sourceGameId,
     log.seats,
+    names,
     waitsByIndex,
     focusSeat,
     seatEnrichment,
@@ -2041,8 +2048,8 @@ export default function ReplayRoute({
               }
               className="bg-black/60 border border-emerald-700 rounded px-3 py-2 text-base text-emerald-100 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {([0, 1, 2, 3] as const).map((s) => {
-                const name = log.seats[s]?.displayName ?? `Seat ${s}`;
+              {activeSeats(variant.playerCount).map((s) => {
+                const name = names[s] || `Seat ${s}`;
                 return (
                   <option key={s} value={String(s)}>
                     {name}

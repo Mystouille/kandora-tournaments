@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { useMatchStore } from "~/game/client/store";
 import { liveServerNow } from "~/game/client/time/liveClock";
+import { GameSetupSchema } from "~/game/rules/gameSetup";
+import { duplicateMatchSeed } from "~/game/server/src/match-drivers/duplicatePlan";
 import {
   setDelayAfterDiscardMs,
   setReadyCheckMs,
@@ -67,6 +69,97 @@ describe("local mobile match controller", () => {
     setDelayAfterDiscardMs(350);
   });
 
+  it.each(
+    (["online", "kansai"] as const).flatMap((sanmaType) =>
+      [false, true].map((duplicate) => ({ sanmaType, duplicate }))
+    )
+  )(
+    "starts and resumes $sanmaType solo, Duplicate=$duplicate",
+    async ({ sanmaType, duplicate }) => {
+      setReadyCheckMs(5_000);
+      setDelayAfterDiscardMs(0);
+      const persistence = memoryPersistence();
+      const controller = new LocalMatchController(persistence);
+      const setup = GameSetupSchema.parse({
+        preset: "m-league",
+        playerCount: 3,
+        sanmaType,
+        mode: duplicate
+          ? { type: "duplicate", seed: "Solo board", generationVersion: 1 }
+          : { type: "normal" },
+      });
+      try {
+        await controller.startSolo(setup);
+        expect(controller.getState().status).toBe("playing");
+        expect(useMatchStore.getState()).toMatchObject({
+          playerCount: 3,
+          sanmaType,
+        });
+        expect(useMatchStore.getState().scores).toHaveLength(3);
+        expect(useMatchStore.getState().roomState?.seats).toHaveLength(3);
+      } finally {
+        await controller.pause();
+      }
+      const matchId = controller.getState().matchId as string;
+      const saved = await persistence.repository.loadRecoveryRecord(matchId);
+      expect(saved?.checkpoint).toMatchObject({
+        presetId: "m-league",
+        mode: setup.mode,
+        state: {
+          ruleSet: {
+            playerCount: 3,
+            sanmaType,
+            buuMode: false,
+            atamahane: false,
+          },
+        },
+      });
+      expect(saved?.checkpoint.seats).toHaveLength(3);
+      if (setup.mode.type === "duplicate") {
+        expect(saved?.checkpoint.seed).toBe(duplicateMatchSeed(setup.mode));
+      }
+      const restored = new LocalMatchController(persistence);
+      try {
+        await restored.restore();
+        expect(restored.getState()).toMatchObject({
+          status: "playing",
+          matchId,
+        });
+        expect(useMatchStore.getState()).toMatchObject({
+          playerCount: 3,
+          sanmaType,
+        });
+        expect(useMatchStore.getState().roomState?.seats).toHaveLength(3);
+      } finally {
+        await restored.pause();
+      }
+      const resumed = await persistence.repository.loadRecoveryRecord(matchId);
+      expect(resumed?.checkpoint).toMatchObject({
+        presetId: "m-league",
+        seed: saved?.checkpoint.seed,
+        mode: setup.mode,
+        state: { ruleSet: { playerCount: 3, sanmaType } },
+      });
+    },
+    10_000
+  );
+
+  it("rejects Sanma+Buu and empty Duplicate seeds before saving a match", async () => {
+    const persistence = memoryPersistence();
+    const controller = new LocalMatchController(persistence);
+    await expect(
+      controller.startSolo({ playerCount: 3, preset: "buu-east" })
+    ).rejects.toThrow();
+    await expect(
+      controller.startSolo({
+        playerCount: 3,
+        mode: { type: "duplicate", seed: " ", generationVersion: 1 },
+      })
+    ).rejects.toThrow();
+    expect(await persistence.getActiveMatch()).toBeNull();
+    expect(controller.getState().matchId).toBeNull();
+  });
+
   it("starts, plays, pauses, and restores one local solo match", async () => {
     setReadyCheckMs(5_000);
     setDelayAfterDiscardMs(0);
@@ -113,6 +206,10 @@ describe("local mobile match controller", () => {
     if (saved?.checkpoint.status !== "playing") {
       throw new Error("expected a playing local checkpoint");
     }
+    expect(saved.checkpoint.presetId).toBe("tenhou-hanchan");
+    expect(saved.checkpoint.mode).toEqual({ type: "normal" });
+    expect(saved.checkpoint.state.ruleSet.playerCount).toBe(4);
+    expect(saved.checkpoint.seats).toHaveLength(4);
     expect(["action_window", "call_window"]).toContain(
       saved.checkpoint.checkpointKind
     );

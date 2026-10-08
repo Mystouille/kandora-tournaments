@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GameWSOptions } from "~/game/client/ws";
+import { GameSetupSchema } from "~/game/rules/gameSetup";
 import type { MobileAuthSession } from "../auth/mobileAuth";
 import {
   INITIAL_ONLINE_MATCH_STATE,
@@ -62,6 +63,80 @@ function setup() {
 }
 
 describe("online match controller", () => {
+  it.each(["online", "kansai"] as const)(
+    "forwards complete %s Duplicate setup before connecting",
+    async (sanmaType) => {
+      const { controller, createRoom, socket } = setup();
+      const config = GameSetupSchema.parse({
+        preset: "m-league",
+        playerCount: 3,
+        sanmaType,
+        mode: { type: "duplicate", seed: "Board", generationVersion: 1 },
+        spectatorDelayMs: 300000,
+      });
+      await controller.create("https://play.test", session, config);
+      expect(createRoom).toHaveBeenCalledWith(
+        "https://play.test",
+        session,
+        config,
+        300000
+      );
+      expect(socket.connect).toHaveBeenCalledOnce();
+      controller.dispose();
+    }
+  );
+
+  it("does not connect when the API detects an incompatible sanma server", async () => {
+    const { controller, createRoom, socket } = setup();
+    createRoom.mockRejectedValue(
+      new Error("The game server does not support the selected sanma rules.")
+    );
+    await controller.create(
+      "https://play.test",
+      session,
+      GameSetupSchema.parse({
+        preset: "m-league",
+        playerCount: 3,
+      })
+    );
+    expect(socket.connect).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({
+      status: "error",
+      matchId: null,
+      error: "The game server does not support the selected sanma rules.",
+    });
+  });
+
+  it("rejects invalid creation options without calling the API", async () => {
+    const { controller, createRoom } = setup();
+    await controller.create("https://play.test", session, {
+      preset: "buu-east",
+      playerCount: 3,
+      sanmaType: "online",
+      mode: { type: "normal" },
+      spectatorDelayMs: 0,
+    });
+    expect(createRoom).not.toHaveBeenCalled();
+    expect(controller.getState().status).toBe("error");
+  });
+
+  it("surfaces a sanma capability error for both players and spectators", () => {
+    const { controller, options } = setup();
+    controller.join("https://play.test", session, "three");
+    options().onError?.("sanma_update_required", "Update required for sanma");
+    expect(controller.getState()).toMatchObject({
+      status: "error",
+      error: "Update required for sanma",
+    });
+    controller.watch("https://play.test", session, "three");
+    options().onError?.("sanma_update_required", "Update required for sanma");
+    expect(controller.getState()).toMatchObject({
+      status: "error",
+      error: "Update required for sanma",
+    });
+    controller.dispose();
+  });
+
   it("resolves a tracked Tenhou watch ID before connecting as a spectator", async () => {
     const { controller, resolveWatchId, socket, options } = setup();
     const opening = controller.watchLive(

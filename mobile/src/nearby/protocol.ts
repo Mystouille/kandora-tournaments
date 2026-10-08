@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { TIMING_CAPABILITY, FIXED_PROMPT_VERSION } from "~/game/protocol/timing";
+import {
+  TIMING_CAPABILITY,
+  FIXED_PROMPT_VERSION,
+} from "~/game/protocol/timing";
+import { SANMA_CAPABILITY } from "~/game/protocol/sanma";
 import {
   ClientMessageSchema,
   ServerMessageSchema,
@@ -15,6 +19,7 @@ const NearbyHelloFrameSchema = z.object({
   displayName: z.string().trim().min(1).max(40),
   timingCapabilities: z.array(z.literal(TIMING_CAPABILITY)).max(1).optional(),
   fixedPromptVersion: z.literal(FIXED_PROMPT_VERSION).optional(),
+  gameCapabilities: z.array(z.literal(SANMA_CAPABILITY)).max(1).optional(),
 });
 
 const NearbyClientFrameSchema = z.object({

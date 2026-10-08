@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MobileAuthSession } from "../auth/mobileAuth";
+import { GameSetupSchema } from "~/game/rules/gameSetup";
 import {
   createOnlineRoom,
   getActiveOnlineGame,
@@ -15,6 +16,109 @@ const session: MobileAuthSession = {
 };
 
 describe("mobile online game API", () => {
+  it.each(
+    (["online", "kansai"] as const).flatMap((sanmaType) =>
+      [false, true].map((duplicate) => ({ sanmaType, duplicate }))
+    )
+  )(
+    "creates $sanmaType sanma, Duplicate=$duplicate",
+    async ({ sanmaType, duplicate }) => {
+      const setup = GameSetupSchema.parse({
+        preset: "m-league",
+        playerCount: 3,
+        sanmaType,
+        spectatorDelayMs: 300000,
+        mode: duplicate
+          ? { type: "duplicate", seed: " Board ", generationVersion: 1 }
+          : { type: "normal" },
+      });
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          matchId: "sanma-room",
+          ...setup,
+        })
+      );
+      await expect(
+        createOnlineRoom("https://play.test", session, setup, 0, fetcher)
+      ).resolves.toBe("sanma-room");
+      expect(
+        Object.fromEntries(fetcher.mock.calls[0][1]?.body as URLSearchParams)
+      ).toEqual({
+        token: session.token,
+        preset: "m-league",
+        playerCount: "3",
+        sanmaType,
+        spectatorDelayMs: "300000",
+        mode: JSON.stringify(setup.mode),
+      });
+    }
+  );
+
+  it.each([
+    {},
+    { playerCount: 4, sanmaType: "online" },
+    { playerCount: 3 },
+    { playerCount: 3, sanmaType: "kansai" },
+  ])(
+    "does not join an old or mismatched server-created room: %j",
+    async (variant) => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          matchId: "wrong-room",
+          ...variant,
+        })
+      );
+      const setup = GameSetupSchema.parse({
+        preset: "m-league",
+        playerCount: 3,
+        sanmaType: "online",
+      });
+      await expect(
+        createOnlineRoom("https://play.test", session, setup, 0, fetcher)
+      ).rejects.toThrow("does not support the selected sanma rules");
+    }
+  );
+
+  it("rejects a server that silently drops Duplicate mode", async () => {
+    const setup = GameSetupSchema.parse({
+      preset: "m-league",
+      mode: { type: "duplicate", seed: "Board", generationVersion: 1 },
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ matchId: "normal-room" }));
+    await expect(
+      createOnlineRoom("https://play.test", session, setup, 0, fetcher)
+    ).rejects.toThrow("did not confirm the Duplicate seed");
+  });
+
+  it("validates incompatible Buu and empty seeds before making a request", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const setup = GameSetupSchema.parse({ preset: "m-league", playerCount: 3 });
+    await expect(
+      createOnlineRoom(
+        "https://play.test",
+        session,
+        { ...setup, preset: "buu-east" },
+        0,
+        fetcher
+      )
+    ).rejects.toThrow();
+    await expect(
+      createOnlineRoom(
+        "https://play.test",
+        session,
+        {
+          ...setup,
+          mode: { type: "duplicate", seed: " ", generationVersion: 1 },
+        },
+        0,
+        fetcher
+      )
+    ).rejects.toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("discovers the authenticated player's active match", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({

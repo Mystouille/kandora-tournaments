@@ -1,11 +1,33 @@
 import { describe, expect, it } from "vitest";
+import { SANMA_CAPABILITY } from "~/game/protocol/sanma";
 import {
   encodeNearbyFrame,
   NEARBY_PROTOCOL_VERSION,
   parseNearbyFrame,
+  type NearbyHelloFrame,
 } from "./protocol";
 
 describe("Nearby match protocol", () => {
+  it("preserves optional sanma capabilities without changing protocol version 1", () => {
+    const hello: NearbyHelloFrame = {
+      version: NEARBY_PROTOCOL_VERSION,
+      kind: "hello" as const,
+      deviceId: "mobile:sanma",
+      displayName: "West",
+      gameCapabilities: [SANMA_CAPABILITY],
+    };
+    expect(NEARBY_PROTOCOL_VERSION).toBe(1);
+    expect(parseNearbyFrame(encodeNearbyFrame(hello))).toEqual(hello);
+    expect(() =>
+      parseNearbyFrame(
+        JSON.stringify({
+          ...hello,
+          gameCapabilities: ["sanma-unknown"],
+        })
+      )
+    ).toThrow();
+  });
+
   it("round-trips handshake and existing game-protocol frames", () => {
     const hello = {
       version: NEARBY_PROTOCOL_VERSION,

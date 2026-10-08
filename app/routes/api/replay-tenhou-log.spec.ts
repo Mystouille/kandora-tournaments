@@ -21,7 +21,10 @@ vi.mock("~/services/fetchOrphanReplayLog.server", () => ({
 vi.mock("~/utils/jwt.server", () => ({
   getAuthenticatedUser: mocks.getAuthenticatedUser,
 }));
-vi.mock("~/game/replay/replayLogToTenhou5Json", () => ({
+vi.mock("~/game/replay/replayLogToTenhou5Json", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("~/game/replay/replayLogToTenhou5Json")
+  >()),
   replayLogToTenhou5Json: mocks.replayLogToTenhou5Json,
 }));
 vi.mock("~/services/telemetry.server", () => ({
@@ -29,6 +32,7 @@ vi.mock("~/services/telemetry.server", () => ({
 }));
 
 import { loader } from "./replay-tenhou-log";
+import { UnsupportedSanmaExportError } from "~/game/replay/replayLogToTenhou5Json";
 
 function findResult(value: unknown) {
   const query = {
@@ -72,6 +76,25 @@ describe("Riichi City export cache authentication", () => {
     expect(response.status).toBe(200);
     expect(mocks.getAuthenticatedUser).not.toHaveBeenCalled();
     expect(mocks.fetchOrphanReplayLog).not.toHaveBeenCalled();
+  });
+
+  it("reports unsupported sanma conversion explicitly", async () => {
+    mocks.findReplay.mockReturnValue(
+      findResult({ source: "riichicity", sourceGameId: gameId })
+    );
+    mocks.replayLogToTenhou5Json.mockImplementationOnce(() => {
+      throw new UnsupportedSanmaExportError();
+    });
+    const response = await loader({
+      request: exportRequest(),
+      params: {},
+      context: {},
+      unstable_pattern: "/api/replay-tenhou-log",
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      error: "unsupported_sanma_export",
+    });
   });
 
   it("blocks an anonymous cache miss before fetch", async () => {

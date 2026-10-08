@@ -8,6 +8,13 @@ import {
   type ServerMessage,
 } from "~/game/protocol/messages";
 import { MatchProcess } from "~/game/server/src/match";
+import {
+  GameSetupSchema,
+  gameSetupRules,
+  type GameSetup,
+} from "~/game/rules/gameSetup";
+import { duplicateMatchSeed } from "~/game/server/src/match-drivers/duplicatePlan";
+import { SANMA_CAPABILITY } from "~/game/protocol/sanma";
 import { createSystemMatchRuntime } from "~/game/server/src/runtime";
 import { DecisionWindowError } from "~/game/server/src/timing/actionWindows";
 import {
@@ -239,8 +246,15 @@ export class NearbyMatchController {
     });
   }
 
-  host(identity: NearbyIdentity): Promise<void> {
+  host(
+    identity: NearbyIdentity,
+    options: Partial<GameSetup> = {}
+  ): Promise<void> {
     return this.enqueueControl(async () => {
+      const setup = GameSetupSchema.parse({
+        preset: options.playerCount === 3 ? "m-league" : "tenhou-hanchan",
+        ...options,
+      });
       await this.initialize();
       await this.stopTransportAndDetachRemotes();
       await this.requirePermissions();
@@ -256,8 +270,12 @@ export class NearbyMatchController {
         error: null,
       });
 
-      const seed = randomUint32();
-      const matchId = `nearby-${Date.now().toString(36)}-${seed.toString(36)}`;
+      const roomIdSeed = randomUint32();
+      const seed =
+        setup.mode.type === "duplicate"
+          ? duplicateMatchSeed(setup.mode)
+          : roomIdSeed;
+      const matchId = `nearby-${Date.now().toString(36)}-${roomIdSeed.toString(36)}`;
       const room = MatchProcess.createWaitingRoom(
         matchId,
         seed,
@@ -267,8 +285,10 @@ export class NearbyMatchController {
           runtime: createSystemMatchRuntime(seed, this.authorityClock),
         },
         undefined,
-        undefined,
-        "tenhou-hanchan"
+        gameSetupRules(setup),
+        setup.preset,
+        setup.mode,
+        setup.spectatorDelayMs
       );
       const seat = room.claimSeat(identity.deviceId, identity.displayName);
       if (seat === null) {
@@ -652,6 +672,7 @@ export class NearbyMatchController {
         kind: "hello",
         timingCapabilities: [TIMING_CAPABILITY],
         fixedPromptVersion: FIXED_PROMPT_VERSION,
+        gameCapabilities: [SANMA_CAPABILITY],
         deviceId: this.identity.deviceId,
         displayName: this.identity.displayName,
       });
@@ -849,6 +870,17 @@ export class NearbyMatchController {
           endpointId,
           "timing_update_required",
           "This room requires an updated client."
+        );
+        return;
+      }
+      if (
+        this.match?.owners.roster.playerCount === 3 &&
+        !frame.gameCapabilities?.includes(SANMA_CAPABILITY)
+      ) {
+        await this.sendError(
+          endpointId,
+          "sanma_update_required",
+          "This three-player room requires an updated client."
         );
         return;
       }

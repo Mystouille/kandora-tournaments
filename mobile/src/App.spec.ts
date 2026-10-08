@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, MOBILE_APP_VERSION } from "./App";
+import { App, blocksAutomaticDiscard, MOBILE_APP_VERSION } from "./App";
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -47,5 +47,26 @@ describe("mobile App initial screen", () => {
     expect(html).toContain("Nearby permissions: Checking");
     expect(html).not.toContain("Demo table");
     expect(html).not.toContain("table-canvas");
+  });
+
+  describe("mobile automatic discard decisions", () => {
+    it("keeps voluntary North extraction available, including after riichi", () => {
+      expect(
+        blocksAutomaticDiscard([{ type: "discard" }, { type: "nuki" }])
+      ).toBe(true);
+      expect(blocksAutomaticDiscard([{ type: "discard" }])).toBe(false);
+    });
+
+    it("still preserves winning and concealed-kan choices", () => {
+      for (const action of [
+        { type: "ron" },
+        { type: "tsumo" },
+        { type: "kan", kanKind: "ankan" },
+      ]) {
+        expect(blocksAutomaticDiscard([{ type: "discard" }, action])).toBe(
+          true
+        );
+      }
+    });
   });
 });

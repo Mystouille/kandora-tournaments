@@ -27,7 +27,8 @@ vi.mock("~/game/feature-gate", () => ({
   requireGameEnabled: mocks.requireGameEnabled,
   getClientGameFlag: () => ({ gameEnabled: true }),
 }));
-vi.mock("~/game/rules/presets", () => ({
+vi.mock("~/game/rules/presets", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/game/rules/presets")>()),
   listSelectablePresets: () => [
     {
       id: "buu-east",
@@ -105,6 +106,7 @@ describe("game lobby loader", () => {
       {
         sourceGameId: 1,
         ruleSet: 1,
+        ruleSetDetails: 1,
         mode: 1,
         startedAt: 1,
         endedAt: 1,
@@ -117,6 +119,8 @@ describe("game lobby loader", () => {
       {
         gameId: "match-newest",
         ruleSet: "buu-east",
+        playerCount: 4,
+        sanmaType: "online",
         mode: {
           type: "duplicate",
           seed: "Board-A",
@@ -141,6 +145,36 @@ describe("game lobby loader", () => {
       },
     ]);
   });
+
+  it.each(["online", "kansai"] as const)(
+    "keeps the %s variant from effective archived rules",
+    async (sanmaType) => {
+      const log = {
+        sourceGameId: "sanma-history",
+        ruleSet: "m-league",
+        ruleSetDetails: { playerCount: 3, sanmaType, atamahane: false },
+        startedAt: 1,
+        endedAt: 2,
+        seats: [],
+      };
+      mocks.findReplayLogs.mockReturnValue({
+        sort: () => ({
+          limit: () => ({
+            lean: () => ({ exec: async () => [log] }),
+          }),
+        }),
+      });
+      const result = await loader({
+        request: new Request("http://app.test/lobby"),
+      });
+      expect(result.gameLogs[0]).toMatchObject({
+        gameId: "sanma-history",
+        playerCount: 3,
+        sanmaType,
+        ruleSet: "m-league",
+      });
+    }
+  );
 
   it("loads watchable Tenhou games from ongoing tournaments", async () => {
     const leagueId = { toString: () => "league-1" };

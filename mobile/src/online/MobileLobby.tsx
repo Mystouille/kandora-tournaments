@@ -3,6 +3,16 @@ import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { SpectatorDelaySelect } from "~/game/components/SpectatorDelaySelect";
 import {
+  buildGameSetup,
+  GameSetupControls,
+  gameVariantLabel,
+  initialGameSetupSelection,
+  setupPresetId,
+} from "~/game/components/GameSetupControls";
+import { GameVariantMetadata } from "~/game/protocol/seat";
+import { MatchModeConfigSchema } from "~/game/protocol/matchMode";
+import type { GameSetup } from "~/game/rules/gameSetup";
+import {
   SpectatorDelayMsSchema,
   spectatorDelayLabel,
   type SpectatorDelayMs,
@@ -19,6 +29,8 @@ const LobbyRoomSchema = z.object({
   matchId: z.string(),
   status: z.enum(["waiting", "playing", "finished"]),
   presetId: z.string().optional(),
+  ...GameVariantMetadata,
+  mode: MatchModeConfigSchema.optional(),
   buuMode: z.boolean(),
   spectatorDelayMs: SpectatorDelayMsSchema.optional(),
   seats: z.array(
@@ -50,8 +62,11 @@ export type MobileLobbyRoom = z.infer<typeof LobbyRoomSchema>;
 type TenhouLiveGame = z.infer<typeof TenhouLiveGameSchema>;
 
 export function roomOccupancy(room: MobileLobbyRoom): string {
-  const occupied = room.seats.filter((seat) => seat !== null).length;
-  return `${occupied}/4`;
+  const capacity = room.playerCount ?? 4;
+  const occupied = room.seats
+    .slice(0, capacity)
+    .filter((seat) => seat !== null).length;
+  return `${occupied}/${capacity}`;
 }
 
 export function roomAction(
@@ -59,7 +74,11 @@ export function roomAction(
   activeMatchId: string | null = null
 ): "join" | "watch" | "reconnect" | null {
   if (room.status === "waiting") {
-    return activeMatchId === null ? "join" : null;
+    const capacity = room.playerCount ?? 4;
+    const occupied = room.seats
+      .slice(0, capacity)
+      .filter((seat) => seat !== null).length;
+    return activeMatchId === null && occupied < capacity ? "join" : null;
   }
   if (room.status === "playing") {
     return room.matchId === activeMatchId ? "reconnect" : "watch";
@@ -70,7 +89,7 @@ export function roomAction(
 interface MobileLobbyProps {
   webAppBaseUrl: string;
   onBack: () => void;
-  onCreateGame: (preset: string, spectatorDelayMs: SpectatorDelayMs) => void;
+  onCreateGame: (setup: GameSetup) => void;
   onJoinGame: (matchId: string) => void;
   onReconnectGame: (matchId: string) => void;
   onWatchGame: (matchId: string) => void;
@@ -95,6 +114,9 @@ export function MobileLobby({
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState("m-league");
+  const [setupSelection, setSetupSelection] = useState(
+    initialGameSetupSelection
+  );
   const [spectatorDelayMs, setSpectatorDelayMs] = useState<SpectatorDelayMs>(0);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -147,8 +169,18 @@ export function MobileLobby({
     if (activeMatchId !== null) {
       return;
     }
-    setCreateOpen(false);
-    onCreateGame(selectedPreset, spectatorDelayMs);
+    try {
+      const setup = buildGameSetup(
+        selectedPreset,
+        setupSelection,
+        spectatorDelayMs
+      );
+      setError(null);
+      setCreateOpen(false);
+      onCreateGame(setup);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Invalid game setup");
+    }
   };
 
   const presetNames = new Map(
@@ -283,6 +315,10 @@ export function MobileLobby({
                       </div>
                       <span>
                         {roomOccupancy(room)} · {room.matchId}
+                        {gameVariantLabel(room) &&
+                          ` · ${gameVariantLabel(room)}`}
+                        {room.mode?.type === "duplicate" &&
+                          ` · Duplicate · ${room.mode.seed}`}
                         {" · "}Spectators:{" "}
                         {spectatorDelayLabel(room.spectatorDelayMs ?? 0)}
                       </span>
@@ -299,7 +335,10 @@ export function MobileLobby({
                           ? "Reconnect"
                           : action === "join"
                             ? "Join"
-                            : "Unavailable"}
+                            : activeMatchId === null &&
+                                room.status === "waiting"
+                              ? "Room full"
+                              : "Unavailable"}
                     </button>
                   </li>
                 );
@@ -332,21 +371,54 @@ export function MobileLobby({
                 <X aria-hidden="true" />
               </button>
             </header>
-            <div className="rule-options" role="radiogroup" aria-label="Rules">
-              {presets.map((preset) => (
-                <label key={preset.id}>
-                  <input
-                    type="radio"
-                    name="mobile-rule-preset"
-                    value={preset.id}
-                    checked={selectedPreset === preset.id}
-                    onChange={() => setSelectedPreset(preset.id)}
-                  />
-                  <span>
-                    <strong>{preset.displayName}</strong>
-                  </span>
-                </label>
-              ))}
+            <div
+              style={{
+                minHeight: 0,
+                overflowY: "auto",
+                display: "grid",
+                gap: 12,
+              }}
+            >
+              <div
+                className="rule-options"
+                role="radiogroup"
+                aria-label="Rules"
+              >
+                {presets.map((preset) => (
+                  <label key={preset.id}>
+                    <input
+                      type="radio"
+                      name="mobile-rule-preset"
+                      value={preset.id}
+                      checked={
+                        setupPresetId(
+                          selectedPreset,
+                          setupSelection.playerCount
+                        ) === preset.id
+                      }
+                      disabled={
+                        setupSelection.playerCount === 3 ||
+                        activeMatchId !== null
+                      }
+                      onChange={() => setSelectedPreset(preset.id)}
+                    />
+                    <span>
+                      <strong>{preset.displayName}</strong>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <GameSetupControls
+                value={setupSelection}
+                onChange={setSetupSelection}
+                disabled={activeMatchId !== null}
+                mobile
+              />
+              {error !== null && (
+                <p role="alert" className="lobby-error">
+                  {error}
+                </p>
+              )}
             </div>
             <footer className="create-game-footer">
               <label className="mobile-spectator-delay">

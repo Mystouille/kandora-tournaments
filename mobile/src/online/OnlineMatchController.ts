@@ -7,6 +7,7 @@ import {
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState, Seat, ServerMessage } from "~/game/protocol/messages";
 import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
+import { GameSetupSchema, type GameSetup } from "~/game/rules/gameSetup";
 import type {
   ActionIntentContext,
   PromptIntentContext,
@@ -116,6 +117,7 @@ const TERMINAL_PLAYER_ERROR_CODES = new Set([
   "room_full",
   "room_locked",
   "timing_update_required",
+  "sanma_update_required",
 ]);
 
 export class OnlineMatchController {
@@ -144,7 +146,7 @@ export class OnlineMatchController {
   async create(
     baseUrl: string,
     session: MobileAuthSession,
-    preset: string,
+    options: GameSetup | string,
     spectatorDelayMs: SpectatorDelayMs = 0
   ): Promise<void> {
     this.liveWatchGeneration += 1;
@@ -155,16 +157,24 @@ export class OnlineMatchController {
       matchId: null,
       roomState: null,
       spectatorTimeline: null,
-      spectatorDelayMs,
+      spectatorDelayMs:
+        typeof options === "string"
+          ? spectatorDelayMs
+          : options.spectatorDelayMs,
       spectatorEnrichment: emptyOnlineGameEnrichment(),
       error: null,
     });
     try {
+      const setup = GameSetupSchema.parse(
+        typeof options === "string"
+          ? { preset: options, spectatorDelayMs }
+          : options
+      );
       const matchId = await this.dependencies.createRoom(
         baseUrl,
         session,
-        preset,
-        spectatorDelayMs
+        typeof options === "string" ? options : setup,
+        setup.spectatorDelayMs
       );
       this.attach(baseUrl, session, matchId, "player");
     } catch (error) {

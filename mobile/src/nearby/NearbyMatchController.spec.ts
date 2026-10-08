@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState } from "~/game/protocol/messages";
+import { SANMA_CAPABILITY } from "~/game/protocol/sanma";
+import { GameSetupSchema } from "~/game/rules/gameSetup";
+import { duplicateMatchSeed } from "~/game/server/src/match-drivers/duplicatePlan";
 import {
   FIXED_PROMPT_VERSION,
   TIMING_CAPABILITY,
@@ -265,6 +268,179 @@ describe("Nearby mobile match controller", () => {
     setNextHandDelayMs(5_000);
   });
 
+  it.each(
+    (["online", "kansai"] as const).flatMap((sanmaType) =>
+      [false, true].map((duplicate) => ({ sanmaType, duplicate }))
+    )
+  )(
+    "persists and resumes $sanmaType Nearby setup, Duplicate=$duplicate",
+    async ({ sanmaType, duplicate }) => {
+      setReadyCheckMs(0);
+      setDelayAfterDiscardMs(0);
+      const persistence = memoryPersistence();
+      const transport = new FakeNearbyTransport();
+      const controller = new NearbyMatchController(persistence, transport);
+      const identity = { deviceId: "mobile:host", displayName: "Host" };
+      const setup = GameSetupSchema.parse({
+        preset: "m-league",
+        playerCount: 3,
+        sanmaType,
+        mode: duplicate
+          ? { type: "duplicate", seed: "Nearby board", generationVersion: 1 }
+          : { type: "normal" },
+      });
+      await controller.host(identity, setup);
+      expect(controller.getState().roomState).toMatchObject({
+        playerCount: 3,
+        sanmaType,
+      });
+      expect(controller.getState().roomState?.seats).toHaveLength(3);
+      try {
+        await controller.setWaitingRoomReady(true);
+        await controller.startMatch();
+        await controller.waitForIdle();
+        expect(controller.getState().status).toBe("playing");
+        expect(useMatchStore.getState()).toMatchObject({
+          playerCount: 3,
+          sanmaType,
+        });
+        expect(useMatchStore.getState().scores).toHaveLength(3);
+      } finally {
+        await controller.pause();
+      }
+      const matchId = controller.getState().matchId as string;
+      const started = await persistence.repository.loadRecoveryRecord(matchId);
+      expect(started?.checkpoint).toMatchObject({
+        status: "playing",
+        presetId: "m-league",
+        mode: setup.mode,
+        state: {
+          ruleSet: {
+            playerCount: 3,
+            sanmaType,
+            atamahane: false,
+            buuMode: false,
+          },
+        },
+      });
+      expect(started?.checkpoint.seats).toHaveLength(3);
+      if (setup.mode.type === "duplicate") {
+        expect(started?.checkpoint.seed).toBe(duplicateMatchSeed(setup.mode));
+      }
+      try {
+        await controller.restoreHost(identity);
+        expect(controller.getState()).toMatchObject({
+          status: "playing",
+          matchId,
+        });
+        expect(controller.getState().roomState).toMatchObject({
+          playerCount: 3,
+          sanmaType,
+        });
+        expect(controller.getState().roomState?.seats).toHaveLength(3);
+      } finally {
+        await controller.pause();
+      }
+      const resumed = await persistence.repository.loadRecoveryRecord(matchId);
+      expect(resumed?.checkpoint).toMatchObject({
+        mode: setup.mode,
+        seed: started?.checkpoint.seed,
+        state: { ruleSet: { playerCount: 3, sanmaType } },
+      });
+      await controller.leave();
+    }
+  );
+
+  it.each(["online", "kansai"] as const)(
+    "gates %s peers before giving a seat and admits only two guests",
+    async (sanmaType) => {
+      const transport = new FakeNearbyTransport();
+      const controller = new NearbyMatchController(
+        memoryPersistence(),
+        transport
+      );
+      await controller.host(
+        { deviceId: "mobile:host", displayName: "Host" },
+        { playerCount: 3, sanmaType }
+      );
+      const hello = (id: string, capable: boolean): void => {
+        transport.emit("message", {
+          endpointId: id,
+          data: encodeNearbyFrame({
+            version: NEARBY_PROTOCOL_VERSION,
+            kind: "hello",
+            deviceId: `mobile:${id}`,
+            displayName: id,
+            timingCapabilities: [TIMING_CAPABILITY],
+            fixedPromptVersion: FIXED_PROMPT_VERSION,
+            ...(capable ? { gameCapabilities: [SANMA_CAPABILITY] } : {}),
+          }),
+        });
+      };
+      try {
+        hello("old-client", false);
+        await controller.waitForIdle();
+        expect(
+          serverFrames(transport, "old-client").map((frame) => frame.message)
+        ).toEqual([
+          {
+            type: "error",
+            code: "sanma_update_required",
+            message: "This three-player room requires an updated client.",
+          },
+        ]);
+        expect(
+          controller
+            .getState()
+            .roomState?.seats.filter(
+              ({ occupant }) => occupant.kind === "human"
+            )
+        ).toHaveLength(1);
+        hello("guest-1", true);
+        hello("guest-2", true);
+        await controller.waitForIdle();
+        expect(controller.getState().roomState?.seats).toHaveLength(3);
+        expect(
+          controller
+            .getState()
+            .roomState?.seats.every(({ occupant }) => occupant.kind === "human")
+        ).toBe(true);
+        hello("guest-3", true);
+        await controller.waitForIdle();
+        expect(
+          serverFrames(transport, "guest-3").map((frame) => frame.message)
+        ).toEqual([
+          {
+            type: "error",
+            code: "room_full",
+            message: "This Nearby room is full",
+          },
+        ]);
+        expect(controller.getState().roomState?.seats).toHaveLength(3);
+      } finally {
+        await controller.leave();
+      }
+    }
+  );
+
+  it("rejects invalid Nearby setup before opening or advertising a room", async () => {
+    const transport = new FakeNearbyTransport();
+    const persistence = memoryPersistence();
+    const controller = new NearbyMatchController(persistence, transport);
+    const identity = { deviceId: "mobile:host", displayName: "Host" };
+    await expect(
+      controller.host(identity, { playerCount: 3, preset: "buu-east" })
+    ).rejects.toThrow();
+    await expect(
+      controller.host(identity, {
+        playerCount: 3,
+        mode: { type: "duplicate", seed: "", generationVersion: 1 },
+      })
+    ).rejects.toThrow();
+    expect(transport.advertisingName).toBeNull();
+    expect(await persistence.getActiveMatch()).toBeNull();
+  });
+
   it("auto-accepts a guest and keeps its callback through seat randomization", async () => {
     setReadyCheckMs(0);
     setDelayAfterDiscardMs(0);
@@ -278,6 +454,7 @@ describe("Nearby mobile match controller", () => {
 
     expect(transport.advertisingName).toBe("Host's table");
     expect(controller.getState().status).toBe("lobby");
+    expect(controller.getState().roomState?.seats).toHaveLength(4);
     transport.emit("connectionInitiated", {
       endpointId: "remote-endpoint",
       endpointName: "Guest",
@@ -625,6 +802,9 @@ describe("Nearby mobile match controller", () => {
     expect(parseNearbyFrame(transport.sent[0].data)).toMatchObject({
       kind: "hello",
       deviceId: "mobile:guest",
+      gameCapabilities: [SANMA_CAPABILITY],
+      timingCapabilities: [TIMING_CAPABILITY],
+      fixedPromptVersion: FIXED_PROMPT_VERSION,
     });
 
     const roomState: RoomState = {

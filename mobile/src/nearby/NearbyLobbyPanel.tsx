@@ -11,6 +11,16 @@ import {
   UserMinus,
   X,
 } from "lucide-react";
+import { useState } from "react";
+import {
+  buildGameSetup,
+  GameSetupControls,
+  gameVariantLabel,
+  initialGameSetupSelection,
+  setupPresetId,
+} from "~/game/components/GameSetupControls";
+import { listPresets } from "~/game/rules/presets";
+import type { GameSetup } from "~/game/rules/gameSetup";
 import type { LocalMatchControllerState } from "../local/LocalMatchController";
 import type {
   NearbyIdentity,
@@ -23,8 +33,8 @@ interface NearbyLobbyPanelProps {
   identity: NearbyIdentity;
   busy: boolean;
   onDisplayNameChange: (displayName: string) => void;
-  onPlaySolo: () => void;
-  onHost: () => void;
+  onPlaySolo: (setup?: GameSetup) => void;
+  onHost: (setup: GameSetup) => void;
   onDiscover: () => void;
   onResumeHost: () => void;
   onConnect: (endpointId: string) => void;
@@ -52,7 +62,24 @@ export function NearbyLobbyPanel({
   onStartMatch,
   onLeave,
 }: NearbyLobbyPanelProps) {
+  const [preset, setPreset] = useState("tenhou-hanchan");
+  const [setupSelection, setSetupSelection] = useState(
+    initialGameSetupSelection
+  );
+  const [setupError, setSetupError] = useState<string | null>(null);
   const room = state.roomState;
+
+  const startWithSetup = (start: (setup: GameSetup) => void): void => {
+    try {
+      const setup = buildGameSetup(preset, setupSelection);
+      setSetupError(null);
+      start(setup);
+    } catch (reason) {
+      setSetupError(
+        reason instanceof Error ? reason.message : "Invalid game setup"
+      );
+    }
+  };
 
   if (state.role === "host" && state.status === "paused") {
     return (
@@ -84,13 +111,15 @@ export function NearbyLobbyPanel({
   }
 
   if (room !== null && room.status === "waiting") {
-    const humanCount = room.seats.filter(
+    const capacity = room.playerCount ?? 4;
+    const seats = room.seats.slice(0, capacity);
+    const humanCount = seats.filter(
       (seat) => seat.occupant.kind === "human"
     ).length;
     const isRoomHost = room.mySeat === room.hostSeat;
     const ownSlot = room.mySeat === null ? null : room.seats[room.mySeat];
     const ownReady = ownSlot?.ready ?? false;
-    const hasEmptySeat = room.seats.some(
+    const hasEmptySeat = seats.some(
       ({ occupant }) => occupant.kind === "empty"
     );
     return (
@@ -101,11 +130,17 @@ export function NearbyLobbyPanel({
             <strong>
               {state.role === "host" ? "Your table" : "Nearby table"}
             </strong>
-            <span>{humanCount} of 4 players</span>
+            <span>
+              {humanCount} of {capacity} players
+            </span>
+            {gameVariantLabel(room) && <span>{gameVariantLabel(room)}</span>}
+            {room.mode?.type === "duplicate" && (
+              <span>Duplicate · {room.mode.seed}</span>
+            )}
           </div>
         </div>
         <ol className="nearby-seat-list">
-          {room.seats.map(({ seat, occupant, ready }) => (
+          {seats.map(({ seat, occupant, ready }) => (
             <li key={seat}>
               {occupant.kind === "bot" ? (
                 <Bot aria-hidden="true" />
@@ -252,6 +287,7 @@ export function NearbyLobbyPanel({
           <strong>Play nearby</strong>
           <span>
             {state.error ??
+              localState.error ??
               (state.available ? "Choose a table" : "Native app required")}
           </span>
         </div>
@@ -266,8 +302,49 @@ export function NearbyLobbyPanel({
           onChange={(event) => onDisplayNameChange(event.target.value)}
         />
       </label>
+      <label className="mobile-spectator-delay">
+        <span>Rules for a new table</span>
+        <select
+          aria-label="Rules for a new table"
+          value={setupPresetId(preset, setupSelection.playerCount)}
+          onChange={(event) => setPreset(event.target.value)}
+          disabled={busy || setupSelection.playerCount === 3}
+        >
+          {listPresets().map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.displayName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <GameSetupControls
+        value={setupSelection}
+        onChange={setSetupSelection}
+        disabled={busy}
+        mobile
+      />
+      {localState.status === "paused" && (
+        <span className="nearby-waiting-label">
+          Resume solo keeps the saved table's rules.
+        </span>
+      )}
+      {setupError !== null && (
+        <p role="alert" className="lobby-error">
+          {setupError}
+        </p>
+      )}
       <div className="nearby-choice-grid">
-        <button type="button" disabled={busy} onClick={onPlaySolo}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (localState.status === "paused") {
+              onPlaySolo();
+            } else {
+              startWithSetup(onPlaySolo);
+            }
+          }}
+        >
           <Play aria-hidden="true" />
           <span>{localState.status === "paused" ? "Resume solo" : "Solo"}</span>
         </button>
@@ -276,7 +353,7 @@ export function NearbyLobbyPanel({
           disabled={
             busy || !state.available || identity.displayName.trim() === ""
           }
-          onClick={onHost}
+          onClick={() => startWithSetup(onHost)}
         >
           <RadioTower aria-hidden="true" />
           <span>Host</span>

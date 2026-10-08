@@ -11,6 +11,7 @@ import {
   Wifi,
 } from "lucide-react";
 import type { Seat } from "~/game/protocol/messages";
+import { gameVariantLabel } from "~/game/components/GameSetupControls";
 import type { OnlineMatchControllerState } from "./OnlineMatchController";
 
 const SEAT_LABELS = ["East", "South", "West", "North"] as const;
@@ -37,15 +38,14 @@ export function MobileOnlineRoom({
   onStart,
 }: MobileOnlineRoomProps) {
   const room = state.roomState;
+  const seats = room?.seats.slice(0, room.playerCount ?? 4) ?? [];
   const isHost =
     room !== null && room.mySeat !== null && room.mySeat === room.hostSeat;
   const ownSeat =
     room?.mySeat === null || room?.mySeat === undefined
       ? null
       : room.seats[room.mySeat];
-  const hasEmptySeat = room?.seats.some(
-    ({ occupant }) => occupant.kind === "empty"
-  );
+  const hasEmptySeat = seats.some(({ occupant }) => occupant.kind === "empty");
 
   return (
     <main className="mobile-shell mobile-online-room">
@@ -62,6 +62,12 @@ export function MobileOnlineRoom({
         <div>
           <strong>{room === null ? "Opening table" : "Waiting room"}</strong>
           <span>{state.matchId ?? "Creating online game"}</span>
+          {room !== null && gameVariantLabel(room) && (
+            <span>{gameVariantLabel(room)}</span>
+          )}
+          {room?.mode?.type === "duplicate" && (
+            <span>Duplicate · {room.mode.seed}</span>
+          )}
         </div>
         <div className={`online-room-connection online-room-${state.status}`}>
           {state.status === "creating" || state.status === "connecting" ? (
@@ -116,7 +122,7 @@ export function MobileOnlineRoom({
       ) : (
         <section className="online-waiting-layout">
           <ol className="online-seat-grid" aria-label="Players">
-            {room.seats.map(({ seat, occupant, ready }) => {
+            {seats.map(({ seat, occupant, ready }) => {
               const occupied = occupant.kind !== "empty";
               const seatIsHost = seat === room.hostSeat;
               return (

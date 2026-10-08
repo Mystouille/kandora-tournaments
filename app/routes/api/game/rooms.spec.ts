@@ -296,4 +296,116 @@ describe("game rooms API", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     }
   );
+
+  it.each(
+    (["online", "kansai"] as const).flatMap((sanmaType) =>
+      (["json", "form"] as const).flatMap((format) =>
+        [false, true].map((duplicate) => ({ sanmaType, format, duplicate }))
+      )
+    )
+  )(
+    "forwards validated setup $sanmaType/$format/Duplicate=$duplicate",
+    async ({ sanmaType, format, duplicate }) => {
+      const mode = duplicate
+        ? { type: "duplicate", seed: "Seed A", generationVersion: 1 }
+        : { type: "normal" };
+      const setup = {
+        preset: "m-league",
+        playerCount: 3,
+        sanmaType,
+        mode,
+        spectatorDelayMs: 300000,
+      };
+      fetchMock.mockResolvedValue(
+        Response.json({ matchId: "three", ...setup })
+      );
+      const response = await action({
+        request: new Request("http://app.test/api/game/rooms", {
+          method: "POST",
+          ...(format === "json"
+            ? {
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(setup),
+              }
+            : {
+                body: new URLSearchParams({
+                  token: "native-game-token",
+                  preset: setup.preset,
+                  playerCount: "3",
+                  sanmaType,
+                  mode: JSON.stringify(mode),
+                  spectatorDelayMs: "300000",
+                }),
+              }),
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+        ...setup,
+        token: format === "json" ? "game-token" : "native-game-token",
+      });
+      await expect(response.json()).resolves.toMatchObject({
+        playerCount: 3,
+        sanmaType,
+        mode,
+      });
+    }
+  );
+
+  it.each<Record<string, string>>([
+    { playerCount: "3", preset: "buu-east" },
+    { playerCount: "2" },
+    { sanmaType: "unknown" },
+    { mode: "not-json" },
+    {
+      mode: JSON.stringify({
+        type: "duplicate",
+        seed: " ",
+        generationVersion: 1,
+      }),
+    },
+    {
+      mode: JSON.stringify({
+        type: "duplicate",
+        seed: "Board",
+        generationVersion: 2,
+      }),
+    },
+  ])(
+    "rejects invalid native creation fields before forwarding: %j",
+    async (fields) => {
+      const response = await action({
+        request: new Request("http://app.test/api/game/rooms", {
+          method: "POST",
+          body: new URLSearchParams({
+            preset: "m-league",
+            token: "native-game-token",
+            ...fields,
+          }),
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    { playerCount: 3, preset: "buu-east" },
+    { playerCount: 5 },
+    { mode: { type: "duplicate", seed: "", generationVersion: 1 } },
+  ])(
+    "rejects invalid web creation fields before forwarding: %j",
+    async (fields) => {
+      const response = await action({
+        request: new Request("http://app.test/api/game/rooms", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ preset: "m-league", ...fields }),
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
 });

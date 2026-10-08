@@ -91,6 +91,26 @@ describe("mobile lobby API", () => {
     );
   });
 
+  it.each(["online", "kansai"] as const)(
+    "forwards %s sanma capacity and Duplicate metadata unchanged",
+    async (sanmaType) => {
+      const room = {
+        matchId: "native-three",
+        status: "waiting",
+        presetId: "m-league",
+        buuMode: false,
+        playerCount: 3,
+        sanmaType,
+        mode: { type: "duplicate", seed: "Board", generationVersion: 1 },
+        seats: [{ name: "Host", isBot: false }, null, null],
+      };
+      fetchMock.mockResolvedValue(Response.json({ rooms: [room] }));
+      const response = await loader();
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ rooms: [room] });
+    }
+  );
+
   it("reports a tournament query failure instead of silently hiding live games", async () => {
     const error = new Error("database unavailable");
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);

@@ -2,6 +2,12 @@ import { dispatchServerMessage } from "~/game/client/dispatchServerMessage";
 import { useMatchStore } from "~/game/client/store";
 import type { Seat, ServerMessage } from "~/game/protocol/messages";
 import { MatchProcess } from "~/game/server/src/match";
+import {
+  GameSetupSchema,
+  gameSetupRules,
+  type GameSetup,
+} from "~/game/rules/gameSetup";
+import { duplicateMatchSeed } from "~/game/server/src/match-drivers/duplicatePlan";
 import { createSystemMatchRuntime } from "~/game/server/src/runtime";
 import { createAuthorityClock } from "~/game/server/src/timing/authorityClock";
 import type {
@@ -149,13 +155,21 @@ export class LocalMatchController {
     });
   }
 
-  startSolo(): Promise<void> {
+  startSolo(options: Partial<GameSetup> = {}): Promise<void> {
     return this.enqueue(async () => {
+      const setup = GameSetupSchema.parse({
+        preset: options.playerCount === 3 ? "m-league" : "tenhou-hanchan",
+        ...options,
+      });
       if (this.match !== null) {
         await this.pauseCurrentMatch();
       }
-      const seed = randomUint32();
-      const matchId = `local-${Date.now().toString(36)}-${seed.toString(36)}`;
+      const roomIdSeed = randomUint32();
+      const seed =
+        setup.mode.type === "duplicate"
+          ? duplicateMatchSeed(setup.mode)
+          : roomIdSeed;
+      const matchId = `local-${Date.now().toString(36)}-${roomIdSeed.toString(36)}`;
       this.update({ status: "starting", matchId, error: null });
       const match = MatchProcess.createWaitingRoom(
         matchId,
@@ -166,8 +180,10 @@ export class LocalMatchController {
           runtime: createSystemMatchRuntime(seed, this.authorityClock),
         },
         undefined,
-        undefined,
-        "tenhou-hanchan"
+        gameSetupRules(setup),
+        setup.preset,
+        setup.mode,
+        setup.spectatorDelayMs
       );
       const seat = match.claimSeat(LOCAL_USER_ID, LOCAL_DISPLAY_NAME);
       if (seat === null) {

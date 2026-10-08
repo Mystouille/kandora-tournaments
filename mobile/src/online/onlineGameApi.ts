@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { GameWSConnectionDetails } from "~/game/client/ws";
 import type { SpectatorDelayMs } from "~/game/protocol/spectatorDelay";
+import { GameVariantMetadata } from "~/game/protocol/seat";
+import { MatchModeConfigSchema } from "~/game/protocol/matchMode";
+import { GameSetupSchema, type GameSetup } from "~/game/rules/gameSetup";
 import {
   ActiveMatchResponseSchema,
   type ActiveMatchSummary,
@@ -12,7 +15,11 @@ import {
 } from "../seatEnrichment";
 import { webAppPath } from "../shell";
 
-const CreateRoomResponseSchema = z.object({ matchId: z.string().min(1) });
+const CreateRoomResponseSchema = z.object({
+  matchId: z.string().min(1),
+  ...GameVariantMetadata,
+  mode: MatchModeConfigSchema.optional(),
+});
 const WatchGameResponseSchema = z.object({
   ok: z.literal(true),
   matchId: z.string().min(1),
@@ -66,19 +73,50 @@ async function responseJson(response: Response): Promise<unknown> {
 export async function createOnlineRoom(
   baseUrl: string,
   session: MobileAuthSession,
-  preset: string,
+  options: GameSetup | string,
   spectatorDelayMs: SpectatorDelayMs = 0,
   fetcher: typeof fetch = fetch
 ): Promise<string> {
+  const setup = GameSetupSchema.parse(
+    typeof options === "string"
+      ? { preset: options, spectatorDelayMs }
+      : options
+  );
   const response = await fetcher(webAppPath(baseUrl, "/api/game/rooms"), {
     method: "POST",
     body: new URLSearchParams({
       token: session.token,
-      preset,
-      spectatorDelayMs: String(spectatorDelayMs),
+      preset: setup.preset,
+      spectatorDelayMs: String(setup.spectatorDelayMs),
+      ...(typeof options !== "string"
+        ? {
+            playerCount: String(setup.playerCount),
+            sanmaType: setup.sanmaType,
+            mode: JSON.stringify(setup.mode),
+          }
+        : {}),
     }),
   });
-  return CreateRoomResponseSchema.parse(await responseJson(response)).matchId;
+  const created = CreateRoomResponseSchema.parse(await responseJson(response));
+  if (
+    setup.playerCount === 3 &&
+    (created.playerCount !== 3 || created.sanmaType !== setup.sanmaType)
+  ) {
+    throw new Error(
+      "The game server does not support the selected sanma rules. Update the server before creating this table."
+    );
+  }
+  if (
+    setup.mode.type === "duplicate" &&
+    (created.mode?.type !== "duplicate" ||
+      created.mode.seed !== setup.mode.seed ||
+      created.mode.generationVersion !== setup.mode.generationVersion)
+  ) {
+    throw new Error(
+      "The game server did not confirm the Duplicate seed. Update the server before creating this table."
+    );
+  }
+  return created.matchId;
 }
 
 export async function resolveOnlineWatchId(
