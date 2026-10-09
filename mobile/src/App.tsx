@@ -158,7 +158,7 @@ const INITIAL_LOCAL_STATE: LocalMatchControllerState = {
   error: null,
 };
 
-export const MOBILE_APP_VERSION = "0.0.16";
+export const MOBILE_APP_VERSION = "0.0.18";
 
 const DRAW_TO_DISCARD_DELAY_MS = 700;
 
