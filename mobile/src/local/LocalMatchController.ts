@@ -183,7 +183,8 @@ export class LocalMatchController {
         gameSetupRules(setup),
         setup.preset,
         setup.mode,
-        setup.spectatorDelayMs
+        setup.spectatorDelayMs,
+        true
       );
       const seat = match.claimSeat(LOCAL_USER_ID, LOCAL_DISPLAY_NAME);
       if (seat === null) {

@@ -188,6 +188,9 @@ export async function action({
     return errorResponse("invalid_body", 400);
   }
   const fields = body as Record<string, unknown>;
+  if (fields.solo !== undefined && typeof fields.solo !== "boolean") {
+    return errorResponse("invalid_body", 400);
+  }
   const setup = validateCreationFields(fields);
   if (!setup.success) {
     return errorResponse(

@@ -131,11 +131,13 @@ afterEach(async () => {
 });
 
 describe("real local-controller timing without native-hardware claims", () => {
-  it("uses known-zero-network allowance, ignores both wall steps, and bills a 100 ms receipt overage once", async () => {
+  it("keeps solo play unlimited across wall steps and accepts a late receipt once", async () => {
     const host = controller(persistence());
     await settle(host.startSolo());
     const { view, window, action } = await drawnDecision(host);
+    expect(window.deadlineMode).toBe("unlimited");
     expect(window.allowanceMs).toBe(0);
+    expect(window.bankAtOpenMs).toBe(0);
     expect(window.baseEndsAt - window.opensAt).toBe(5_000);
     const before = liveServerNow();
     vi.setSystemTime(Date.now() + 300_000);
@@ -151,7 +153,7 @@ describe("real local-controller timing without native-hardware claims", () => {
       "fulfilled",
       "rejected",
     ]);
-    expect(useMatchStore.getState().actionBufferMs).toBe(19_900);
+    expect(useMatchStore.getState().actionBufferMs).toBe(20_000);
     expect(useMatchStore.getState().totalDiscards).toBeGreaterThanOrEqual(1);
     expect(useMatchStore.getState().actionWindow?.id).not.toBe(window.id);
   });
@@ -185,7 +187,7 @@ describe("real local-controller timing without native-hardware claims", () => {
     );
   });
 
-  it("persists partial bank elapsed and rebases twice after long suspension without new base time or double debit", async () => {
+  it("persists and rebases an unlimited solo window across long suspension", async () => {
     const storage = persistence();
     const original = controller(storage);
     await settle(original.startSolo());
@@ -211,6 +213,7 @@ describe("real local-controller timing without native-hardware claims", () => {
     const firstWindow = useMatchStore.getState().actionWindow;
     expect(firstWindow?.id).toBe(source.window.id);
     expect(firstWindow?.clockEpoch).not.toBe(source.window.clockEpoch);
+    expect(firstWindow?.deadlineMode).toBe("unlimited");
     expect(firstWindow?.allowanceMs).toBe(source.window.allowanceMs);
     expect((firstWindow?.baseEndsAt ?? NaN) - (liveServerNow() ?? NaN)).toBe(
       -777
@@ -230,7 +233,8 @@ describe("real local-controller timing without native-hardware claims", () => {
     }
     expect(window.id).toBe(source.window.id);
     expect(window.clockEpoch).not.toBe(firstWindow?.clockEpoch);
-    expect(window.bankAtOpenMs).toBe(20_000);
+    expect(window.deadlineMode).toBe("unlimited");
+    expect(window.bankAtOpenMs).toBe(0);
     expect(window.allowanceMs).toBe(0);
     expect(window.baseEndsAt - (liveServerNow() ?? NaN)).toBe(-777);
     await vi.advanceTimersByTimeAsync(123);
@@ -243,7 +247,7 @@ describe("real local-controller timing without native-hardware claims", () => {
     await settle(
       second.act(action.id, intentForWindow(window, restored.lastSeq))
     );
-    expect(useMatchStore.getState().actionBufferMs).toBe(19_100);
+    expect(useMatchStore.getState().actionBufferMs).toBe(20_000);
     expect(await storage.repository.loadRecoveryRecord(matchId)).toBeNull();
   });
 });
