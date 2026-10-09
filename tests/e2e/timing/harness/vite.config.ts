@@ -58,6 +58,13 @@ export default defineConfig({
         repositoryRoot,
         "tests",
         "e2e",
+        "mobile-ui",
+        "responsiveHarness.tsx"
+      ),
+      resolve(
+        repositoryRoot,
+        "tests",
+        "e2e",
         "statistics",
         "graphsHarness.tsx"
       ),

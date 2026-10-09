@@ -325,6 +325,7 @@ describe("mobile online lobby setup", () => {
     expect(lobby.config.onCreateGame).not.toHaveBeenCalled();
     const html = renderToStaticMarkup(lobby.render());
     expect(html).toContain('role="dialog"');
+    expect(html).toContain('class="rule-modal-scroll"');
     expect(html).toContain(
       "Enter a duplicate seed between 1 and 128 characters."
     );

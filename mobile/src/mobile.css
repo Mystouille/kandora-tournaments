@@ -2555,13 +2555,17 @@ button {
   z-index: 100;
   inset: 0;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   padding: calc(12px + env(safe-area-inset-top))
     calc(12px + env(safe-area-inset-right))
     calc(12px + env(safe-area-inset-bottom))
     calc(12px + env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: rgba(2, 7, 5, 0.78);
   backdrop-filter: blur(8px);
+  -webkit-overflow-scrolling: touch;
 }
 
 .rule-modal {
@@ -2569,12 +2573,26 @@ button {
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
   width: min(620px, 100%);
+  min-height: 0;
   max-height: 100%;
   padding: 16px;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   background: #0e1914;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.rule-modal > :not(header):not(footer) {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rule-modal-scroll {
+  display: grid;
+  gap: 12px;
 }
 
 .rule-modal > header,
@@ -2948,5 +2966,51 @@ button {
 
   .online-room-controls {
     padding: 7px;
+  }
+}
+
+@media (max-width: 520px) {
+  .online-lobby-content {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .create-game-button {
+    min-height: 48px;
+  }
+
+  .online-waiting-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .online-seat-grid {
+    grid-template-rows: repeat(2, minmax(64px, auto));
+  }
+
+  .online-room-controls {
+    align-content: start;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .mobile-game-menu-options,
+  .mobile-replay-navigation-panel {
+    width: min(
+      246px,
+      calc(
+        100vw - 98px - env(safe-area-inset-left) - env(safe-area-inset-right)
+      )
+    );
+  }
+
+  .mobile-game-menu-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

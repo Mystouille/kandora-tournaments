@@ -381,14 +381,7 @@ export function MobileLobby({
                 <X aria-hidden="true" />
               </button>
             </header>
-            <div
-              style={{
-                minHeight: 0,
-                overflowY: "auto",
-                display: "grid",
-                gap: 12,
-              }}
-            >
+            <div className="rule-modal-scroll">
               <GameSetupControls
                 value={setupSelection}
                 onChange={setSetupSelection}
