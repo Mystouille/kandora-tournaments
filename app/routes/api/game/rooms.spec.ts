@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parseTileList } from "~/game/client/debugSeed";
 
 vi.mock("~/game/feature-gate", () => ({
   isGameEnabled: () => true,
@@ -97,6 +98,32 @@ describe("game rooms API", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ preset: "m-league", token: "game-token" }),
+    });
+  });
+
+  it("preserves the exact debug starting hand when forwarding MCR room creation", async () => {
+    fetchMock.mockResolvedValue(Response.json({ matchId: "debug-solo" }));
+    const debug = {
+      humanHand: parseTileList("123789m123p1239s").tiles,
+    };
+    const response = await action({
+      request: new Request("http://app.test/api/game/rooms", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ preset: "mcr-ema", rulesFamily: "mcr", debug }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith("http://game.test/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        preset: "mcr-ema",
+        rulesFamily: "mcr",
+        debug,
+        token: "game-token",
+      }),
     });
   });
 
