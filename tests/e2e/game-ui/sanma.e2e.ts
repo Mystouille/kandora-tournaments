@@ -130,11 +130,13 @@ for (const sanmaType of ["online", "kansai"] as const) {
 
       await page.goto("/sanma/setup");
       await expect(
-        page.getByRole("switch", { name: "3-player" })
-      ).not.toBeChecked();
-      await page.getByRole("switch", { name: "3-player" }).check();
+        page.getByRole("radio", { name: "Yonma (4 players)", exact: true })
+      ).toBeChecked();
       await page
-        .getByLabel("Sanma rules", { exact: true })
+        .getByRole("radio", { name: "Sanma (3 players)", exact: true })
+        .check();
+      await page
+        .getByLabel("Sanma game type", { exact: true })
         .selectOption(sanmaType);
       if (duplicate) {
         await page.getByRole("switch", { name: "Duplicate mode" }).check();

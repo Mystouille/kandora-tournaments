@@ -368,7 +368,7 @@ describe("game rooms API", () => {
       mode: JSON.stringify({
         type: "duplicate",
         seed: "Board",
-        generationVersion: 2,
+        generationVersion: 3,
       }),
     },
   ])(
@@ -387,6 +387,59 @@ describe("game rooms API", () => {
       expect(response.status).toBe(400);
       expect(response.headers.get("access-control-allow-origin")).toBe("*");
       expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["json", "form"] as const)(
+    "forwards MCR creation through the %s proxy",
+    async (format) => {
+      fetchMock.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            matchId: "mcr-room",
+            rulesFamily: "mcr",
+            playerCount: 4,
+          }),
+          {
+            headers: { "content-type": "application/json" },
+          }
+        )
+      );
+      const setup = {
+        preset: "mcr-ema",
+        rulesFamily: "mcr",
+        playerCount: 4,
+        sanmaType: "online",
+        mode: { type: "normal" },
+        spectatorDelayMs: 0,
+      };
+      const request =
+        format === "json"
+          ? new Request("http://app.test/api/game/rooms", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(setup),
+            })
+          : new Request("http://app.test/api/game/rooms", {
+              method: "POST",
+              body: new URLSearchParams({
+                token: "native-game-token",
+                preset: setup.preset,
+                rulesFamily: setup.rulesFamily,
+                playerCount: String(setup.playerCount),
+                sanmaType: setup.sanmaType,
+                mode: JSON.stringify(setup.mode),
+              }),
+            });
+      const response = await action({ request });
+      expect(response.status).toBe(200);
+      expect(
+        JSON.parse(fetchMock.mock.calls.at(-1)?.[1]?.body as string)
+      ).toMatchObject({
+        preset: "mcr-ema",
+        rulesFamily: "mcr",
+        playerCount: 4,
+      });
     }
   );
 

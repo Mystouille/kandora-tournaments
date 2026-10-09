@@ -4,6 +4,7 @@ import {
   FIXED_PROMPT_VERSION,
 } from "~/game/protocol/timing";
 import { SANMA_CAPABILITY } from "~/game/protocol/sanma";
+import { MCR_CAPABILITY } from "~/game/protocol/rulesFamily";
 import {
   ClientMessageSchema,
   ServerMessageSchema,
@@ -20,6 +21,7 @@ const NearbyHelloFrameSchema = z.object({
   timingCapabilities: z.array(z.literal(TIMING_CAPABILITY)).max(1).optional(),
   fixedPromptVersion: z.literal(FIXED_PROMPT_VERSION).optional(),
   gameCapabilities: z.array(z.literal(SANMA_CAPABILITY)).max(1).optional(),
+  mcrCapability: z.literal(MCR_CAPABILITY).optional(),
 });
 
 const NearbyClientFrameSchema = z.object({

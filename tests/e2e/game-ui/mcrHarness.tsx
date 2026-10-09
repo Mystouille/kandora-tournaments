@@ -25,7 +25,7 @@ import "../../../mobile/src/mobile.css";
 
 declare global {
   interface Window {
-    __sanmaReplay?: ComponentProps<typeof ReplayRoute>["loaderData"];
+    __mcrReplay?: ComponentProps<typeof ReplayRoute>["loaderData"];
   }
 }
 
@@ -35,7 +35,7 @@ function Setup() {
   const [error, setError] = useState<string | null>(null);
   return (
     <main style={{ padding: 24, maxWidth: 480 }}>
-      <h1>Sanma acceptance fixture</h1>
+      <h1>MCR acceptance fixture</h1>
       <GameSetupControls
         value={selection}
         onChange={setSelection}
@@ -57,7 +57,7 @@ function Setup() {
               if (!response.ok) {
                 throw new Error(`Creation failed: ${response.status}`);
               }
-              window.location.assign("/sanma/spectate");
+              window.location.assign("/mcr/spectate");
             } catch (reason) {
               setError(
                 reason instanceof Error ? reason.message : String(reason)
@@ -76,21 +76,12 @@ function Setup() {
 function Evidence() {
   const state = useMatchStore();
   return (
-    <output
-      data-testid="sanma-state"
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        zIndex: 100,
-        fontSize: 10,
-      }}
-    >
+    <output data-testid="mcr-state">
       {JSON.stringify({
-        playerCount: state.playerCount,
+        rulesFamily: state.rulesFamily,
         handCount: state.hands.length,
-        dealer: state.dealer,
-        nukiCount: state.nukiTiles?.flat().length ?? 0,
+        flowerCount: state.flowerTiles?.flat().length ?? 0,
+        scores: state.scores,
       })}
     </output>
   );
@@ -106,18 +97,18 @@ function Harness() {
       <>
         <GameSpectateRoute
           loaderData={{
-            matchId: "browser-sanma",
+            matchId: "browser-mcr",
             flag: { gameEnabled: true },
-            tenhouRelay: true,
+            tenhouRelay: false,
           }}
         />
         <Evidence />
       </>
     );
   }
-  const data = window.__sanmaReplay;
+  const data = window.__mcrReplay;
   if (!data) {
-    throw new Error("The authoritative replay fixture is missing");
+    throw new Error("The authoritative MCR replay fixture is missing");
   }
   if (mode === "replay") {
     return <ReplayRoute loaderData={data} />;
@@ -126,7 +117,7 @@ function Harness() {
     return (
       <MobileReplayViewer
         log={data.log}
-        seatEnrichment={[null, null, null]}
+        seatEnrichment={[null, null, null, null]}
         review={null}
         loading={false}
         error={null}
@@ -136,7 +127,7 @@ function Harness() {
       />
     );
   }
-  throw new Error(`Unknown sanma fixture: ${mode}`);
+  throw new Error(`Unknown MCR fixture: ${mode}`);
 }
 
 const router = createBrowserRouter([
@@ -150,11 +141,11 @@ const router = createBrowserRouter([
         </ThemeProvider>
       </LocaleProvider>
     ),
-    children: [{ path: "/sanma/:mode", element: <Harness /> }],
+    children: [{ path: "/mcr/:mode", element: <Harness /> }],
   },
 ]);
 const root = document.getElementById("root");
 if (!root) {
-  throw new Error("Missing sanma fixture root");
+  throw new Error("Missing MCR fixture root");
 }
 createRoot(root).render(<RouterProvider router={router} />);

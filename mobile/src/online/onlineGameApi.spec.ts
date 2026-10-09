@@ -46,6 +46,7 @@ describe("mobile online game API", () => {
       ).toEqual({
         token: session.token,
         preset: "m-league",
+        rulesFamily: "riichi",
         playerCount: "3",
         sanmaType,
         spectatorDelayMs: "300000",
@@ -53,6 +54,31 @@ describe("mobile online game API", () => {
       });
     }
   );
+
+  it("creates and verifies an MCR room", async () => {
+    const setup = GameSetupSchema.parse({
+      preset: "mcr-ema",
+      rulesFamily: "mcr",
+      playerCount: 4,
+      sanmaType: "online",
+      mode: { type: "duplicate", seed: "MCR Board", generationVersion: 2 },
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ matchId: "mcr-room", ...setup }));
+
+    await expect(
+      createOnlineRoom("https://play.test", session, setup, 0, fetcher)
+    ).resolves.toBe("mcr-room");
+    expect(
+      Object.fromEntries(fetcher.mock.calls[0][1]?.body as URLSearchParams)
+    ).toMatchObject({
+      preset: "mcr-ema",
+      rulesFamily: "mcr",
+      playerCount: "4",
+      sanmaType: "online",
+    });
+  });
 
   it.each([
     {},

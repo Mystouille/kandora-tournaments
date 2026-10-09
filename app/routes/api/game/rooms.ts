@@ -31,6 +31,7 @@ function validateCreationFields(body: Record<string, unknown>) {
           ? "m-league"
           : "buu-east"
         : body.preset,
+    rulesFamily: body.rulesFamily,
     playerCount: body.playerCount,
     sanmaType: body.sanmaType,
     mode: body.mode,
@@ -134,8 +135,10 @@ export async function action({
     }
     const playerCount = form.get("playerCount");
     const sanmaType = form.get("sanmaType");
+    const rulesFamily = form.get("rulesFamily");
     const setup = validateCreationFields({
       preset,
+      ...(rulesFamily !== null ? { rulesFamily } : {}),
       ...(playerCount !== null ? { playerCount: Number(playerCount) } : {}),
       ...(sanmaType !== null ? { sanmaType } : {}),
       ...(modeValue !== null ? { mode } : {}),
@@ -150,6 +153,9 @@ export async function action({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           preset: setup.data.preset,
+          ...(rulesFamily !== null
+            ? { rulesFamily: setup.data.rulesFamily }
+            : {}),
           token,
           ...(playerCount !== null
             ? { playerCount: setup.data.playerCount }

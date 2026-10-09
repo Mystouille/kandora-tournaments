@@ -44,8 +44,9 @@ export async function loader(): Promise<Response> {
     const tenhouLiveGames = await getLobbyTenhouLiveGames();
     return json({
       presets: listSelectablePresets().map(
-        ({ id, displayName, description }) => ({
+        ({ id, rulesFamily, displayName, description }) => ({
           id,
+          rulesFamily,
           displayName,
           description,
         })

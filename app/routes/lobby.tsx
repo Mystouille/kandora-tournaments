@@ -23,6 +23,7 @@ export async function loader({
       {
         sourceGameId: 1,
         ruleSet: 1,
+        rulesFamily: 1,
         ruleSetDetails: 1,
         mode: 1,
         startedAt: 1,
@@ -39,8 +40,9 @@ export async function loader({
   return {
     flag: getClientGameFlag(),
     presets: listSelectablePresets().map(
-      ({ id, displayName, description }) => ({
+      ({ id, rulesFamily, displayName, description }) => ({
         id,
+        rulesFamily,
         displayName,
         description,
       })
@@ -50,6 +52,10 @@ export async function loader({
       gameId: log.sourceGameId,
       ruleSet: log.ruleSet,
       ...GameVariantSchema.parse({
+        rulesFamily:
+          log.rulesFamily === "mcr" || log.ruleSetDetails?.rulesFamily === "mcr"
+            ? "mcr"
+            : "riichi",
         playerCount: log.ruleSetDetails?.playerCount,
         sanmaType: log.ruleSetDetails?.sanmaType,
       }),

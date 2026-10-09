@@ -15,6 +15,7 @@ import {
 } from "~/game/rules/gameSetup";
 import { duplicateMatchSeed } from "~/game/server/src/match-drivers/duplicatePlan";
 import { SANMA_CAPABILITY } from "~/game/protocol/sanma";
+import { MCR_CAPABILITY } from "~/game/protocol/rulesFamily";
 import { createSystemMatchRuntime } from "~/game/server/src/runtime";
 import { DecisionWindowError } from "~/game/server/src/timing/actionWindows";
 import {
@@ -673,6 +674,7 @@ export class NearbyMatchController {
         timingCapabilities: [TIMING_CAPABILITY],
         fixedPromptVersion: FIXED_PROMPT_VERSION,
         gameCapabilities: [SANMA_CAPABILITY],
+        mcrCapability: MCR_CAPABILITY,
         deviceId: this.identity.deviceId,
         displayName: this.identity.displayName,
       });
@@ -881,6 +883,17 @@ export class NearbyMatchController {
           endpointId,
           "sanma_update_required",
           "This three-player room requires an updated client."
+        );
+        return;
+      }
+      if (
+        this.match?.owners.roomViews.summary().rulesFamily === "mcr" &&
+        frame.mcrCapability !== MCR_CAPABILITY
+      ) {
+        await this.sendError(
+          endpointId,
+          "mcr_update_required",
+          "Update Kandora to join this MCR table."
         );
         return;
       }

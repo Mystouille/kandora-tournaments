@@ -19,9 +19,17 @@
  */
 import type { GameEvent, Tile } from "~/game/protocol/messages";
 import { getWaits } from "~/utils/waitUtils";
-import { applyReplayEvent, initialView, type ReplayView } from "~/game/replay/player";
+import {
+  applyReplayEvent,
+  initialView,
+  type ReplayView,
+} from "~/game/replay/player";
+import { waitsForReplayView } from "~/game/replay/waits";
 
 function seatWaitsFromView(view: ReplayView): Tile[][] {
+  if (view.rulesFamily === "mcr") {
+    return waitsForReplayView(view);
+  }
   const out: Tile[][] = [[], [], [], []];
   for (let seat = 0; seat < 4; seat++) {
     const hand = view.hands[seat];

@@ -106,6 +106,7 @@ describe("game lobby loader", () => {
       {
         sourceGameId: 1,
         ruleSet: 1,
+        rulesFamily: 1,
         ruleSetDetails: 1,
         mode: 1,
         startedAt: 1,
@@ -119,6 +120,7 @@ describe("game lobby loader", () => {
       {
         gameId: "match-newest",
         ruleSet: "buu-east",
+        rulesFamily: "riichi",
         playerCount: 4,
         sanmaType: "online",
         mode: {

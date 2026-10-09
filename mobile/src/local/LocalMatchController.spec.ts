@@ -176,6 +176,7 @@ describe("local mobile match controller", () => {
       matchId: started.matchId,
       owner: "solo",
     });
+
     expect(initialView.conn).toBe("open");
     expect(initialView.mySeat).not.toBeNull();
     expect(initialView.legalActions.length).toBeGreaterThan(0);
@@ -238,6 +239,40 @@ describe("local mobile match controller", () => {
     expect(restoredView.legalActions).toEqual(advancedView.legalActions);
 
     await restored.pause();
+  });
+
+  it("starts and persists an MCR solo match", async () => {
+    setReadyCheckMs(0);
+    setDelayAfterDiscardMs(0);
+    const persistence = memoryPersistence();
+    const controller = new LocalMatchController(persistence);
+    const setup = GameSetupSchema.parse({
+      preset: "mcr-ema",
+      rulesFamily: "mcr",
+      playerCount: 4,
+      sanmaType: "online",
+      mode: { type: "normal" },
+    });
+
+    await controller.startSolo(setup);
+    expect(useMatchStore.getState()).toMatchObject({
+      rulesFamily: "mcr",
+      scores: [0, 0, 0, 0],
+    });
+    expect(useMatchStore.getState().flowerTiles).toHaveLength(4);
+
+    await controller.pause();
+    const matchId = controller.getState().matchId;
+    const saved = await persistence.repository.loadRecoveryRecord(
+      matchId as string
+    );
+    expect(saved?.checkpoint).toMatchObject({
+      presetId: "mcr-ema",
+      state: {
+        ruleSet: { rulesFamily: "mcr" },
+        scores: [0, 0, 0, 0],
+      },
+    });
   });
 
   it("keeps the drawn tile separate after the local safety snapshot", async () => {

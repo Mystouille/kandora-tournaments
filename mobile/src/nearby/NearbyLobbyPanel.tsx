@@ -14,10 +14,10 @@ import {
 import { useState } from "react";
 import {
   buildGameSetup,
+  DEFAULT_GAME_SETUP_PRESET_ID,
   GameSetupControls,
   gameVariantLabel,
   initialGameSetupSelection,
-  setupPresetId,
 } from "~/game/components/GameSetupControls";
 import { listPresets } from "~/game/rules/presets";
 import type { GameSetup } from "~/game/rules/gameSetup";
@@ -62,7 +62,7 @@ export function NearbyLobbyPanel({
   onStartMatch,
   onLeave,
 }: NearbyLobbyPanelProps) {
-  const [preset, setPreset] = useState("tenhou-hanchan");
+  const [preset, setPreset] = useState(DEFAULT_GAME_SETUP_PRESET_ID);
   const [setupSelection, setSetupSelection] = useState(
     initialGameSetupSelection
   );
@@ -302,24 +302,12 @@ export function NearbyLobbyPanel({
           onChange={(event) => onDisplayNameChange(event.target.value)}
         />
       </label>
-      <label className="mobile-spectator-delay">
-        <span>Rules for a new table</span>
-        <select
-          aria-label="Rules for a new table"
-          value={setupPresetId(preset, setupSelection.playerCount)}
-          onChange={(event) => setPreset(event.target.value)}
-          disabled={busy || setupSelection.playerCount === 3}
-        >
-          {listPresets().map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.displayName}
-            </option>
-          ))}
-        </select>
-      </label>
       <GameSetupControls
         value={setupSelection}
         onChange={setSetupSelection}
+        presets={listPresets()}
+        preset={preset}
+        onPresetChange={setPreset}
         disabled={busy}
         mobile
       />

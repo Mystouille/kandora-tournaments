@@ -3,6 +3,7 @@ import type { PluginListenerHandle } from "@capacitor/core";
 import { useMatchStore } from "~/game/client/store";
 import type { RoomState } from "~/game/protocol/messages";
 import { SANMA_CAPABILITY } from "~/game/protocol/sanma";
+import { MCR_CAPABILITY } from "~/game/protocol/rulesFamily";
 import { GameSetupSchema } from "~/game/rules/gameSetup";
 import { duplicateMatchSeed } from "~/game/server/src/match-drivers/duplicatePlan";
 import {
@@ -803,6 +804,7 @@ describe("Nearby mobile match controller", () => {
       kind: "hello",
       deviceId: "mobile:guest",
       gameCapabilities: [SANMA_CAPABILITY],
+      mcrCapability: MCR_CAPABILITY,
       timingCapabilities: [TIMING_CAPABILITY],
       fixedPromptVersion: FIXED_PROMPT_VERSION,
     });
@@ -922,5 +924,30 @@ describe("Nearby mobile match controller", () => {
         (frame) => frame.message.type === "room_kicked"
       )
     ).toBe(true);
+  });
+
+  it("hosts an MCR Nearby table with the shared setup", async () => {
+    const transport = new FakeNearbyTransport();
+    const controller = new NearbyMatchController(
+      memoryPersistence(),
+      transport
+    );
+    const setup = GameSetupSchema.parse({
+      preset: "mcr-ema",
+      rulesFamily: "mcr",
+      playerCount: 4,
+      sanmaType: "online",
+      mode: { type: "duplicate", seed: "MCR Nearby", generationVersion: 2 },
+    });
+
+    await controller.host(
+      { deviceId: "mobile:mcr-host", displayName: "MCR Host" },
+      setup
+    );
+    expect(controller.getState().roomState).toMatchObject({
+      rulesFamily: "mcr",
+      mode: setup.mode,
+    });
+    await controller.leave();
   });
 });

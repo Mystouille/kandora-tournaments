@@ -13,6 +13,7 @@ import {
   duplicateMatchSeed,
   generateDuplicateHandPlan,
 } from "../../../app/game/server/src/match-drivers/duplicatePlan";
+import { DUPLICATE_GENERATION_VERSION } from "../../../app/game/protocol/matchMode";
 import { activeSeats } from "../../../app/game/rules/seats";
 import { ServerMessageSchema } from "../../../app/game/protocol/messages";
 import {
@@ -25,7 +26,11 @@ export function onlineBoardSeed(): string {
   for (let index = 0; index < 100; index++) {
     const seed = `browser-sanma-${index}`;
     const plan = generateDuplicateHandPlan(
-      { type: "duplicate", seed, generationVersion: 1 },
+      {
+        type: "duplicate",
+        seed,
+        generationVersion: DUPLICATE_GENERATION_VERSION,
+      },
       "m-league",
       { gameIndex: 0, roundWind: "E", roundNumber: 1, honba: 0, dealer: 0 },
       { playerCount: 3, sanmaType: "online", redFives: { p: 1, s: 1 } }

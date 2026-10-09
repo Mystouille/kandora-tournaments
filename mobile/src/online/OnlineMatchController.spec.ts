@@ -111,6 +111,7 @@ describe("online match controller", () => {
     const { controller, createRoom } = setup();
     await controller.create("https://play.test", session, {
       preset: "buu-east",
+      rulesFamily: "riichi",
       playerCount: 3,
       sanmaType: "online",
       mode: { type: "normal" },

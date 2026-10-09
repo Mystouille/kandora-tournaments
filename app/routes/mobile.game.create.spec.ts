@@ -22,6 +22,7 @@ describe("mobile game creation bridge", () => {
       })
     ).resolves.toEqual({
       preset: "tenhou-hanchan",
+      rulesFamily: "riichi",
       playerCount: 4,
       sanmaType: "online",
       mode: { type: "normal" },
@@ -60,6 +61,7 @@ describe("mobile game creation bridge", () => {
         })
       ).resolves.toEqual({
         preset: "m-league",
+        rulesFamily: "riichi",
         playerCount: 3,
         sanmaType,
         mode,
@@ -67,6 +69,23 @@ describe("mobile game creation bridge", () => {
       });
     }
   );
+
+  it("preserves MCR through the creation link", async () => {
+    const params = new URLSearchParams({
+      preset: "mcr-ema",
+      rulesFamily: "mcr",
+      playerCount: "4",
+    });
+    await expect(
+      loader({
+        request: new Request(`https://app.test/mobile/game/create?${params}`),
+      })
+    ).resolves.toMatchObject({
+      preset: "mcr-ema",
+      rulesFamily: "mcr",
+      playerCount: 4,
+    });
+  });
 
   it.each([
     "playerCount=3&preset=buu-east",

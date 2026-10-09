@@ -20,6 +20,7 @@ export async function loader({ request }: { request: Request }) {
   }
   const setup = GameSetupSchema.safeParse({
     preset: params.get("preset") ?? DEFAULT_PRESET,
+    rulesFamily: params.get("rulesFamily") ?? undefined,
     playerCount: params.has("playerCount")
       ? Number(params.get("playerCount"))
       : undefined,
@@ -58,11 +59,17 @@ export default function MobileGameCreate({
       }
       const body = (await response.json()) as {
         matchId?: string;
+        rulesFamily?: string;
         playerCount?: number;
         sanmaType?: string;
       };
       if (!body.matchId) {
         throw new Error("The game server returned no room id");
+      }
+      if (loaderData.rulesFamily === "mcr" && body.rulesFamily !== "mcr") {
+        throw new Error(
+          "The game server does not support MCR. Update the server before creating this table."
+        );
       }
       if (
         loaderData.playerCount === 3 &&

@@ -90,6 +90,7 @@ export async function createOnlineRoom(
       spectatorDelayMs: String(setup.spectatorDelayMs),
       ...(typeof options !== "string"
         ? {
+            rulesFamily: setup.rulesFamily,
             playerCount: String(setup.playerCount),
             sanmaType: setup.sanmaType,
             mode: JSON.stringify(setup.mode),
@@ -98,6 +99,11 @@ export async function createOnlineRoom(
     }),
   });
   const created = CreateRoomResponseSchema.parse(await responseJson(response));
+  if (setup.rulesFamily === "mcr" && created.rulesFamily !== "mcr") {
+    throw new Error(
+      "The game server does not support MCR. Update the server before creating this table."
+    );
+  }
   if (
     setup.playerCount === 3 &&
     (created.playerCount !== 3 || created.sanmaType !== setup.sanmaType)

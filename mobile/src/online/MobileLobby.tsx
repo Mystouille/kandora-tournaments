@@ -4,10 +4,10 @@ import { z } from "zod";
 import { SpectatorDelaySelect } from "~/game/components/SpectatorDelaySelect";
 import {
   buildGameSetup,
+  DEFAULT_GAME_SETUP_PRESET_ID,
   GameSetupControls,
   gameVariantLabel,
   initialGameSetupSelection,
-  setupPresetId,
 } from "~/game/components/GameSetupControls";
 import { GameVariantMetadata } from "~/game/protocol/seat";
 import { MatchModeConfigSchema } from "~/game/protocol/matchMode";
@@ -21,6 +21,7 @@ import { webAppPath } from "../shell";
 
 const LobbyPresetSchema = z.object({
   id: z.string(),
+  rulesFamily: z.enum(["riichi", "mcr"]).default("riichi"),
   displayName: z.string(),
   description: z.string().optional(),
 });
@@ -113,7 +114,9 @@ export function MobileLobby({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState("m-league");
+  const [selectedPreset, setSelectedPreset] = useState(
+    DEFAULT_GAME_SETUP_PRESET_ID
+  );
   const [setupSelection, setSetupSelection] = useState(
     initialGameSetupSelection
   );
@@ -133,10 +136,17 @@ export function MobileLobby({
       setPresets(data.presets);
       setRooms(data.rooms.filter((room) => room.status !== "finished"));
       setTenhouLiveGames(data.tenhouLiveGames);
+      const riichiPresets = data.presets.filter(
+        (preset) => preset.rulesFamily === "riichi"
+      );
       setSelectedPreset((current) =>
-        data.presets.some((preset) => preset.id === current)
+        riichiPresets.some((preset) => preset.id === current)
           ? current
-          : (data.presets[0]?.id ?? current)
+          : (riichiPresets.find(
+              (preset) => preset.id === DEFAULT_GAME_SETUP_PRESET_ID
+            )?.id ??
+            riichiPresets[0]?.id ??
+            current)
       );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Lobby unavailable");
@@ -379,38 +389,12 @@ export function MobileLobby({
                 gap: 12,
               }}
             >
-              <div
-                className="rule-options"
-                role="radiogroup"
-                aria-label="Rules"
-              >
-                {presets.map((preset) => (
-                  <label key={preset.id}>
-                    <input
-                      type="radio"
-                      name="mobile-rule-preset"
-                      value={preset.id}
-                      checked={
-                        setupPresetId(
-                          selectedPreset,
-                          setupSelection.playerCount
-                        ) === preset.id
-                      }
-                      disabled={
-                        setupSelection.playerCount === 3 ||
-                        activeMatchId !== null
-                      }
-                      onChange={() => setSelectedPreset(preset.id)}
-                    />
-                    <span>
-                      <strong>{preset.displayName}</strong>
-                    </span>
-                  </label>
-                ))}
-              </div>
               <GameSetupControls
                 value={setupSelection}
                 onChange={setSetupSelection}
+                presets={presets}
+                preset={selectedPreset}
+                onPresetChange={setSelectedPreset}
                 disabled={activeMatchId !== null}
                 mobile
               />
