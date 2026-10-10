@@ -135,8 +135,28 @@ const DEFAULT_TUNING = Object.freeze({
   scaleY: 1,
 });
 
+const DEFAULT_COLOR_TUNING = Object.freeze({
+  contrast: 1,
+  brightness: 1,
+  saturation: 1,
+  gamma: 1,
+});
+
+const ENGRAVED_FACE_STYLE = Object.freeze({
+  inkOpacity: 1,
+  innerShadowOpacity: 0.34,
+  innerShadowWidthScale: 2.2,
+  innerShadowBlurScale: 0.38,
+  rimShadowOpacity: 0.28,
+  rimShadowWidthScale: 0.9,
+  highlightOpacity: 0.9,
+  highlightWidthScale: 1.3,
+  highlightBlurScale: 0.12,
+});
+
 export const DEFAULT_MCR_TILE_ATLAS_CONFIG = Object.freeze({
   version: 1,
+  color: DEFAULT_COLOR_TUNING,
   sheets: Object.freeze(
     Object.fromEntries(
       MCR_TILE_SHEETS.map((sheet) => [
@@ -168,6 +188,16 @@ function finiteNumber(value, fallback, name) {
   return resolved;
 }
 
+function boundedNumber(value, fallback, name, minimum, maximum) {
+  const resolved = finiteNumber(value, fallback, name);
+  if (resolved < minimum || resolved > maximum) {
+    throw new RangeError(
+      `${name} must be within ${minimum} and ${maximum}`
+    );
+  }
+  return resolved;
+}
+
 export function normalizeMcrTileAtlasConfig(input) {
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
     throw new TypeError("MCR tile atlas config must be an object");
@@ -183,6 +213,45 @@ export function normalizeMcrTileAtlasConfig(input) {
   ) {
     throw new TypeError("MCR tile atlas config sheets must be an object");
   }
+  if (
+    input.color !== undefined &&
+    (input.color === null ||
+      typeof input.color !== "object" ||
+      Array.isArray(input.color))
+  ) {
+    throw new TypeError("MCR tile atlas config color must be an object");
+  }
+  const rawColor = input.color ?? {};
+  const color = {
+    contrast: boundedNumber(
+      rawColor.contrast,
+      DEFAULT_COLOR_TUNING.contrast,
+      "color.contrast",
+      0.5,
+      2
+    ),
+    brightness: boundedNumber(
+      rawColor.brightness,
+      DEFAULT_COLOR_TUNING.brightness,
+      "color.brightness",
+      0.5,
+      1.5
+    ),
+    saturation: boundedNumber(
+      rawColor.saturation,
+      DEFAULT_COLOR_TUNING.saturation,
+      "color.saturation",
+      0,
+      2
+    ),
+    gamma: boundedNumber(
+      rawColor.gamma,
+      DEFAULT_COLOR_TUNING.gamma,
+      "color.gamma",
+      0.5,
+      2
+    ),
+  };
   const sheets = {};
   for (const sheet of MCR_TILE_SHEETS) {
     const raw = input.sheets?.[sheet.id] ?? {};
@@ -260,7 +329,7 @@ export function normalizeMcrTileAtlasConfig(input) {
       ...(sheet.allowsSqueeze ? { scaleX, scaleY } : {}),
     };
   }
-  return { version: 1, sheets };
+  return { version: 1, color, sheets };
 }
 
 export async function readMcrTileAtlasConfig(
@@ -298,28 +367,55 @@ async function faceSource(fileName) {
   return source;
 }
 
-function engravedFaceSvg(source, width, height, heightFactor, topFactor) {
+function engravedFaceSvg(
+  source,
+  width,
+  height,
+  heightFactor,
+  topFactor,
+  colorTuning
+) {
   const encoded = Buffer.from(source).toString("base64");
-  const edge = Math.max(0.65, width / 109);
+  const baseEdge = Math.max(0.65, width / 109);
+  const innerShadowEdge =
+    baseEdge * ENGRAVED_FACE_STYLE.innerShadowWidthScale;
+  const rimShadowEdge =
+    baseEdge * ENGRAVED_FACE_STYLE.rimShadowWidthScale;
+  const highlightEdge =
+    baseEdge * ENGRAVED_FACE_STYLE.highlightWidthScale;
+  const colorAmplitude = colorTuning.brightness * colorTuning.contrast;
+  const colorExponent = 1 / colorTuning.gamma;
+  const colorOffset = 0.5 * (1 - colorTuning.contrast);
   return Buffer.from(`
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
       <defs>
         <filter id="engrave" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-          <feComponentTransfer in="SourceGraphic" result="ink">
-            <feFuncA type="linear" slope="0.78"/>
+          <feColorMatrix in="SourceGraphic" type="saturate" values="${colorTuning.saturation}" result="saturated"/>
+          <feComponentTransfer in="saturated" result="ink">
+            <feFuncR type="gamma" amplitude="${colorAmplitude}" exponent="${colorExponent}" offset="${colorOffset}"/>
+            <feFuncG type="gamma" amplitude="${colorAmplitude}" exponent="${colorExponent}" offset="${colorOffset}"/>
+            <feFuncB type="gamma" amplitude="${colorAmplitude}" exponent="${colorExponent}" offset="${colorOffset}"/>
+            <feFuncA type="linear" slope="${ENGRAVED_FACE_STYLE.inkOpacity}"/>
           </feComponentTransfer>
-          <feOffset in="SourceAlpha" dx="${edge}" dy="${edge}" result="down"/>
-          <feComposite in="SourceAlpha" in2="down" operator="out" result="topLeftEdge"/>
-          <feFlood flood-color="#382f25" flood-opacity="0.68" result="shadowColor"/>
-          <feComposite in="shadowColor" in2="topLeftEdge" operator="in" result="shadow"/>
-          <feOffset in="SourceAlpha" dx="${-edge}" dy="${-edge}" result="up"/>
+          <feOffset in="SourceAlpha" dx="${innerShadowEdge}" dy="${innerShadowEdge}" result="shadowDown"/>
+          <feComposite in="SourceAlpha" in2="shadowDown" operator="out" result="shadowEdge"/>
+          <feGaussianBlur in="shadowEdge" stdDeviation="${baseEdge * ENGRAVED_FACE_STYLE.innerShadowBlurScale}" result="softShadowEdge"/>
+          <feComposite in="softShadowEdge" in2="SourceAlpha" operator="in" result="clippedShadowEdge"/>
+          <feFlood flood-color="#241d17" flood-opacity="${ENGRAVED_FACE_STYLE.innerShadowOpacity}" result="shadowColor"/>
+          <feComposite in="shadowColor" in2="clippedShadowEdge" operator="in" result="innerShadow"/>
+          <feOffset in="SourceAlpha" dx="${rimShadowEdge}" dy="${rimShadowEdge}" result="rimDown"/>
+          <feComposite in="SourceAlpha" in2="rimDown" operator="out" result="rimEdge"/>
+          <feFlood flood-color="#15110e" flood-opacity="${ENGRAVED_FACE_STYLE.rimShadowOpacity}" result="rimColor"/>
+          <feComposite in="rimColor" in2="rimEdge" operator="in" result="rimShadow"/>
+          <feOffset in="SourceAlpha" dx="${-highlightEdge}" dy="${-highlightEdge}" result="up"/>
           <feComposite in="SourceAlpha" in2="up" operator="out" result="bottomRightEdge"/>
-          <feGaussianBlur in="bottomRightEdge" stdDeviation="${edge * 0.16}" result="softHighlightEdge"/>
-          <feFlood flood-color="#fffce8" flood-opacity="0.86" result="highlightColor"/>
+          <feGaussianBlur in="bottomRightEdge" stdDeviation="${baseEdge * ENGRAVED_FACE_STYLE.highlightBlurScale}" result="softHighlightEdge"/>
+          <feFlood flood-color="#fffce8" flood-opacity="${ENGRAVED_FACE_STYLE.highlightOpacity}" result="highlightColor"/>
           <feComposite in="highlightColor" in2="softHighlightEdge" operator="in" result="highlight"/>
           <feMerge>
-            <feMergeNode in="shadow"/>
             <feMergeNode in="ink"/>
+            <feMergeNode in="innerShadow"/>
+            <feMergeNode in="rimShadow"/>
             <feMergeNode in="highlight"/>
           </feMerge>
         </filter>
@@ -377,7 +473,8 @@ async function renderFace(
   rotation,
   heightFactor = 0.73,
   topFactor = 0.2,
-  tuning = DEFAULT_TUNING
+  tuning = DEFAULT_TUNING,
+  colorTuning = DEFAULT_COLOR_TUNING
 ) {
   const tunedRotation = (rotation + tuning.rotation) % 360;
   const sideways = tunedRotation === 90 || tunedRotation === 270;
@@ -390,7 +487,8 @@ async function renderFace(
       logicalWidth,
       logicalHeight,
       heightFactor,
-      topFactor
+      topFactor,
+      colorTuning
     )
   );
   if (tunedRotation !== 0) {
@@ -436,7 +534,7 @@ async function gridCellSize(sourcePath) {
   };
 }
 
-async function generateDirectionalAtlas(spec, tuning) {
+async function generateDirectionalAtlas(spec, tuning, colorTuning) {
   const sourcePath = path.join(tenhouRoot, spec.source);
   const size = await gridCellSize(sourcePath);
   const blank = await cropCell(sourcePath, size.width, size.height, 3, 5);
@@ -467,7 +565,8 @@ async function generateDirectionalAtlas(spec, tuning) {
             spec.rotation,
             0.73,
             0.2,
-            tuning
+            tuning,
+            colorTuning
           ),
           left: col * size.width,
           top: row * size.height,
@@ -492,7 +591,8 @@ async function generateDirectionalAtlas(spec, tuning) {
           spec.rotation,
           0.73,
           0.2,
-          tuning
+          tuning,
+          colorTuning
         ),
         left: col * size.width,
         top: size.height * 3,
@@ -523,7 +623,8 @@ async function generateDirectionalAtlas(spec, tuning) {
           spec.rotation,
           0.77,
           0.18,
-          tuning
+          tuning,
+          colorTuning
         ),
         left: col * size.width,
         top: size.height * 4,
@@ -559,7 +660,8 @@ export async function renderMcrTileSheet(sheetId, inputConfig) {
   }
   const rendered = await generateDirectionalAtlas(
     spec,
-    config.sheets[spec.id]
+    config.sheets[spec.id],
+    config.color
   );
   return {
     ...rendered,

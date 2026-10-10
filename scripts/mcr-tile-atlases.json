@@ -1,5 +1,11 @@
 {
   "version": 1,
+  "color": {
+    "contrast": 1,
+    "brightness": 0.9,
+    "saturation": 1.7,
+    "gamma": 0.9
+  },
   "sheets": {
     "ownHand": {
       "offsetX": 0,

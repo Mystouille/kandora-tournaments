@@ -36,6 +36,7 @@ a {
 .app-header,
 .panel-heading,
 .section-heading,
+.control-section-heading,
 .preview-heading,
 .control-inputs,
 .header-actions,
@@ -237,7 +238,26 @@ h3 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+
+.control-section {
   margin-bottom: 22px;
+}
+
+.control-section-heading {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.control-section-heading h3,
+.control-section-heading p {
+  margin: 0;
+}
+
+.control-section-heading p {
+  color: #718077;
+  font-size: 12px;
 }
 
 .control {

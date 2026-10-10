@@ -3,11 +3,17 @@ const elements = {
   atlasSize: document.querySelector("#atlas-size"),
   atlasStage: document.querySelector("#atlas-stage"),
   bake: document.querySelector("#bake"),
+  brightnessNumber: document.querySelector("#brightness-number"),
+  brightnessRange: document.querySelector("#brightness-range"),
   cellPreview: document.querySelector("#cell-preview"),
   cellSelection: document.querySelector("#cell-selection"),
   cellSize: document.querySelector("#cell-size"),
+  contrastNumber: document.querySelector("#contrast-number"),
+  contrastRange: document.querySelector("#contrast-range"),
   dirtyBadge: document.querySelector("#dirty-badge"),
   download: document.querySelector("#download"),
+  gammaNumber: document.querySelector("#gamma-number"),
+  gammaRange: document.querySelector("#gamma-range"),
   offsetXNumber: document.querySelector("#offset-x-number"),
   offsetXRange: document.querySelector("#offset-x-range"),
   offsetYNumber: document.querySelector("#offset-y-number"),
@@ -22,6 +28,8 @@ const elements = {
   scaleXRange: document.querySelector("#scale-x-range"),
   scaleYNumber: document.querySelector("#scale-y-number"),
   scaleYRange: document.querySelector("#scale-y-range"),
+  saturationNumber: document.querySelector("#saturation-number"),
+  saturationRange: document.querySelector("#saturation-range"),
   selectedCellLabel: document.querySelector("#selected-cell-label"),
   sheetKicker: document.querySelector("#sheet-kicker"),
   sheetList: document.querySelector("#sheet-list"),
@@ -101,6 +109,26 @@ function assignControl(range, number, value) {
 
 function renderControls() {
   const tuning = selectedTuning();
+  assignControl(
+    elements.contrastRange,
+    elements.contrastNumber,
+    Math.round(config.color.contrast * 100)
+  );
+  assignControl(
+    elements.brightnessRange,
+    elements.brightnessNumber,
+    Math.round(config.color.brightness * 100)
+  );
+  assignControl(
+    elements.saturationRange,
+    elements.saturationNumber,
+    Math.round(config.color.saturation * 100)
+  );
+  assignControl(
+    elements.gammaRange,
+    elements.gammaNumber,
+    Math.round(config.color.gamma * 100)
+  );
   assignControl(
     elements.offsetXRange,
     elements.offsetXNumber,
@@ -255,11 +283,27 @@ function updateTuning(key, value) {
   schedulePreview();
 }
 
-function bindPair(range, number, key, transform = (value) => value) {
+function updateColor(key, value) {
+  if (!Number.isFinite(value)) {
+    return;
+  }
+  config.color[key] = value;
+  markDirty();
+  renderControls();
+  schedulePreview();
+}
+
+function bindPair(
+  range,
+  number,
+  key,
+  transform = (value) => value,
+  update = updateTuning
+) {
   range.addEventListener("input", () => {
     const value = Number(range.value);
     number.value = range.value;
-    updateTuning(key, transform(value));
+    update(key, transform(value));
   });
   number.addEventListener("input", () => {
     const value = Number(number.value);
@@ -267,7 +311,7 @@ function bindPair(range, number, key, transform = (value) => value) {
       return;
     }
     range.value = number.value;
-    updateTuning(key, transform(value));
+    update(key, transform(value));
   });
 }
 
@@ -331,6 +375,34 @@ elements.atlasStage.addEventListener("click", (event) => {
   renderSelection();
 });
 
+bindPair(
+  elements.contrastRange,
+  elements.contrastNumber,
+  "contrast",
+  (value) => value / 100,
+  updateColor
+);
+bindPair(
+  elements.brightnessRange,
+  elements.brightnessNumber,
+  "brightness",
+  (value) => value / 100,
+  updateColor
+);
+bindPair(
+  elements.saturationRange,
+  elements.saturationNumber,
+  "saturation",
+  (value) => value / 100,
+  updateColor
+);
+bindPair(
+  elements.gammaRange,
+  elements.gammaNumber,
+  "gamma",
+  (value) => value / 100,
+  updateColor
+);
 bindPair(
   elements.offsetXRange,
   elements.offsetXNumber,

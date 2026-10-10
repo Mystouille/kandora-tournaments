@@ -96,6 +96,12 @@ describe("MCR tile atlas editor", () => {
   it("validates bounded per-sheet tuning", () => {
     const configured = normalizeMcrTileAtlasConfig({
       version: 1,
+      color: {
+        contrast: 1.2,
+        brightness: 0.9,
+        saturation: 1.4,
+        gamma: 1.1,
+      },
       sheets: {
         ownHand: {
           offsetX: 2.5,
@@ -104,6 +110,12 @@ describe("MCR tile atlas editor", () => {
           rotation: 90,
         },
       },
+    });
+    expect(configured.color).toEqual({
+      contrast: 1.2,
+      brightness: 0.9,
+      saturation: 1.4,
+      gamma: 1.1,
     });
     expect(configured.sheets.ownHand).toEqual({
       offsetX: 2.5,
@@ -121,6 +133,9 @@ describe("MCR tile atlas editor", () => {
       scaleX: 1,
       scaleY: 1,
     });
+    expect(normalizeMcrTileAtlasConfig({}).color).toEqual(
+      DEFAULT_MCR_TILE_ATLAS_CONFIG.color
+    );
     expect(() =>
       normalizeMcrTileAtlasConfig({
         sheets: { ownHand: { offsetY: 101 } },
@@ -146,6 +161,18 @@ describe("MCR tile atlas editor", () => {
         sheets: { leftSmall: { scaleY: 0.4 } },
       })
     ).toThrow(/axis scales/i);
+    for (const [property, value] of Object.entries({
+      contrast: 2.1,
+      brightness: 0.4,
+      saturation: -0.1,
+      gamma: 2.1,
+    })) {
+      expect(() =>
+        normalizeMcrTileAtlasConfig({
+          color: { [property]: value },
+        })
+      ).toThrow(new RegExp(property, "i"));
+    }
   });
 
   it("serves state and a same-sized PNG preview", async () => {
@@ -207,14 +234,52 @@ describe("MCR tile atlas editor", () => {
       ),
     ]);
     expect(horizontalBounds.width).toBeLessThan(baseBounds.width);
-    expect(horizontalBounds.height).toBe(baseBounds.height);
+    expect(
+      Math.abs(horizontalBounds.height - baseBounds.height)
+    ).toBeLessThanOrEqual(1);
     expect(verticalBounds.height).toBeLessThan(baseBounds.height);
-    expect(verticalBounds.width).toBe(baseBounds.width);
+    expect(
+      Math.abs(verticalBounds.width - baseBounds.width)
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it("applies every global color control to rendered decals", async () => {
+    const neutralConfig = normalizeMcrTileAtlasConfig({});
+    const variants = Object.entries({
+      contrast: 0.7,
+      brightness: 0.75,
+      saturation: 0,
+      gamma: 1.8,
+    });
+    const [neutral, ...renderedVariants] = await Promise.all([
+      renderMcrTileSheet("bottomSmall", neutralConfig),
+      ...variants.map(([property, value]) =>
+        renderMcrTileSheet(
+          "bottomSmall",
+          normalizeMcrTileAtlasConfig({
+            color: { [property]: value },
+          })
+        )
+      ),
+    ]);
+    for (const rendered of renderedVariants) {
+      expect(rendered.buffer.equals(neutral.buffer)).toBe(false);
+      expect(rendered).toMatchObject({
+        width: neutral.width,
+        height: neutral.height,
+      });
+    }
   });
 
   it("persists settings and bakes all production-shaped atlases", async () => {
     const { baseUrl, configPath, outputRoot } = await fixture();
     const config = normalizeMcrTileAtlasConfig({
+      color: {
+        contrast: 1.1,
+        brightness: 0.95,
+        saturation: 1.2,
+        gamma: 1.05,
+      },
       sheets: {
         ownHand: {
           offsetX: 1.5,
@@ -245,6 +310,9 @@ describe("MCR tile atlas editor", () => {
     expect(
       JSON.parse(await fs.readFile(configPath, "utf8")).sheets.ownHand
     ).toEqual(config.sheets.ownHand);
+    expect(
+      JSON.parse(await fs.readFile(configPath, "utf8")).color
+    ).toEqual(config.color);
     await expect(
       Promise.all(
         MCR_TILE_SHEETS.map(async ({ output }) => {

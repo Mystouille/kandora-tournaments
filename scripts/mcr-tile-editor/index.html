@@ -53,7 +53,130 @@
             </div>
           </div>
 
-          <div class="controls" aria-label="Decal transform">
+          <section
+            class="control-section"
+            aria-labelledby="decal-color-heading"
+          >
+            <div class="control-section-heading">
+              <h3 id="decal-color-heading">Decal color</h3>
+              <p>Applied to every sprite sheet.</p>
+            </div>
+            <div class="controls">
+              <label class="control">
+                <span>
+                  Contrast
+                  <small>global tonal range</small>
+                </span>
+                <div class="control-inputs">
+                  <input
+                    id="contrast-range"
+                    type="range"
+                    min="50"
+                    max="200"
+                    step="1"
+                  />
+                  <div class="percent-input">
+                    <input
+                      id="contrast-number"
+                      type="number"
+                      min="50"
+                      max="200"
+                      step="1"
+                    />
+                    <span>%</span>
+                  </div>
+                </div>
+              </label>
+
+              <label class="control">
+                <span>
+                  Brightness
+                  <small>global light level</small>
+                </span>
+                <div class="control-inputs">
+                  <input
+                    id="brightness-range"
+                    type="range"
+                    min="50"
+                    max="150"
+                    step="1"
+                  />
+                  <div class="percent-input">
+                    <input
+                      id="brightness-number"
+                      type="number"
+                      min="50"
+                      max="150"
+                      step="1"
+                    />
+                    <span>%</span>
+                  </div>
+                </div>
+              </label>
+
+              <label class="control">
+                <span>
+                  Saturation
+                  <small>global color intensity</small>
+                </span>
+                <div class="control-inputs">
+                  <input
+                    id="saturation-range"
+                    type="range"
+                    min="0"
+                    max="200"
+                    step="1"
+                  />
+                  <div class="percent-input">
+                    <input
+                      id="saturation-number"
+                      type="number"
+                      min="0"
+                      max="200"
+                      step="1"
+                    />
+                    <span>%</span>
+                  </div>
+                </div>
+              </label>
+
+              <label class="control">
+                <span>
+                  Gamma
+                  <small>higher lifts midtones</small>
+                </span>
+                <div class="control-inputs">
+                  <input
+                    id="gamma-range"
+                    type="range"
+                    min="50"
+                    max="200"
+                    step="1"
+                  />
+                  <div class="percent-input">
+                    <input
+                      id="gamma-number"
+                      type="number"
+                      min="50"
+                      max="200"
+                      step="1"
+                    />
+                    <span>%</span>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </section>
+
+          <section
+            class="control-section"
+            aria-labelledby="decal-transform-heading"
+          >
+            <div class="control-section-heading">
+              <h3 id="decal-transform-heading">Sheet transform</h3>
+              <p>Applied to the selected sprite sheet.</p>
+            </div>
+            <div class="controls" aria-label="Decal transform">
             <label class="control">
               <span>
                 Horizontal offset
@@ -191,6 +314,7 @@
               </div>
             </label>
           </div>
+          </section>
 
           <div class="preview-layout">
             <section class="preview-card atlas-card">

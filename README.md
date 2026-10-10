@@ -68,6 +68,9 @@ npm run dev
 | `npm run game:mcr-tile-editor` | Open the local MCR decal editor at `127.0.0.1:4174`. |
 | `npm run game:generate-mcr-tiles` | Rebuild the prebaked MCR tile atlases from saved settings. |
 
+The MCR tile editor previews per-sheet transforms and global decal contrast,
+brightness, saturation, and gamma before baking the production atlases.
+
 ## License
 
 MIT
