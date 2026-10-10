@@ -92,6 +92,65 @@ async function coloredBounds(buffer, left, top, width, height) {
   return { width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
+async function blueCarvingLuminance(buffer, left, top, width, height) {
+  const { data, info } = await sharp(buffer)
+    .extract({ left, top, width, height })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const pixels = [];
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const index = (y * info.width + x) * info.channels;
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      if (blue - red > 45 && blue - green > 20) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        pixels.push({
+          x,
+          y,
+          luminance: 0.2126 * red + 0.7152 * green + 0.0722 * blue,
+        });
+      }
+    }
+  }
+  if (pixels.length === 0) {
+    throw new Error("Expected blue decal pixels");
+  }
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const threshold = Math.min(maxX - minX, maxY - minY) * 0.25;
+  let topLeftLuminance = 0;
+  let topLeftPixels = 0;
+  let bottomRightLuminance = 0;
+  let bottomRightPixels = 0;
+  for (const pixel of pixels) {
+    const direction = pixel.x - centerX + pixel.y - centerY;
+    if (direction < -threshold) {
+      topLeftLuminance += pixel.luminance;
+      topLeftPixels += 1;
+    } else if (direction > threshold) {
+      bottomRightLuminance += pixel.luminance;
+      bottomRightPixels += 1;
+    }
+  }
+  if (topLeftPixels === 0 || bottomRightPixels === 0) {
+    throw new Error("Expected directional blue decal pixels");
+  }
+  return {
+    topLeft: topLeftLuminance / topLeftPixels,
+    bottomRight: bottomRightLuminance / bottomRightPixels,
+  };
+}
+
 describe("MCR tile atlas editor", () => {
   it("validates bounded per-sheet tuning", () => {
     const configured = normalizeMcrTileAtlasConfig({
@@ -241,6 +300,29 @@ describe("MCR tile atlas editor", () => {
     expect(
       Math.abs(verticalBounds.width - baseBounds.width)
     ).toBeLessThanOrEqual(1);
+  });
+
+  it("keeps carving lighting fixed after decal rotation", async () => {
+    const config = normalizeMcrTileAtlasConfig({});
+    const [bottom, top] = await Promise.all([
+      renderMcrTileSheet("bottomSmall", config),
+      renderMcrTileSheet("topSmall", config),
+    ]);
+    const cell = { left: 86, top: 130, width: 86, height: 130 };
+    const lighting = await Promise.all(
+      [bottom, top].map(({ buffer }) =>
+        blueCarvingLuminance(
+          buffer,
+          cell.left,
+          cell.top,
+          cell.width,
+          cell.height
+        )
+      )
+    );
+    for (const { topLeft, bottomRight } of lighting) {
+      expect(bottomRight - topLeft).toBeGreaterThan(2);
+    }
   });
 
   it("applies every global color control to rendered decals", async () => {

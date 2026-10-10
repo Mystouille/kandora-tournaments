@@ -367,16 +367,25 @@ async function faceSource(fileName) {
   return source;
 }
 
-function engravedFaceSvg(
-  source,
-  width,
-  height,
-  heightFactor,
-  topFactor,
-  colorTuning
-) {
+function positionedFaceSvg(source, width, height, heightFactor, topFactor) {
   const encoded = Buffer.from(source).toString("base64");
-  const baseEdge = Math.max(0.65, width / 109);
+  return Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <image
+        href="data:image/svg+xml;base64,${encoded}"
+        x="${width * 0.05}"
+        y="${height * topFactor}"
+        width="${width * 0.9}"
+        height="${height * heightFactor}"
+        preserveAspectRatio="xMidYMid meet"
+      />
+    </svg>
+  `);
+}
+
+function engravedFaceSvg(source, width, height, colorTuning) {
+  const encoded = source.toString("base64");
+  const baseEdge = Math.max(0.65, Math.min(width, height) / 109);
   const innerShadowEdge =
     baseEdge * ENGRAVED_FACE_STYLE.innerShadowWidthScale;
   const rimShadowEdge =
@@ -421,12 +430,12 @@ function engravedFaceSvg(
         </filter>
       </defs>
       <image
-        href="data:image/svg+xml;base64,${encoded}"
-        x="${width * 0.05}"
-        y="${height * topFactor}"
-        width="${width * 0.9}"
-        height="${height * heightFactor}"
-        preserveAspectRatio="xMidYMid meet"
+        href="data:image/png;base64,${encoded}"
+        x="0"
+        y="0"
+        width="${width}"
+        height="${height}"
+        preserveAspectRatio="none"
         filter="url(#engrave)"
       />
     </svg>
@@ -482,13 +491,12 @@ async function renderFace(
   const logicalHeight = sideways ? cellWidth : cellHeight;
   const source = await faceSource(fileName);
   let image = sharp(
-    engravedFaceSvg(
+    positionedFaceSvg(
       source,
       logicalWidth,
       logicalHeight,
       heightFactor,
-      topFactor,
-      colorTuning
+      topFactor
     )
   );
   if (tunedRotation !== 0) {
@@ -496,8 +504,19 @@ async function renderFace(
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     });
   }
+  const rotated = await image.png().toBuffer({ resolveWithObject: true });
+  const engraved = await sharp(
+    engravedFaceSvg(
+      rotated.data,
+      rotated.info.width,
+      rotated.info.height,
+      colorTuning
+    )
+  )
+    .png()
+    .toBuffer();
   return applyTuning(
-    await image.png().toBuffer(),
+    engraved,
     cellWidth,
     cellHeight,
     tuning
