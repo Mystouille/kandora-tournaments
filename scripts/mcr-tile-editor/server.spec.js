@@ -1,0 +1,261 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import sharp from "sharp";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  DEFAULT_MCR_TILE_ATLAS_CONFIG,
+  MCR_TILE_SHEETS,
+  normalizeMcrTileAtlasConfig,
+  renderMcrTileSheet,
+} from "../generate-mcr-tile-atlases.mjs";
+import { createMcrTileEditorServer } from "./server.mjs";
+
+const temporaryRoots = [];
+const servers = [];
+
+afterEach(async () => {
+  await Promise.all(
+    servers.splice(0).map(
+      (server) =>
+        new Promise((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        })
+    )
+  );
+  await Promise.all(
+    temporaryRoots.splice(0).map((root) =>
+      fs.rm(root, { recursive: true, force: true })
+    )
+  );
+});
+
+async function fixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mcr-tile-editor-"));
+  temporaryRoots.push(root);
+  const configPath = path.join(root, "config.json");
+  const outputRoot = path.join(root, "output");
+  await fs.writeFile(
+    configPath,
+    `${JSON.stringify(DEFAULT_MCR_TILE_ATLAS_CONFIG, null, 2)}\n`
+  );
+  const server = createMcrTileEditorServer({ configPath, outputRoot });
+  servers.push(server);
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Expected a TCP editor address");
+  }
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    configPath,
+    outputRoot,
+  };
+}
+
+async function coloredBounds(buffer, left, top, width, height) {
+  const { data, info } = await sharp(buffer)
+    .extract({ left, top, width, height })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const index = (y * info.width + x) * info.channels;
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      if (Math.max(red, green, blue) - Math.min(red, green, blue) > 35) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) {
+    throw new Error("Expected colored decal pixels");
+  }
+  return { width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+describe("MCR tile atlas editor", () => {
+  it("validates bounded per-sheet tuning", () => {
+    const configured = normalizeMcrTileAtlasConfig({
+      version: 1,
+      sheets: {
+        ownHand: {
+          offsetX: 2.5,
+          offsetY: 7,
+          scale: 1.08,
+          rotation: 90,
+        },
+      },
+    });
+    expect(configured.sheets.ownHand).toEqual({
+      offsetX: 2.5,
+      offsetY: 7,
+      scale: 1.08,
+      rotation: 90,
+    });
+    expect(configured.sheets.bottomSmall).toEqual({
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+      rotation: 0,
+    });
+    expect(configured.sheets.leftSmall).toMatchObject({
+      scaleX: 1,
+      scaleY: 1,
+    });
+    expect(() =>
+      normalizeMcrTileAtlasConfig({
+        sheets: { ownHand: { offsetY: 101 } },
+      })
+    ).toThrow(/offset/i);
+    expect(() =>
+      normalizeMcrTileAtlasConfig({
+        sheets: { ownHand: { scale: 2 } },
+      })
+    ).toThrow(/scale/i);
+    expect(() =>
+      normalizeMcrTileAtlasConfig({
+        sheets: { ownHand: { rotation: 45 } },
+      })
+    ).toThrow(/rotation/i);
+    expect(() =>
+      normalizeMcrTileAtlasConfig({
+        sheets: { ownHand: { scaleX: 0.8 } },
+      })
+    ).toThrow(/squeez/i);
+    expect(() =>
+      normalizeMcrTileAtlasConfig({
+        sheets: { leftSmall: { scaleY: 0.4 } },
+      })
+    ).toThrow(/axis scales/i);
+  });
+
+  it("serves state and a same-sized PNG preview", async () => {
+    const { baseUrl } = await fixture();
+    const stateResponse = await fetch(`${baseUrl}/api/state`);
+    expect(stateResponse.status).toBe(200);
+    const state = await stateResponse.json();
+    expect(state.sheets.map(({ id }) => id)).toEqual(
+      MCR_TILE_SHEETS.map(({ id }) => id)
+    );
+
+    state.config.sheets.ownHand.offsetY = 4;
+    const previewResponse = await fetch(`${baseUrl}/api/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sheetId: "ownHand",
+        config: state.config,
+      }),
+    });
+    expect(previewResponse.status).toBe(200);
+    expect(previewResponse.headers.get("content-type")).toBe("image/png");
+    expect(previewResponse.headers.get("x-atlas-width")).toBe("1310");
+    expect(previewResponse.headers.get("x-atlas-height")).toBe("990");
+    expect((await previewResponse.arrayBuffer()).byteLength).toBeGreaterThan(
+      100_000
+    );
+  });
+
+  it("squeezes each side-sheet axis independently", async () => {
+    const baseConfig = normalizeMcrTileAtlasConfig({});
+    const horizontalConfig = normalizeMcrTileAtlasConfig({
+      sheets: { leftSmall: { scaleX: 0.75 } },
+    });
+    const verticalConfig = normalizeMcrTileAtlasConfig({
+      sheets: { leftSmall: { scaleY: 0.75 } },
+    });
+    const [base, horizontal, vertical] = await Promise.all([
+      renderMcrTileSheet("leftSmall", baseConfig),
+      renderMcrTileSheet("leftSmall", horizontalConfig),
+      renderMcrTileSheet("leftSmall", verticalConfig),
+    ]);
+    const cell = { left: 116, top: 0, width: 116, height: 107 };
+    const [baseBounds, horizontalBounds, verticalBounds] = await Promise.all([
+      coloredBounds(base.buffer, cell.left, cell.top, cell.width, cell.height),
+      coloredBounds(
+        horizontal.buffer,
+        cell.left,
+        cell.top,
+        cell.width,
+        cell.height
+      ),
+      coloredBounds(
+        vertical.buffer,
+        cell.left,
+        cell.top,
+        cell.width,
+        cell.height
+      ),
+    ]);
+    expect(horizontalBounds.width).toBeLessThan(baseBounds.width);
+    expect(horizontalBounds.height).toBe(baseBounds.height);
+    expect(verticalBounds.height).toBeLessThan(baseBounds.height);
+    expect(verticalBounds.width).toBe(baseBounds.width);
+  });
+
+  it("persists settings and bakes all production-shaped atlases", async () => {
+    const { baseUrl, configPath, outputRoot } = await fixture();
+    const config = normalizeMcrTileAtlasConfig({
+      sheets: {
+        ownHand: {
+          offsetX: 1.5,
+          offsetY: 6,
+          scale: 0.96,
+          rotation: 180,
+        },
+        bottomSmall: {
+          offsetX: -1,
+          offsetY: 3,
+          scale: 1.04,
+          rotation: 270,
+        },
+        leftSmall: {
+          scaleX: 0.82,
+          scaleY: 0.91,
+        },
+      },
+    });
+    const response = await fetch(`${baseUrl}/api/bake`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ config }),
+    });
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.outputs).toHaveLength(MCR_TILE_SHEETS.length);
+    expect(
+      JSON.parse(await fs.readFile(configPath, "utf8")).sheets.ownHand
+    ).toEqual(config.sheets.ownHand);
+    await expect(
+      Promise.all(
+        MCR_TILE_SHEETS.map(async ({ output }) => {
+          const stat = await fs.stat(path.join(outputRoot, output));
+          return stat.size;
+        })
+      )
+    ).resolves.toEqual(
+      expect.arrayContaining(
+        MCR_TILE_SHEETS.map(() => expect.any(Number))
+      )
+    );
+  });
+});

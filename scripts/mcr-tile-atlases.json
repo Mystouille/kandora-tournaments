@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "sheets": {
+    "ownHand": {
+      "offsetX": 0,
+      "offsetY": 10,
+      "scale": 1.1,
+      "rotation": 0
+    },
+    "bottomSmall": {
+      "offsetX": 0,
+      "offsetY": -27,
+      "scale": 1.1,
+      "rotation": 0
+    },
+    "topSmall": {
+      "offsetX": 0,
+      "offsetY": -10,
+      "scale": 1.1,
+      "rotation": 0
+    },
+    "leftSmall": {
+      "offsetX": 10.5,
+      "offsetY": -19.5,
+      "scale": 1.5,
+      "rotation": 0,
+      "scaleX": 0.98,
+      "scaleY": 0.53
+    },
+    "rightSmall": {
+      "offsetX": -9,
+      "offsetY": -19.5,
+      "scale": 1.5,
+      "rotation": 0,
+      "scaleX": 0.98,
+      "scaleY": 0.53
+    }
+  }
+}

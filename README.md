@@ -65,6 +65,8 @@ npm run dev
 | `npm run submodules:init` | Check out the `kandora-core` + `kandora-game` submodules. |
 | `npm run core:update`     | Update `app/core` to the latest `kandora-core` main.        |
 | `npm run game:update`     | Update `app/game` to the latest `kandora-game` main.      |
+| `npm run game:mcr-tile-editor` | Open the local MCR decal editor at `127.0.0.1:4174`. |
+| `npm run game:generate-mcr-tiles` | Rebuild the prebaked MCR tile atlases from saved settings. |
 
 ## License
 

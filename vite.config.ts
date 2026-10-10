@@ -84,6 +84,10 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    include: ["app/**/*.spec.ts", "mobile/**/*.spec.ts"],
+    include: [
+      "app/**/*.spec.ts",
+      "mobile/**/*.spec.ts",
+      "scripts/**/*.spec.js",
+    ],
   },
 });
