@@ -2,15 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getAuthenticatedUser: vi.fn(),
-  annotateWaits: vi.fn(),
   resolveReplayViewerData: vi.fn(),
 }));
 
 vi.mock("~/utils/jwt.server", () => ({
   getAuthenticatedUser: mocks.getAuthenticatedUser,
-}));
-vi.mock("~/services/annotateWaits", () => ({
-  annotateWaits: mocks.annotateWaits,
 }));
 vi.mock("~/services/replayViewerData.server", () => ({
   resolveReplayViewerData: mocks.resolveReplayViewerData,
@@ -51,7 +47,6 @@ describe("replay viewer cache authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getAuthenticatedUser.mockResolvedValue(null);
-    mocks.annotateWaits.mockReturnValue([]);
     mocks.resolveReplayViewerData.mockResolvedValue(found);
   });
 

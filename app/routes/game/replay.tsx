@@ -26,7 +26,7 @@ import { replaySeatNames, replayVariant } from "~/game/replay/variant";
 import { activeSeats } from "~/game/rules/seats";
 import type { GameEvent, Seat } from "~/game/protocol/messages";
 import { resolveReplayViewerData } from "~/services/replayViewerData.server";
-import { annotateWaits } from "~/services/annotateWaits";
+import { recordedWaitsByIndex } from "~/game/replay/recordedWaits";
 import {
   bytesToBase64,
   base64ToBytes,
@@ -260,7 +260,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     }
     return {
       log: resolved.log,
-      waitsByIndex: annotateWaits(resolved.log.events),
       review: resolved.review,
       currentUserId,
       currentUserName,
@@ -328,12 +327,15 @@ export default function ReplayRoute({
   const [message, messageHolder] = antMessage.useMessage();
   const {
     log,
-    waitsByIndex,
     review: initialReview,
     currentUserId,
     currentUserName,
     seatEnrichment,
   } = loaderData;
+  const waitsByIndex = useMemo(
+    () => recordedWaitsByIndex(log.events),
+    [log.events]
+  );
   const variant = useMemo(() => replayVariant(log), [log]);
   const names = useMemo(() => replaySeatNames(log), [log]);
   useScreenWakeLock();

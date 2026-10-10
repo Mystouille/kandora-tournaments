@@ -5,6 +5,7 @@ import {
 } from "~/core/models/tournament/Game";
 import { GameRecordModel } from "~/core/models/tournament/GameRecord";
 import { ReplayLogModel } from "~/core/models/game/ReplayLog";
+import { recordMissingDiscardWaits } from "~/game/replay/recordWaits";
 import { REPLAY_LOG_SCHEMA_VERSION } from "~/game/replay/types";
 import { TeamModel } from "~/core/models/tournament/Team";
 import { UserModel } from "~/core/models/shared/User";
@@ -495,7 +496,7 @@ async function hydrateReplayLog(
           startedAt: replayLog.startedAt,
           endedAt: replayLog.endedAt,
           seats: replayLog.seats,
-          events: replayLog.events,
+          events: recordMissingDiscardWaits(replayLog.events),
           schemaVersion: replayLog.schemaVersion,
           parsedAt: new Date(),
         },

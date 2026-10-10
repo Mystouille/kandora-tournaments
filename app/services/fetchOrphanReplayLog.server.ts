@@ -20,6 +20,7 @@
  * `ReplaySource` enum onto the right connector singleton directly.
  */
 import { ReplayLogModel } from "~/core/models/game/ReplayLog";
+import { recordMissingDiscardWaits } from "~/game/replay/recordWaits";
 import type { ReplayLog, ReplaySource } from "~/game/replay/types";
 import mongoose from "mongoose";
 import { MajsoulLeagueConnector } from "~/services/connectors/MajsoulLeagueConnector.server";
@@ -65,11 +66,15 @@ export async function fetchOrphanReplayLog(
   if (!mongoose.isValidObjectId(creationTriggeredBy)) {
     throw new Error("Replay creation requires a valid user id");
   }
-  const log = await fetchFromPlatform(source, gameId);
+  const fetched = await fetchFromPlatform(source, gameId);
 
-  if (!log) {
+  if (!fetched) {
     return null;
   }
+  const log: ReplayLog = {
+    ...fetched,
+    events: recordMissingDiscardWaits(fetched.events),
+  };
 
   try {
     await ReplayLogModel.findOneAndUpdate(

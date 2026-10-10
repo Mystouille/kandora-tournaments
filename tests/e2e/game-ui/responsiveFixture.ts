@@ -140,7 +140,6 @@ export const fixtureReplayData: ComponentProps<
   typeof ReplayRoute
 >["loaderData"] = {
   log,
-  waitsByIndex: fixtureEvents.map(() => []),
   review: null,
   currentUserId: "browser-reviewer",
   currentUserName: "Browser reviewer",

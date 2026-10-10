@@ -18,7 +18,7 @@ import {
   replayReducer,
   replayViewToMatchView,
 } from "~/game/replay/player";
-import { annotateWaits } from "~/services/annotateWaits";
+import { recordedWaitsByIndex } from "~/game/replay/recordedWaits";
 import type { Route } from "./+types/spectate-har";
 
 const SPEEDS = [1, 4, 16] as const;
@@ -50,7 +50,7 @@ export async function loader() {
       complete: session.complete,
       replay: session.replay,
       eventDelaysMs: session.eventDelaysMs,
-      waitsByIndex: annotateWaits(session.events),
+      waitsByIndex: recordedWaitsByIndex(session.events),
     })),
   };
 }
