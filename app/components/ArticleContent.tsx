@@ -22,7 +22,7 @@ interface ArticleContentProps {
   config?: RichTextConfig;
 }
 
-const TILE_REGEX = /^[0-9][mpsz]$/;
+const TILE_REGEX = /^[0-9]'{0,2}[mpsz]$/;
 
 /**
  * Renders article HTML content with custom mahjong-tile and mahjong-hand

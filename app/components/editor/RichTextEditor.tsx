@@ -181,7 +181,7 @@ export function RichTextEditor({
   }
 
   const insertTile = () => {
-    const tiles = splitHandTiles(tileInput.trim());
+    const tiles = splitHandTiles(tileInput.trim(), { preserveCalled: true });
     if (tiles.length > 0) {
       editor
         .chain()

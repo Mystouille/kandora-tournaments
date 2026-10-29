@@ -1388,9 +1388,9 @@ export const en: Translations = {
       editor: {
         insertTiles: "Tiles",
         insertTilesTitle: "Insert Mahjong Tiles",
-        insertTilesPlaceholder: "e.g. 456p, 1m7z, 19s",
+        insertTilesPlaceholder: "e.g. 456p, 1m7z, 55'5s",
         insertTilesHint:
-          "Format: digits + suit letter (m=man, p=pin, s=sou, z=honors 1-7). Multiple tiles: 456p inserts 4p 5p 6p.",
+          "Format: digits + suit letter (m=man, p=pin, s=sou, z=honors 1-7). Multiple tiles: 456p inserts 4p 5p 6p. Called tile: 5's. 55'5s = 5s5's5s.",
         insertHand: "Hand",
         insertHandTitle: "Insert Mahjong Hand",
         insertHandPlaceholder: "e.g. 123m456p789s11z",

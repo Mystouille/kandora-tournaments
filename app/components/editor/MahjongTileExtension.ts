@@ -4,12 +4,11 @@ import { MahjongTileNodeView } from "./MahjongTileNodeView";
 import { splitHandTiles } from "../mahjong/TileDisplay";
 
 /**
- * Matches mahjong shorthand (groups of digits / back-tile `x` markers each
- * ending in a suit letter m/p/s/z) at a word boundary, immediately followed by
- * a single space — e.g. "34s ", "123m456p ", "1z ". The trailing space triggers
- * the rule; the leading `\b` avoids mid-word matches like the "3s" in "mp3s ".
+ * Matches suited tile groups with optional called-tile apostrophes, followed by
+ * whitespace. The lookbehind prevents matching inside words or after a called
+ * marker, e.g. the trailing "5s" inside "mp55'5s ".
  */
-const TILE_INPUT_REGEX = /\b((?:[0-9xX]+[mpsz])+)(\s)$/;
+const TILE_INPUT_REGEX = /(?<![\w'])((?:(?:[0-9xX]'{0,2})+[mpsz])+)(\s)$/;
 
 export interface MahjongTileOptions {
   sizeFactor: number;
@@ -54,7 +53,7 @@ export const MahjongTileExtension = Node.create<MahjongTileOptions>({
       new InputRule({
         find: TILE_INPUT_REGEX,
         handler: ({ state, range, match }) => {
-          const tiles = splitHandTiles(match[1]);
+          const tiles = splitHandTiles(match[1], { preserveCalled: true });
           if (tiles.length === 0) {
             return null;
           }

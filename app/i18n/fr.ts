@@ -1415,9 +1415,9 @@ export const fr: Translations = {
       editor: {
         insertTiles: "Tuiles",
         insertTilesTitle: "Insérer des tuiles de mahjong",
-        insertTilesPlaceholder: "ex. 456p, 1m7z, 19s",
+        insertTilesPlaceholder: "ex. 456p, 1m7z, 55'5s",
         insertTilesHint:
-          "Format : chiffres + lettre de famille (m=man, p=pin, s=sou, z=honneurs 1-7). Plusieurs tuiles : 456p insère 4p 5p 6p.",
+          "Format : chiffres + lettre de famille (m=man, p=pin, s=sou, z=honneurs 1-7). Plusieurs tuiles : 456p insère 4p 5p 6p. Tuile appelée : 5's. 55'5s = 5s5's5s.",
         insertHand: "Main",
         insertHandTitle: "Insérer une main de mahjong",
         insertHandPlaceholder: "ex. 123m456p789s11z",
