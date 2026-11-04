@@ -9,6 +9,7 @@ import {
 import {
   fixtureEvents,
   fixtureMatchId,
+  fixtureReplayEvents,
   fixtureRoom,
   fixtureSnapshot,
   fixtureViewers,
@@ -34,6 +35,14 @@ const sizes = [
   [390, 844, 0.75],
   [844, 390, 0.75],
 ] as const;
+const replayShortcuts = [
+  "ArrowRight",
+  "ArrowLeft",
+  "Shift+ArrowRight",
+  "Shift+ArrowLeft",
+  "Control+ArrowRight",
+  "Control+ArrowLeft",
+];
 
 test.setTimeout(120_000);
 test.use({ viewport: { width: 1280, height: 900 } });
@@ -204,6 +213,12 @@ async function open(page: Page, mode: string) {
       page.getByRole("complementary", { name: "Current viewers" })
     ).toContainText("30");
   }
+}
+
+async function expectReplayIndex(page: Page, index: number) {
+  await expect(page.locator(".web-table-ui-navigation > span")).toHaveText(
+    `${index + 1} / ${fixtureReplayEvents.length}`
+  );
 }
 
 async function scaledDimensions(page: Page) {
@@ -491,6 +506,302 @@ for (const mode of ["spectate", "replay"]) {
     ).toBe(true);
   });
 }
+
+test("replay keyboard: steps events and respects bounds during key repeat", async ({
+  page,
+}) => {
+  await open(page, "replay");
+  await expectReplayIndex(page, 4);
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, 5);
+  await page.keyboard.press("ArrowLeft");
+  await expectReplayIndex(page, 4);
+
+  const repeat = async (key: string, count: number) => {
+    await page.evaluate(
+      ({ key, count }) => {
+        for (let i = 0; i < count; i++) {
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key,
+              repeat: i > 0,
+              bubbles: true,
+              cancelable: true,
+            })
+          );
+        }
+      },
+      { key, count }
+    );
+  };
+  await repeat("ArrowRight", 3);
+  await expectReplayIndex(page, 7);
+  await repeat("ArrowRight", fixtureReplayEvents.length);
+  await expectReplayIndex(page, fixtureReplayEvents.length - 1);
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, fixtureReplayEvents.length - 1);
+  await repeat("ArrowLeft", fixtureReplayEvents.length);
+  await expectReplayIndex(page, -1);
+  await page.keyboard.press("ArrowLeft");
+  await expectReplayIndex(page, -1);
+  await expect(
+    page.getByRole("button", { name: "Previous event", exact: true })
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Next round", exact: true }).click();
+  await expectReplayIndex(page, 1);
+  expect(new URL(page.url()).searchParams.get("event")).toBe("4");
+});
+
+test("replay keyboard: finds focused-player discards across rounds", async ({
+  page,
+}) => {
+  await open(page, "replay");
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expectReplayIndex(page, 3);
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expectReplayIndex(page, 3);
+  await page.keyboard.press("Shift+ArrowRight");
+  await expectReplayIndex(page, 13);
+  await page.keyboard.press("Shift+ArrowRight");
+  await expectReplayIndex(page, 23);
+  await page.keyboard.press("Shift+ArrowRight");
+  await expectReplayIndex(page, 23);
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expectReplayIndex(page, 13);
+
+  const nextEvent = page.getByRole("button", {
+    name: "Next event",
+    exact: true,
+  });
+  await page.getByLabel("Focus seat").selectOption("1");
+  await nextEvent.focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expectReplayIndex(page, 15);
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expectReplayIndex(page, 5);
+  await page.getByLabel("Focus seat").selectOption("2");
+  await nextEvent.focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expectReplayIndex(page, 7);
+});
+
+test("replay keyboard: round buttons match shortcuts and show tooltips", async ({
+  page,
+}) => {
+  await open(page, "replay");
+  const previous = page.getByRole("button", {
+    name: "Previous round",
+    exact: true,
+  });
+  const next = page.getByRole("button", { name: "Next round", exact: true });
+  await expect(previous).toHaveAttribute(
+    "title",
+    "Restart round / previous round (Ctrl+Left)"
+  );
+  await expect(next).toHaveAttribute("title", "Next round (Ctrl+Right)");
+  await expect(
+    page.getByRole("button", { name: "Previous event", exact: true })
+  ).toHaveAttribute(
+    "title",
+    "Previous event (Left); previous focused-player discard (Shift+Left)"
+  );
+  await expect(
+    page.getByRole("button", { name: "Next event", exact: true })
+  ).toHaveAttribute(
+    "title",
+    "Next event (Right); next focused-player discard (Shift+Right)"
+  );
+
+  await previous.click();
+  await expectReplayIndex(page, 1);
+  await expect(previous).toBeDisabled();
+  await next.click();
+  await expectReplayIndex(page, 11);
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, 12);
+  await page.keyboard.press("Control+ArrowLeft");
+  await expectReplayIndex(page, 11);
+  await page.keyboard.press("Control+ArrowLeft");
+  await expectReplayIndex(page, 1);
+  await page.keyboard.press("Control+ArrowLeft");
+  await expectReplayIndex(page, 1);
+  await page.keyboard.press("Control+ArrowRight");
+  await expectReplayIndex(page, 11);
+  await page.keyboard.press("Control+ArrowRight");
+  await expectReplayIndex(page, 21);
+  await expect(next).toBeDisabled();
+  await page.keyboard.press("Control+ArrowRight");
+  await expectReplayIndex(page, 21);
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, 22);
+  await previous.click();
+  await expectReplayIndex(page, 21);
+  await previous.click();
+  await expectReplayIndex(page, 11);
+  await expect(page.getByLabel("Round", { exact: true })).toHaveValue("11");
+});
+
+test("replay keyboard: leaves native controls and unsupported keys alone", async ({
+  page,
+}) => {
+  await open(page, "replay");
+  const prevented = await page.evaluate(() => {
+    const ignored: KeyboardEventInit[] = [
+      { key: "ArrowRight", altKey: true },
+      { key: "ArrowRight", metaKey: true },
+      { key: "ArrowRight", ctrlKey: true, shiftKey: true },
+      { key: "ArrowRight", isComposing: true },
+      { key: "ArrowUp" },
+    ];
+    return ignored.map((init) => {
+      const event = new KeyboardEvent("keydown", {
+        ...init,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+  });
+  expect(prevented).toEqual([false, false, false, false, false]);
+  await expectReplayIndex(page, 4);
+  await page.evaluate(() => {
+    const event = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      bubbles: true,
+      cancelable: true,
+    });
+    event.preventDefault();
+    document.dispatchEvent(event);
+  });
+  await expectReplayIndex(page, 4);
+
+  const focusSeat = page.getByLabel("Focus seat");
+  await focusSeat.focus();
+  await focusSeat.press("ArrowRight");
+  await expectReplayIndex(page, 4);
+  const fieldPrevented = await page.evaluate(() => {
+    const fields = [
+      document.createElement("input"),
+      document.createElement("textarea"),
+      document.createElement("div"),
+    ];
+    fields[2].contentEditable = "true";
+    return fields.flatMap((field) => {
+      document.body.appendChild(field);
+      field.focus();
+      const prevented = [{}, { shiftKey: true }, { ctrlKey: true }].map(
+        (modifiers) => {
+          const event = new KeyboardEvent("keydown", {
+            key: "ArrowRight",
+            ...modifiers,
+            bubbles: true,
+            cancelable: true,
+          });
+          field.dispatchEvent(event);
+          return event.defaultPrevented;
+        }
+      );
+      field.remove();
+      return prevented;
+    });
+  });
+  expect(fieldPrevented).toEqual(Array(9).fill(false));
+  await expectReplayIndex(page, 4);
+});
+
+test("replay keyboard: protects text, pen mode, and modal dialogs", async ({
+  page,
+}) => {
+  await open(page, "replay");
+  const nextEvent = page.getByRole("button", {
+    name: "Next event",
+    exact: true,
+  });
+  await page
+    .getByRole("button", { name: "Add text comment", exact: true })
+    .click();
+  const editor = page.locator(".web-table-review-editor .ProseMirror");
+  const text = "A draft protected from replay keyboard shortcuts.";
+  await editor.fill(text);
+  for (const shortcut of replayShortcuts) {
+    await page.keyboard.press(shortcut);
+    await expectReplayIndex(page, 4);
+  }
+  await expect(editor).toHaveText(text);
+  await nextEvent.focus();
+  for (const shortcut of replayShortcuts) {
+    await page.keyboard.press(shortcut);
+    await expectReplayIndex(page, 4);
+  }
+  await expect(editor).toHaveText(text);
+  await page.getByRole("button", { name: /Tiles$/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, 4);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await page
+    .locator(".web-table-review-editor")
+    .getByRole("button", { name: /Save$/ })
+    .click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.locator(".web-table-review-comments")).toContainText(text);
+
+  await page.getByRole("button", { name: "Close replay", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await nextEvent.focus();
+  for (const shortcut of replayShortcuts) {
+    await page.keyboard.press(shortcut);
+    await expectReplayIndex(page, 4);
+  }
+  await page
+    .getByRole("button", { name: "Stay on page", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await nextEvent.focus();
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, 5);
+
+  const pen = page.getByRole("button", { name: "Freehand draw", exact: true });
+  await pen.click();
+  await expect(pen).toHaveClass(/ant-btn-primary/);
+  await nextEvent.focus();
+  for (const shortcut of replayShortcuts) {
+    await page.keyboard.press(shortcut);
+    await expectReplayIndex(page, 5);
+  }
+  await expect(pen).toHaveClass(/ant-btn-primary/);
+  await pen.click();
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, 6);
+  await expect(page.getByLabel("Focus seat")).toHaveValue("0");
+});
+
+test("replay keyboard: stays active with navigation controls hidden", async ({
+  page,
+}) => {
+  await open(page, "replay");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("switch", { name: "Show controls", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".web-table-ui-navigation")).toBeHidden();
+  await page.keyboard.press("ArrowRight");
+  await expectReplayIndex(page, 5);
+  await page.keyboard.press("Shift+ArrowRight");
+  await expectReplayIndex(page, 13);
+  await page.keyboard.press("Control+ArrowLeft");
+  await expectReplayIndex(page, 11);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("switch", { name: "Show controls", exact: true })
+    .click();
+  await expect(page.locator(".web-table-ui-navigation")).toBeVisible();
+  await expect(page.getByLabel("Round", { exact: true })).toHaveValue("11");
+});
 
 test("replay text drafts and local editor popups survive resizing", async ({
   page,

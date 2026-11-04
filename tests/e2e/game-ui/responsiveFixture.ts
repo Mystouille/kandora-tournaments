@@ -67,6 +67,25 @@ export const fixtureEvents: GameEvent[] = [
   ]),
 ];
 
+export const fixtureReplayEvents: GameEvent[] = [
+  ...fixtureEvents,
+  ...([1, 2] as const).flatMap<GameEvent>((round) => [
+    { type: "hand_end", reason: "exhaustive_draw" },
+    {
+      type: "hand_start",
+      round,
+      roundWind: "E",
+      roundNumber: round + 1,
+      dealer: round,
+      scores: [25000, 25000, 25000, 25000],
+      doraIndicators: ["2z"],
+      startingHands: hands,
+    },
+    ...fixtureEvents.slice(2),
+  ]),
+  { type: "hand_end", reason: "exhaustive_draw" },
+];
+
 export const fixtureViewers: ViewerPresence[] = Array.from(
   { length: 30 },
   (_, index) => ({
@@ -133,7 +152,7 @@ const log = {
     finalScore: 25000,
     place: 1,
   })),
-  events: fixtureEvents,
+  events: fixtureReplayEvents,
 } satisfies ReplayLog;
 
 export const fixtureReplayData: ComponentProps<

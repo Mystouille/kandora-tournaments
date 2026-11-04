@@ -87,6 +87,10 @@ import {
 } from "./ReplayReviewCartridge";
 import { formatReviewEditTimestamp } from "./reviewEditTimestamp";
 import { buildReplayViewerShareUrl } from "./replayShareUrl";
+import {
+  replayRoundTargets,
+  resolveReplayKeyboardNavigation,
+} from "./replayKeyboardNavigation";
 import { useLocale } from "~/contexts/LocaleContext";
 import { useTelemetry } from "~/contexts/TelemetryContext";
 import { FixedTileSetProvider } from "~/contexts/TileSetContext";
@@ -1742,6 +1746,62 @@ export default function ReplayRoute({
     },
     [navigateReplay]
   );
+  const { previous: prevRound, next: nextRound } = replayRoundTargets(
+    rounds,
+    index
+  );
+
+  useEffect(() => {
+    if (
+      draft.mode !== null ||
+      recoveryPrompt !== null ||
+      blocker.state === "blocked"
+    ) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(
+          "input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=textbox], [role=combobox], [role=slider], [role=spinbutton], [role=listbox], [role=dialog], [role=alertdialog]"
+        )
+      ) {
+        return;
+      }
+      const navigation = resolveReplayKeyboardNavigation(event, {
+        events: log.events,
+        rounds,
+        bounds,
+        index: indexRef.current,
+        focusSeat,
+      });
+      if (navigation === null) {
+        return;
+      }
+      event.preventDefault();
+      if (navigation.kind === "step") {
+        stepBy(navigation.delta);
+      } else {
+        goto(navigation.index);
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [
+    blocker.state,
+    bounds,
+    draft.mode,
+    focusSeat,
+    goto,
+    log.events,
+    recoveryPrompt,
+    rounds,
+    stepBy,
+  ]);
 
   // Mouse-wheel scrubbing on the canvas container: scroll down →
   // advance one event, scroll up → rewind one event. Each wheel
@@ -2096,79 +2156,60 @@ export default function ReplayRoute({
             )}
           </div>
           {/* Row 2: prev round, prev event, next event, next round. */}
-          {(() => {
-            // Find the current round's index in `rounds` (largest
-            // boundary <= index). Prev/next round step through that
-            // list; first/last are reachable by the bookends.
-            let currentRoundIdx = -1;
-            for (let i = 0; i < rounds.length; i++) {
-              if (rounds[i] <= index) {
-                currentRoundIdx = i;
-              }
-            }
-            const prevRound =
-              currentRoundIdx > 0 ? rounds[currentRoundIdx - 1] : null;
-            const nextRound =
-              currentRoundIdx >= 0 && currentRoundIdx < rounds.length - 1
-                ? rounds[currentRoundIdx + 1]
-                : null;
-            return (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (prevRound !== null) {
-                      goto(prevRound);
-                    }
-                  }}
-                  disabled={prevRound === null}
-                  className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
-                  aria-label="Previous round"
-                  title="Previous round"
-                >
-                  ⏮
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stepBy(-1);
-                  }}
-                  disabled={index <= bounds.min}
-                  className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
-                  aria-label="Previous event"
-                  title="Previous event"
-                >
-                  ◀
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stepBy(1);
-                  }}
-                  disabled={index >= bounds.max}
-                  className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
-                  aria-label="Next event"
-                  title="Next event"
-                >
-                  ▶
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (nextRound !== null) {
-                      goto(nextRound);
-                    }
-                  }}
-                  disabled={nextRound === null}
-                  className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
-                  aria-label="Next round"
-                  title="Next round"
-                >
-                  ⏭
-                </button>
-              </div>
-            );
-          })()}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (prevRound !== null) {
+                  goto(prevRound);
+                }
+              }}
+              disabled={prevRound === null}
+              className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
+              aria-label="Previous round"
+              title="Restart round / previous round (Ctrl+Left)"
+            >
+              ⏮
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                stepBy(-1);
+              }}
+              disabled={index <= bounds.min}
+              className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
+              aria-label="Previous event"
+              title="Previous event (Left); previous focused-player discard (Shift+Left)"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                stepBy(1);
+              }}
+              disabled={index >= bounds.max}
+              className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
+              aria-label="Next event"
+              title="Next event (Right); next focused-player discard (Shift+Right)"
+            >
+              ▶
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (nextRound !== null) {
+                  goto(nextRound);
+                }
+              }}
+              disabled={nextRound === null}
+              className="px-3 py-2 text-lg rounded bg-black/60 hover:bg-emerald-800 disabled:opacity-40 border border-emerald-700 text-emerald-100"
+              aria-label="Next round"
+              title="Next round (Ctrl+Right)"
+            >
+              ⏭
+            </button>
+          </div>
           {/* Row 3 (review-only): jump to previous / next event
               that has an annotation. Hidden when no annotation
               exists yet so non-review viewers don't see dead

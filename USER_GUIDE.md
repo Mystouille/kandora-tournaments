@@ -424,6 +424,25 @@ the right account.
   overlay for a bracket stage, designed as an **OBS browser source**.
 - **Replay viewer** (`/replays/{gameId}`) — replay a recorded game in the browser.
 
+### Replay keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| Right / Left | Next / previous event. |
+| Shift+Right / Shift+Left | Next / previous discard by the focused player, including across rounds. |
+| Ctrl+Right | Next round start. |
+| Ctrl+Left | Restart the current round; if already at its start, go to the previous round start. |
+
+Discard shortcuts land on the discard itself, not the preceding draw. Shortcuts
+do nothing when there is no matching destination; they never wrap. The round
+buttons follow the same rules as Ctrl+Arrow, and navigation-button tooltips list
+the shortcuts.
+
+Shortcuts work even with navigation controls hidden, but pause while editing a
+text annotation, drawing, or using a modal dialog. Inputs, selectors, and
+rich-text editors keep their normal arrow-key behavior. Ctrl means the Control
+key, not Command; Alt, Command/Meta, and Ctrl+Shift combinations are ignored.
+
 ---
 
 ## 9. The statistics & results page
