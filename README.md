@@ -8,8 +8,9 @@ post standings to Discord, and replay games in the browser.
 This app is extracted from the Kandora portal so anyone can host their own
 instance without using the original operator's server.
 
-> **Status:** scaffolding in progress (Phase 1). The bot, backend services, and
-> tournament UI are being migrated in.
+The bot, backend services, tournament UI, and replay platform live in this checkout.
+The active game engine/renderer remain owned by the `app/game` submodule; deployment
+still requires the backing services and credentials described in the setup guide.
 
 ## Architecture
 
@@ -19,10 +20,18 @@ instance without using the original operator's server.
 - **Discord OAuth** for login; admin/editor permissions come from Discord
   server roles (configured in `SERVERS_JSON`).
 - Two shared **git submodules**:
-  - [`app/core`](app/core) → **kandora-core**: database models + shared mahjong
-    types/enums (data-only, no React).
+  - [`app/core`](app/core) → **kandora-core**: database models, platform integration,
+    and shared Mahjong types/rules/utilities.
   - [`app/game`](app/game) → **kandora-game**: the game engine, renderer, and
     replay components (powers the in-browser replay viewer).
+
+Routes/components own the web UI; `app/services` owns server orchestration. The
+[replay loader](app/routes/game/replayLoader.server.ts) separates source lookup,
+authentication, and canonical redirects from the large client viewer route.
+Pure [faction qualification](app/services/league-strategies/factionQualification.ts)
+is tested independently from league scheduling and Discord publication.
+Expected anonymous sessions are handled by the JWT helper; unexpected loader failures
+are not suppressed as a successful anonymous lookup.
 
 ## Getting started
 

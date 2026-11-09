@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  redirect,
   useBlocker,
   useLocation,
   useNavigate,
@@ -24,8 +23,7 @@ import {
 import type { ReplayView } from "~/game/replay/player";
 import { replaySeatNames, replayVariant } from "~/game/replay/variant";
 import { activeSeats } from "~/game/rules/seats";
-import type { GameEvent, Seat } from "~/game/protocol/messages";
-import { resolveReplayViewerData } from "~/services/replayViewerData.server";
+import type { Seat } from "~/game/protocol/messages";
 import { recordedWaitsByIndex } from "~/game/replay/recordedWaits";
 import {
   bytesToBase64,
@@ -56,12 +54,7 @@ import type {
   SerializedReviewEdit,
   SerializedReviewer,
 } from "~/types/replayReview";
-import { getAuthenticatedUser } from "~/utils/jwt.server";
 import { basePath } from "~/utils/basePath";
-import {
-  authSignInPath,
-  localReturnPathFromRequest,
-} from "~/utils/gameReturnPath";
 import {
   readWebTableLayoutMode,
   writeWebTableLayoutMode,
@@ -113,6 +106,7 @@ import {
   type ReplaySoundTarget,
 } from "~/game/client/replaySound";
 import { replayHasRevealableWalls } from "~/game/replay/wallAvailability";
+export { loader } from "./replayLoader.server";
 
 function normalizeReviewDraftText(html: string): string {
   const stripped = html.replace(/<[^>]+>/g, "").trim();
@@ -158,129 +152,6 @@ interface ReviewRecoveryPrompt {
  * don't touch the live game-server. They remain reachable in
  * environments where the in-app game subsystem is disabled.
  */
-export async function loader({ params, request }: Route.LoaderArgs) {
-  const gameId = params.gameId ?? "";
-  if (!gameId) {
-    throw new Response("Missing replay id.", { status: 404 });
-  }
-
-  // Normalize platform-native viewer-link suffixes so that pasting
-  // a raw majsoul / Riichi City URL fragment "just works":
-  //
-  //   - Majsoul appends `_a<accountId>` to its share URLs to mark
-  //     which player generated the link. We strip the suffix from
-  //     the id and — if the cached replay knows that accountId —
-  //     surface the matching seat through the `?seat=` deeplink
-  //     param so the viewer opens with that player at the bottom.
-  //     Majsoul stashes the per-seat `accountId` (as a string) on
-  //     the `match_start` event's `seats[].userId`.
-  //   - Riichi City appends `@<n>` (0–3) to a log id to mark which
-  //     seat that share link is from. The index is NOT the absolute
-  //     seat in the data — it's the round-1 dealer-relative wind
-  //     position (0=E, 1=S, 2=W, 3=N). RC's `position` field is
-  //     shaped by player-join order, so the same `@n` maps to a
-  //     different absolute seat per replay; we translate using the
-  //     loaded log's first `hand_start.dealer` and surface the
-  //     resolved absolute seat through the `?seat=` deeplink param.
-  //
-  // Either fixup issues a 302 to the canonical URL so the cleaned
-  // form lands in the address bar and downstream caching keys
-  // collapse onto a single canonical id.
-  // React Router's `redirect()` prepends the configured
-  // `basename` (e.g. `/kandora/` in REMOTE dev) to whatever path
-  // we hand it, so we must hand it a basename-RELATIVE path —
-  // never the raw `url.pathname`, which already includes the
-  // basename and would otherwise produce `/kandora/kandora/...`.
-  const url = new URL(request.url);
-  const majsoulSuffix = /_a\d+$/.exec(gameId);
-  if (majsoulSuffix) {
-    // Majsoul appends `_a<obfuscated-sharer-id>` to its share
-    // URLs. The number is the URL-sharer's account id passed
-    // through Majsoul's private web-client encoding (it's NOT the
-    // raw `account_id`, NOT a friend-id `searchAccountByPattern`
-    // can decode, and in general not one of the seats in the
-    // replay anyway — the sharer can be a spectator). So we
-    // just strip it for a clean canonical URL and leave the
-    // viewer to default to seat 0; the user can pick a seat from
-    // the dropdown or pass `?seat=N` explicitly.
-    const cleanId = gameId.slice(0, majsoulSuffix.index);
-    const qs = url.searchParams.toString();
-    throw redirect(`/watch/replay/${cleanId}${qs ? `?${qs}` : ""}`);
-  }
-  const rcSuffix = /@([0-3])$/.exec(gameId);
-  const rcWind = rcSuffix ? Number(rcSuffix[1]) : null;
-  const cleanGameId = rcSuffix ? gameId.slice(0, rcSuffix.index) : gameId;
-
-  // Helper: translate the RC `@<n>` round-1 wind index to an
-  // absolute seat using the first `hand_start` event's dealer.
-  // Wind rotation around the table follows the absolute seat order
-  // (`(dealer + wind) % 4`) — verified empirically by tracing the
-  // first four `Draw` events of round 1, which always go E→S→W→N
-  // starting from `dealer_pos`.
-  const redirectToCanonicalRcUrl = (events: GameEvent[]): never => {
-    const search = new URLSearchParams(url.searchParams);
-    if (rcWind !== null && !search.has("seat")) {
-      let seat = rcWind;
-      const handStart = events.find((e) => e.type === "hand_start");
-      if (handStart && "dealer" in handStart) {
-        seat = ((handStart as { dealer: number }).dealer + rcWind) % 4;
-      }
-      search.set("seat", String(seat));
-    }
-    const qs = search.toString();
-    throw redirect(`/watch/replay/${cleanGameId}${qs ? `?${qs}` : ""}`);
-  };
-
-  // Identify the current user (if any) so the component can
-  // enable the editing cartridge for the review owner. The
-  // replay route itself does not require auth.
-  let currentUserId: string | null = null;
-  let currentUserName: string | null = null;
-  try {
-    const payload = await getAuthenticatedUser(request);
-    if (payload?.sub) {
-      currentUserId = String(payload.sub);
-      currentUserName =
-        typeof payload.username === "string" ? payload.username : null;
-    }
-  } catch {
-    /* anonymous viewer */
-  }
-  const resolved = await resolveReplayViewerData({
-    gameId: cleanGameId,
-    reviewShortId: url.searchParams.get("review"),
-    userId: currentUserId,
-  });
-
-  if (resolved.status === "found") {
-    if (resolved.canonicalGameId !== cleanGameId) {
-      const qs = url.searchParams.toString();
-      throw redirect(
-        `/watch/replay/${encodeURIComponent(resolved.canonicalGameId)}${qs ? `?${qs}` : ""}`
-      );
-    }
-    if (rcWind !== null) {
-      redirectToCanonicalRcUrl(resolved.log.events);
-    }
-    return {
-      log: resolved.log,
-      review: resolved.review,
-      currentUserId,
-      currentUserName,
-      seatEnrichment: resolved.seatEnrichment,
-    };
-  }
-  if (resolved.status === "authentication_required") {
-    throw redirect(
-      authSignInPath(localReturnPathFromRequest(request, basePath))
-    );
-  }
-  throw new Response(
-    "Replay not yet available; it will appear after the next hydration cycle.",
-    { status: 404 }
-  );
-}
-
 const SOURCE_LABEL: Record<ReplaySource, string> = {
   ingame: "Kandora",
   majsoul: "Mahjong Soul",

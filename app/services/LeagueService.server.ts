@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { coreConfig } from "config";
 import { connectToDatabase } from "~/utils/dbConnection.server";
-import { type League, LeagueModel, ongoingLeagueFilter } from "~/core/models/tournament/League";
+import {
+  type League,
+  LeagueModel,
+  ongoingLeagueFilter,
+} from "~/core/models/tournament/League";
 import { GameModel, type Game } from "~/core/models/tournament/Game";
 import { TeamModel, type Team } from "~/core/models/tournament/Team";
 import { LeagueUserModel } from "~/core/models/tournament/LeagueUser";
@@ -55,6 +59,11 @@ import {
 } from "~/services/league-configs";
 import { computeMultiPhaseStandings } from "~/services/league-strategies/multiPhaseStrategies";
 import { getLeagueQueue } from "~/services/queue.server";
+import {
+  buildFactionGroupedSeedOrder,
+  includeMissingFactionMembers,
+  computeFactionQualifiedUsers,
+} from "~/services/league-strategies/factionQualification";
 import {
   getLeaguePlatform,
   resolvePlayerDisplay,
@@ -128,139 +137,6 @@ function toSnowflake(id: string): bigint | null {
   } catch {
     return null;
   }
-}
-
-function buildFactionGroupedSeedOrder(
-  sortedPlayers: PlayerRankingScore[],
-  qualifiedByFaction: Set<string>
-): PlayerRankingScore[] {
-  const grouped = new Map<string, PlayerRankingScore[]>();
-  const noFactionQualified: PlayerRankingScore[] = [];
-
-  for (const player of sortedPlayers) {
-    if (!qualifiedByFaction.has(player.userId)) {
-      continue;
-    }
-
-    if (!player.factionTeamId) {
-      noFactionQualified.push(player);
-      continue;
-    }
-
-    const players = grouped.get(player.factionTeamId) ?? [];
-    players.push(player);
-    grouped.set(player.factionTeamId, players);
-  }
-
-  for (const players of grouped.values()) {
-    players.sort((a, b) => {
-      if (b.rankingScore !== a.rankingScore) {
-        return b.rankingScore - a.rankingScore;
-      }
-      return a.userId.localeCompare(b.userId);
-    });
-  }
-
-  const sortedFactions = Array.from(grouped.entries()).sort((a, b) => {
-    const bestA = a[1][0]?.rankingScore ?? -Infinity;
-    const bestB = b[1][0]?.rankingScore ?? -Infinity;
-    if (bestB !== bestA) {
-      return bestB - bestA;
-    }
-    return a[0].localeCompare(b[0]);
-  });
-
-  const ordered: PlayerRankingScore[] = [];
-  for (const [, players] of sortedFactions) {
-    ordered.push(...players);
-  }
-  ordered.push(...noFactionQualified);
-
-  if (ordered.length < qualifiedByFaction.size) {
-    const seen = new Set(ordered.map((p) => p.userId));
-    for (const player of sortedPlayers) {
-      if (qualifiedByFaction.has(player.userId) && !seen.has(player.userId)) {
-        ordered.push(player);
-        seen.add(player.userId);
-      }
-    }
-  }
-
-  return ordered;
-}
-
-function includeMissingFactionMembers(
-  players: PlayerRankingScore[],
-  teams: Team[]
-): PlayerRankingScore[] {
-  const augmented = [...players];
-  const seen = new Set(players.map((p) => p.userId));
-
-  for (const team of teams) {
-    const factionTeamId = team._id.toString();
-    const rosterIds = [
-      ...(team.roster.members ?? []),
-      ...(team.roster.substitutes ?? []),
-    ];
-    for (const memberId of rosterIds) {
-      const userId = memberId.toString();
-      if (seen.has(userId)) {
-        continue;
-      }
-      augmented.push({
-        userId,
-        rankingScore: 0,
-        gamesCounted: 0,
-        totalGamesPlayed: 0,
-        factionTeamId,
-      });
-      seen.add(userId);
-    }
-  }
-
-  return augmented;
-}
-
-function computeFactionQualifiedUsers(
-  players: PlayerRankingScore[],
-  qualificationCount: number,
-  minGames = 0
-): Set<string> {
-  const qualified = new Set<string>();
-  const byFaction = new Map<string, PlayerRankingScore[]>();
-
-  for (const player of players) {
-    if (!player.factionTeamId) {
-      continue;
-    }
-    // Exclude players below the phase's minimum-games gate from qualification.
-    if (minGames > 0 && (player.totalGamesPlayed ?? 0) < minGames) {
-      continue;
-    }
-    const factionPlayers = byFaction.get(player.factionTeamId) ?? [];
-    factionPlayers.push(player);
-    byFaction.set(player.factionTeamId, factionPlayers);
-  }
-
-  for (const factionPlayers of byFaction.values()) {
-    factionPlayers.sort((a, b) => {
-      if (b.rankingScore !== a.rankingScore) {
-        return b.rankingScore - a.rankingScore;
-      }
-      const gamesA = a.totalGamesPlayed ?? a.gamesCounted;
-      const gamesB = b.totalGamesPlayed ?? b.gamesCounted;
-      if (gamesB !== gamesA) {
-        return gamesB - gamesA;
-      }
-      return a.userId.localeCompare(b.userId);
-    });
-
-    for (const player of factionPlayers.slice(0, qualificationCount)) {
-      qualified.add(player.userId);
-    }
-  }
-
-  return qualified;
 }
 
 export class LeagueService {
